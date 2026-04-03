@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "YouSub",
+  "version": "0.1.0",
+  "description": "Real-time subtitle translator for YouTube",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["src/shared/constants.js", "src/content/page-detector.js", "src/content/video-binder.js", "src/content/subtitle-extractor.js", "src/content/subtitle-parser.js", "src/content/main.js"],
+      "css": ["src/content/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/main-world-extractor.js", "src/content/main-world-fetcher.js"],
+      "matches": ["*://*.youtube.com/*"]
+    }
+  ]
+}
