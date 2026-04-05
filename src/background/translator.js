@@ -1,202 +1,201 @@
-/**
- * translator.js — YouSub Translation API Client
- *
- * Uses Lingva Translate (free, no API key) for the MVP.
- * Design Decision 2: Lingva API for initial MVP.
- *
- * Strategy:
- *  1. Chunk texts to stay within URL length limits (~1500 chars per chunk)
- *  2. Join each chunk with a unique delimiter, make one API call per chunk
- *  3. Split result back; on mismatch fall back to per-entry translation
- *  4. On any error, return the original text (never fail silently)
- */
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-/** Public Lingva instance. Can be overridden for self-hosted instances. */
-const LINGVA_INSTANCE = 'https://lingva.ml';
-
-/** Delimiter unlikely to appear in subtitle text naturally. */
-const DELIMITER = '\n###YOUSUB###\n';
-
-/** Max characters per chunk to stay safely within URL length limits. */
-const MAX_CHUNK_CHARS = 1500;
-
-/** Per-request timeout in milliseconds. */
-const REQUEST_TIMEOUT_MS = 15000;
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+import { Logger } from '../shared/logger.js';
+import { APIManager } from './api-manager.js';
+import { Providers } from './providers.js';
+import { HealthManager } from './health.js';
 
 /**
- * Make a single Lingva API call.
- * @param {string} text - Text to translate (may be multi-line/delimiter joined).
- * @param {string} sourceLang - ISO 639-1 code or 'auto'.
- * @param {string} targetLang - ISO 639-1 code.
- * @returns {Promise<string>} Translated text.
+ * translator.js — Multi-Provider LLM Translation Engine
+ * 
+ * High-level flow:
+ * 1. Get list of valid API keys via APIManager.
+ * 2. Split input texts into line-based batches (e.g. 40 lines).
+ * 3. Use a system prompt to enforce line-count preservation.
+ * 4. Implement a failover loop (Primary -> Backup...) per batch if needed.
+ * 5. Verify results, fallback to original on persistent failure.
  */
-async function callLingva(text, sourceLang, targetLang) {
-  const encoded = encodeURIComponent(text);
-  const url = `${LINGVA_INSTANCE}/api/v1/${sourceLang}/${targetLang}/${encoded}`;
 
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  });
-
-  if (!response.ok) {
-    throw new Error(`Lingva HTTP ${response.status} for lang pair ${sourceLang}→${targetLang}`);
-  }
-
-  const data = await response.json();
-
-  if (!data || typeof data.translation !== 'string') {
-    throw new Error('Lingva returned no translation field in response');
-  }
-
-  return data.translation;
-}
+const MAX_LINES_PER_BATCH = 20;
+const RETRY_ATTEMPTS = 1; // Number of retries with smaller chunks on mismatch
 
 /**
- * Split an array of texts into chunks where joined length <= MAX_CHUNK_CHARS.
- * @param {string[]} texts
- * @returns {string[][]} Array of chunks.
+ * Main translation entry point.
  */
-function chunkTexts(texts) {
-  const chunks = [];
-  let current = [];
-  let currentLen = 0;
-
-  for (const text of texts) {
-    const addLen = text.length + DELIMITER.length;
-
-    if (currentLen + addLen > MAX_CHUNK_CHARS && current.length > 0) {
-      // Current chunk is full — start a new one
-      chunks.push(current);
-      current = [text];
-      currentLen = text.length;
-    } else {
-      current.push(text);
-      currentLen += addLen;
-    }
-  }
-
-  if (current.length > 0) chunks.push(current);
-  return chunks;
-}
-
-/**
- * Translate a chunk as one joined request.
- * Returns translated array, or null if the split count mismatches.
- * @param {string[]} texts
- * @param {string} sourceLang
- * @param {string} targetLang
- * @returns {Promise<string[]|null>}
- */
-async function translateChunk(texts, sourceLang, targetLang) {
-  const joined = texts.join(DELIMITER);
-  const translatedJoined = await callLingva(joined, sourceLang, targetLang);
-  const parts = translatedJoined.split(DELIMITER);
-
-  if (parts.length !== texts.length) {
-    console.warn(
-      `[YouSub] Translator: Chunk split mismatch — expected ${texts.length}, got ${parts.length}`
-    );
-    return null; // Signal caller to fall back
-  }
-
-  return parts.map((t) => t.trim());
-}
-
-/**
- * Translate texts one-by-one (fallback strategy).
- * On individual failure, returns the original text to preserve readability.
- * @param {string[]} texts
- * @param {string} sourceLang
- * @param {string} targetLang
- * @returns {Promise<string[]>}
- */
-async function translateIndividually(texts, sourceLang, targetLang) {
-  const results = [];
-  for (let i = 0; i < texts.length; i++) {
-    try {
-      const translated = await callLingva(texts[i], sourceLang, targetLang);
-      results.push(translated);
-    } catch (err) {
-      console.warn(
-        `[YouSub] Translator: Individual failed at [${i}]: ${err.message} — keeping original`
-      );
-      results.push(texts[i]); // Graceful degradation: show original
-    }
-  }
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Translate an array of subtitle strings.
- *
- * @param {string[]} texts - Array of strings to translate.
- * @param {string} sourceLang - ISO 639-1 code or 'auto' for auto-detect.
- * @param {string} targetLang - ISO 639-1 code (e.g. 'vi', 'ja', 'en').
- * @returns {Promise<string[]>} Translated strings, same length as input.
- */
-export async function translate(texts, sourceLang, targetLang) {
+export async function translate(texts, sourceLang, targetLang, tabId = null) {
   if (!texts || texts.length === 0) return [];
 
   const src = sourceLang || 'auto';
   const tgt = targetLang || 'vi';
 
-  console.log(
-    `[YouSub] Translator: Translating ${texts.length} entries [${src} → ${tgt}]`
-  );
-  const startTime = Date.now();
+  Logger.info('Translator', `Translating ${texts.length} lines [${src} → ${tgt}]`);
+  sendDebugLog(tabId, `Starting translation of ${texts.length} lines → ${tgt}`, '#2dd4bf', true);
+  
+  const apiKeys = await APIManager.getValidKeys();
+  if (apiKeys.length === 0) {
+    Logger.warn('Translator', 'No API keys configured. Returning original texts.');
+    return texts;
+  }
 
-  try {
-    const chunks = chunkTexts(texts);
-    console.log(`[YouSub] Translator: Split into ${chunks.length} chunk(s)`);
+  // Split into batches
+  const batches = [];
+  for (let i = 0; i < texts.length; i += MAX_LINES_PER_BATCH) {
+    batches.push(texts.slice(i, i + MAX_LINES_PER_BATCH));
+  }
 
-    const allResults = [];
+  const results = [];
+  let hadFallback = false;
 
-    for (let ci = 0; ci < chunks.length; ci++) {
-      const chunk = chunks[ci];
-      try {
-        const result = await translateChunk(chunk, src, tgt);
+  // Process each batch
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    Logger.info('Translator', `Processing batch ${i+1}/${batches.length} (${batch.length} lines)`);
+    sendDebugLog(tabId, `Processing batch ${i+1}/${batches.length} (${batch.length} lines)...`, '#a855f7');
 
-        if (result !== null) {
-          allResults.push(...result);
-        } else {
-          // Bulk split mismatch — fall back to individual for this chunk only
-          console.warn(
-            `[YouSub] Translator: Chunk ${ci + 1}/${chunks.length} mismatch — translating individually`
-          );
-          const fallback = await translateIndividually(chunk, src, tgt);
-          allResults.push(...fallback);
+    const translatedBatch = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId);
+
+    // Ensure we always have a result (original strings if LLM failed)
+    if (translatedBatch && translatedBatch.length === batch.length) {
+      results.push(...translatedBatch);
+    } else {
+      hadFallback = true;
+      const reason = !translatedBatch ? "Failover exhausted or provider error" : `Line mismatch (Expected ${batch.length}, got ${translatedBatch.length})`;
+      Logger.error('Translator', `Batch ${i+1} failed Line Count check. ${reason}. Using original text.`);
+      sendDebugLog(tabId, `Batch ${i+1} FAILED: ${reason}. Using original text.`, '#f43f5e', true);
+      results.push(...batch);
+    }
+  }
+
+  return { translated: results, hadFallback };
+}
+
+/**
+ * Process a single batch of lines, trying different providers on failure.
+ */
+async function translateBatchWithFailover(lines, src, tgt, apiKeys, tabId) {
+  const systemPrompt = `You are a professional subtitle translator. 
+Translate the following subtitle lines from ${src} to ${tgt}.
+RULES:
+1. Translate each line independently.
+2. PRESERVE THE LINE COUNT EXACTLY. You MUST return exactly ${lines.length} lines.
+3. Use the following format for each line: {Line Number}| {Translated Text}
+   Example: 1| Xin chào, 2| Chào buổi sáng
+4. Each output line should correspond to exactly one input line.
+5. Do NOT add any explanations, numbering, or citations.
+6. Do NOT merge lines. If a line is empty, return only the line number followed by a pipe and an empty string (e.g. 5| ).
+7. Return ONLY the translated lines in the specified format.`;
+
+  const userPrompt = lines.map((l, i) => `${i + 1}| ${l}`).join('\n');
+
+  // Loop through available keys until success
+  for (let k = 0; k < apiKeys.length; k++) {
+    const key = apiKeys[k];
+    const startTime = performance.now();
+    
+    try {
+      const result = await Providers.chat(
+        key.provider,
+        key.model,
+        key.apiKey,
+        userPrompt,
+        {
+          systemPrompt,
+          max_tokens: 2000,
+          temperature: 0.1 // Low temperature for consistency
         }
-      } catch (chunkErr) {
-        console.warn(
-          `[YouSub] Translator: Chunk ${ci + 1}/${chunks.length} failed: ${chunkErr.message} — translating individually`
-        );
-        const fallback = await translateIndividually(chunk, src, tgt);
-        allResults.push(...fallback);
+      );
+
+      const duration = performance.now() - startTime;
+      
+      sendDebugLog(tabId, `Request with ${key.provider} (${key.model}) returned success=${!!result.success}`, '#94a3b8');
+ 
+      if (result.success && result.text) {
+        // 1. Clean response (Markdown, noise, etc.)
+        const cleanedText = cleanResponse(result.text);
+        
+        // 2. Parse result lines (Handling numbering format N| Text)
+        let resultLines = cleanedText.split('\n')
+          .filter(l => l.includes('|')) // Only lines that actually have the separator
+          .map(l => {
+            const pipeIndex = l.indexOf('|');
+            let content = l.substring(pipeIndex + 1).trim();
+            
+            // Sometimes models return "1| 1| Text" or similar noise
+            content = content.replace(/^\d+[|]\s*/, ''); 
+            
+            return content;
+          });
+        
+        if (resultLines.length === lines.length) {
+          await HealthManager.report(key.provider, key.apiKey, true, duration);
+          return resultLines;
+        } else {
+          Logger.warn('Translator', `Line count mismatch with ${key.provider}. Expected ${lines.length}, got ${resultLines.length}.`);
+          Logger.info('Translator', 'Raw result snippet (first 100 chars): ' + result.text.substring(0, 100));
+          sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${lines.length}, got ${resultLines.length}.`, '#f59e0b');
+          sendDebugLog(tabId, `Raw Response Sample: ${result.text.substring(0, 200)}...`, '#94a3b8');
+          await HealthManager.report(key.provider, key.apiKey, false, duration);
+        }
+      } else {
+        Logger.warn('Translator', `Provider ${key.provider} failed: ${result.message}`);
+        await HealthManager.report(key.provider, key.apiKey, false, duration);
+        
+        // If it's a structural failure (Invalid Key, Permissions), mark it
+        if (result.message.includes('API key')) {
+          await APIManager.markKeyFailed(key.provider, key.apiKey, result.message);
+        }
       }
+    } catch (err) {
+      const duration = performance.now() - startTime;
+      Logger.error('Translator', `Error during provider call (${key.provider})`, { error: err.message });
+      await HealthManager.report(key.provider, key.apiKey, false, duration);
     }
 
-    const elapsed = Date.now() - startTime;
-    console.log(
-      `[YouSub] Translator: Done. ${allResults.length} translations in ${elapsed}ms`
-    );
-    return allResults;
-
-  } catch (fatalErr) {
-    // Should rarely happen — means chunkTexts itself failed, etc.
-    console.error('[YouSub] Translator: Fatal error:', fatalErr.message);
-    console.warn('[YouSub] Translator: Full individual fallback...');
-    return translateIndividually(texts, src, tgt);
+    Logger.info('Translator', `Failover: Trying next available key if any...`);
   }
+
+  return null; // Signals failure to the caller
+}
+/**
+ * Noise reduction: Strip common LLM artifacts to extract raw subtitle lines.
+ */
+function cleanResponse(text) {
+  if (!text) return "";
+
+  let cleaned = text.trim();
+
+  // 1. Strip Markdown code blocks (``` ... ```)
+  const codeBlockRegex = /```(?:\w+)?\n([\s\S]+?)```/;
+  const match = cleaned.match(codeBlockRegex);
+  if (match && match[1]) {
+    cleaned = match[1].trim();
+  }
+
+  // 2. Clear common introductory noise (e.g., "Certainly!", "Here is the translation:")
+  const noisePatterns = [
+    /^Certainly!.*?\n/i,
+    /^Sure!.*?\n/i,
+    /^Here is the translation.*?\n/i,
+    /^Translation:.*?\n/i,
+    /^Please see below.*?\n/i
+  ];
+
+  noisePatterns.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, '').trim();
+  });
+
+  return cleaned;
+}
+
+/**
+ * Helper: Forward important debug info directly to content script's console
+ */
+function sendDebugLog(tabId, msg, color = '#cbd5e1', bold = false) {
+  if (!tabId) return;
+  try {
+    browser.tabs.sendMessage(tabId, {
+      type: 'YOUSUB_DEBUG_LOG',
+      msg,
+      color,
+      bold
+    }).catch(() => {}); // Catch if tab is closed
+  } catch(e) {}
 }

@@ -1,0 +1,26 @@
+{
+  "name": "yousub",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "package": "node scripts/package.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@jest/globals": "^30.3.0",
+    "adm-zip": "^0.5.17",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  }
+}

@@ -9,7 +9,7 @@
    */
   function injectScriptFile(file) {
     var script = document.createElement('script');
-    script.src = chrome.runtime.getURL(file);
+    script.src = browser.runtime.getURL(file);
     script.onload = function () { this.remove(); };
     (document.head || document.documentElement).appendChild(script);
   }

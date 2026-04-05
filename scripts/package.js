@@ -1,0 +1,61 @@
+import fs from 'fs';
+import path from 'path';
+import AdmZip from 'adm-zip';
+
+const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+const version = manifest.version;
+const name = manifest.name.toLowerCase().replace(/\s+/g, '-');
+
+const distDir = 'dist';
+if (!fs.existsSync(distDir)) {
+  fs.mkdirSync(distDir);
+}
+
+// Files/folders to include
+const includeList = [
+  'manifest.json',
+  'src',
+  'assets',
+  '_locales', // if exists
+];
+
+// Clean exclusion list
+const excludeList = [
+  '.DS_Store',
+  'node_modules',
+  'tests',
+  'scripts',
+  '.git',
+  '.gemini',
+];
+
+const zip = new AdmZip();
+
+function addRecursive(srcPath) {
+  const stat = fs.statSync(srcPath);
+  if (stat.isDirectory()) {
+    const files = fs.readdirSync(srcPath);
+    files.forEach(file => {
+      if (!excludeList.includes(file)) {
+        addRecursive(path.join(srcPath, file));
+      }
+    });
+  } else {
+    // Add file
+    const zipPath = path.relative(process.cwd(), srcPath);
+    zip.addLocalFile(srcPath, path.dirname(zipPath));
+  }
+}
+
+console.log(`Packaging ${name} v${version}...`);
+
+includeList.forEach(item => {
+  if (fs.existsSync(item)) {
+    addRecursive(item);
+  }
+});
+
+const outputPath = path.join(distDir, `${name}-v${version}.zip`);
+zip.writeZip(outputPath);
+
+console.log(`Successfully created ${outputPath}`);

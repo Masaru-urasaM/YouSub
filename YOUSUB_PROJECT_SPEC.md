@@ -2,9 +2,9 @@
 
 > **Document purpose**: This is the single source of truth for the YouSub project. It is written as an AI-readable prompt/specification so that any AI coding assistant (Gemini, Claude, etc.) can read this document and understand the full scope, architecture, decisions, and constraints of the project. It is also readable by human developers.
 >
-> **Document version**: 1.1
-> **Last updated**: 2026-04-03
-> **Status**: Pre-development — Idea finalized, technical roadmap pending.
+> **Document version**: 1.3
+> **Last updated**: 2026-04-04
+> **Status**: **STABLE** — Final v0.1.0 (Production-Ready)
 >
 > **Structure**: This file is a navigation hub. Detailed specifications live in `specs/` subdirectory. Each section below either contains the full specification (for compact, cross-cutting content) or provides a summary with a link to the detail file.
 
@@ -59,13 +59,16 @@ YouSub is a browser extension that intercepts native YouTube transcripts/subtitl
 ## 3. Feature Specifications
 
 ### 3.1 Subtitle Extraction
-**Summary**: Intercept network requests fetching YouTube subtitle data (XML/JSON files), parsing the text nodes and their corresponding timestamps.
+**Summary**: Uses a MAIN world injection strategy to trigger and scrape the YouTube Transcript Panel DOM. This bypasses Bot Detection (POT Tokens) and CORS issues that plague direct JSON/XML fetch attempts.
 
 ### 3.2 Translation Engine
-**Summary**: Pass the extracted original-language transcript to a translation service and map the returned translations back against the original timestamp array.
+**Summary**: A "Bring Your Own Key" (BYOK) multi-provider engine supporting OpenAI, Gemini, Anthropic, etc. Features Batch Translation (preserving line counts), failover intelligence, and a circuit-breaker health management system.
 
 ### 3.3 Dynamic Overlay Controller
-**Summary**: An injected transparent `<div>` overlapping the YouTube video frame that listens to the HTML5 `<video>` tag's `timeupdate` event to render translated text precisely on cue.
+**Summary**: An high-performance injected `<div>` overlapping the YouTube video frame. Features **Glassmorphism** for premium aesthetics and hardware-accelerated **Fade/Slide transitions**. Listens to the HTML5 `<video>` tag's `timeupdate` event to render translated text precisely on cue with $O(1)$ lookup performance.
+
+### 3.4 Cross-Browser Engine
+**Summary**: Unified codebase supporting **Chrome, Firefox, and Edge**. Uses `webextension-polyfill` to provide a standardized `browser.*` namespace and handles hybrid background scripts (Service Worker vs. Event Script) seamlessly.
 
 ---
 
@@ -81,3 +84,5 @@ YouSub is a browser extension that intercepts native YouTube transcripts/subtitl
 |---------|------|---------|
 | 1.0 | 2026-04-03 | Initial template |
 | 1.1 | 2026-04-03 | Added core goals, features, and context based on user specification |
+| 1.2 | 2026-04-04 | Updated with Cross-Browser support and Health Monitoring |
+| 1.3 | 2026-04-04 | Final v0.1.0 - Premium UI, Automated Packaging, Documentation COMPLETE |

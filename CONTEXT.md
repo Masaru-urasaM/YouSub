@@ -21,6 +21,6 @@ To create a Browser Extension (focusing on Chrome, scalable to Firefox) that act
 ## 4. Desired Outcomes
 - **A Working Manifest V3 Extension**: Built, functional, and installable initially as a local unpacked extension.
 - **Efficient Data Interception**: The extension successfully captures YouTube's subtitle payloads (XML/JSON data) natively without causing performance degradation.
-- **Accurate Translation**: A mechanism is established to translate these payloads optimally (translating in bulk upfront vs. real-time chunks) via preferred translation services.
-- **Perfect Syncing & UI**: The translated text appears on screen with millisecond accuracy tied to the YouTube player's HTML5 `<video>` tag. The UI should be highly polished and premium.
-- **Low Maintenance Constraints**: A somewhat resilient approach to DOM injection so that minor YouTube UI updates do not constantly break the extension.
+- **Accurate & Reliable Translation**: A robust LLM-based "Bring Your Own Key" (BYOK) system is established with failover intelligence. Translation batches are optimized to preserve line-count and context, drastically outperforming free proxies.
+- **Premium Syncing & Feedback**: The translated text appears with millisecond accuracy. The UI includes real-time status feedback (Toasts) and live-customizable appearance settings, providing a truly professional extension experience.
+- **Low Maintenance & Resilient**: Use of DOM Scraping (Transcript panel) ensures a resilient approach to YouTube's internal API changes, minimizing the risk of breakage from bot-detection mechanisms.

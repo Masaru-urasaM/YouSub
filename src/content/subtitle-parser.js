@@ -37,7 +37,7 @@
     fetcherInjected = true;
 
     var script = document.createElement('script');
-    script.src = chrome.runtime.getURL('src/content/main-world-fetcher.js');
+    script.src = browser.runtime.getURL('src/content/main-world-fetcher.js');
     script.onload = function () { this.remove(); };
     (document.head || document.documentElement).appendChild(script);
 
@@ -105,9 +105,9 @@
    */
   function fetchFromBackground(url) {
     return new Promise(function (resolve, reject) {
-      chrome.runtime.sendMessage({ action: 'YOUSUB_FETCH_TEXT', url: url }, function (response) {
-        if (chrome.runtime.lastError) {
-          return reject(new Error(chrome.runtime.lastError.message));
+      browser.runtime.sendMessage({ action: 'YOUSUB_FETCH_TEXT', url: url }, function (response) {
+        if (browser.runtime.lastError) {
+          return reject(new Error(browser.runtime.lastError.message));
         }
         if (response && response.success) {
           resolve(response.text);

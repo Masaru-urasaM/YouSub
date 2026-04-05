@@ -11,21 +11,31 @@
    * Detects watch pages, extracts video ID, and handles transitions.
    */
   function checkPage() {
-    var isWatchPage = window.location.pathname === '/watch';
-    var videoId = new URLSearchParams(window.location.search).get('v');
+    var pathname = window.location.pathname;
+    var isWatchPage = pathname === '/watch';
+    var isShortsPage = pathname.startsWith('/shorts/');
+    
+    var videoId = null;
+    if (isWatchPage) {
+      videoId = new URLSearchParams(window.location.search).get('v');
+    } else if (isShortsPage) {
+      // /shorts/VIDEO_ID -> split by / and get part index 2
+      var parts = pathname.split('/');
+      videoId = parts[2];
+    }
 
-    if (isWatchPage && videoId && videoId !== currentVideoId) {
+    if ((isWatchPage || isShortsPage) && videoId && videoId !== currentVideoId) {
       // New video detected (or first video)
       if (currentVideoId) {
         // Leaving a previous video — fire leave before entering new one
         if (onLeaveCallback) onLeaveCallback();
       }
       currentVideoId = videoId;
-      console.log('[YouSub] PageDetector: Watch page detected. Video ID:', videoId);
+      console.log('[YouSub] PageDetector: ' + (isShortsPage ? 'Shorts' : 'Watch') + ' page detected. Video ID:', videoId);
       if (onEnterCallback) onEnterCallback(videoId);
-    } else if (!isWatchPage && currentVideoId) {
-      // Left watch page entirely (home, search, channel, etc.)
-      console.log('[YouSub] PageDetector: Left watch page.');
+    } else if (!isWatchPage && !isShortsPage && currentVideoId) {
+      // Left video page entirely (home, search, channel, etc.)
+      console.log('[YouSub] PageDetector: Left video page.');
       if (onLeaveCallback) onLeaveCallback();
       currentVideoId = null;
     }
