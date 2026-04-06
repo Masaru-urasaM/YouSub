@@ -6,7 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.0] — 2026-04-04
 
+### Phase 23.6 — Context-Aware & Uncensored Optimization (2026-04-06)
+
+**Added**
+- **Full-Transcript Context**: Implemented `generateContextSummary` which analyzes the *entire* video transcript to generate a 2-3 sentence summary for every translation batch.
+- **Uncapped Output**: Set `max_tokens` to **100,000+** and removed default API token limits (1k -> 4k+) in `providers.js` to ensure zero cut-off responses.
+- **Unfiltered Translation Prompt**: Added strict non-censorship rules to `systemPrompt` mandating 100% faithfulness, including profanity and slang (e.g. "Mother fucker" -> "Đụ mẹ mày").
+- **Adaptive Regex Parser**: Switched from rigid `split('\n')` to a Regex-based parser `split(/\r?\n|(?=\d+[|])/)` capable of recovering lines even if the LLM omits newlines.
+
+**Changed**
+- **Increased Batch Size**: Optimized `MAX_LINES_PER_BATCH` to **100** (up from 20) for better context awareness and coherence.
+- **System Prompt Hardening**: Strengthened language enforcement for 100% Vietnamese output.
+
+**Fixed during implementation**
+- **Parser Robustness**: Resolved "Line count mismatch" fallbacks caused by Llama 3 merging lines in larger batches.
+- **Output Cut-off**: Fixed intermittent translation failures where responses were truncated mid-sentence due to low `max_tokens`.
+
 ### Phase 23.5 — Translation Consistency Fixes (2026-04-05 → 2026-04-06)
+
 
 **Added**
 - **Numbered Envelope Strategy**: Requests are now sent as `N| Original` pairs to force LLMs to preserve line count.

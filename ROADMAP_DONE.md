@@ -203,3 +203,14 @@
 - **Automation**: Created a Node.js packaging script to generate production ZIPs instantly.
 - **Polish**: Standardized typography (Inter/Outfit) and refined all interaction states.
 **Definition of Done**: Professional-grade extension ready for distribution on all major stores.
+### Phase 23.5: Translation Engine Stabilization — Structural Consistency
+**Status**: DONE (2026-04-06)
+**Summary**: Resolved the "Prose-ification" issue where LLMs merged subtitle lines into paragraphs. Implemented a Numbered Envelope strategy (N| Text) and fixed a critical cache poisoning bug that stored English fallbacks as valid translations.
+
+### Phase 23.6: Context-Aware & Uncensored Optimization — Batch 100
+**Status**: DONE (2026-04-06)
+**Summary**: Significantly upgraded translation quality and reliability for long-form content.
+- **Full-Transcript Context**: Analyzes the entire video transcript upfront to maintain consistent pronouns and terminology.
+- **Batch 100**: Increased batch size from 20 to 100 lines for better coherence and speed.
+- **Uncapped & Uncensored**: Set `max_tokens` to effectively infinite (100k+) and mandated 100% faithful, non-censored translations (including profanity).
+- **Adaptive Parser**: Implemented a Regex-based parser to recover lines even if the LLM fails to insert newlines, eliminating the primary cause of English fallbacks.

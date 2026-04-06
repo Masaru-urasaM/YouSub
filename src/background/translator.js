@@ -14,8 +14,10 @@ import { HealthManager } from './health.js';
  * 5. Verify results, fallback to original on persistent failure.
  */
 
-const MAX_LINES_PER_BATCH = 20;
+const MAX_LINES_PER_BATCH = 100;
 const RETRY_ATTEMPTS = 1; // Number of retries with smaller chunks on mismatch
+
+
 
 /**
  * Main translation entry point.
@@ -28,7 +30,7 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
 
   Logger.info('Translator', `Translating ${texts.length} lines [${src} → ${tgt}]`);
   sendDebugLog(tabId, `Starting translation of ${texts.length} lines → ${tgt}`, '#2dd4bf', true);
-  
+
   const apiKeys = await APIManager.getValidKeys();
   if (apiKeys.length === 0) {
     Logger.warn('Translator', 'No API keys configured. Returning original texts.');
@@ -44,13 +46,17 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
   const results = [];
   let hadFallback = false;
 
+  // 1.5 Generate Context Summary
+  const context = await generateContextSummary(texts, apiKeys, tabId, src, tgt);
+  sendDebugLog(tabId, `Context Summary Ready: ${context.substring(0, 100)}...`, '#6366f1');
+
   // Process each batch
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    Logger.info('Translator', `Processing batch ${i+1}/${batches.length} (${batch.length} lines)`);
-    sendDebugLog(tabId, `Processing batch ${i+1}/${batches.length} (${batch.length} lines)...`, '#a855f7');
+    Logger.info('Translator', `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)`);
+    sendDebugLog(tabId, `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)...`, '#a855f7');
 
-    const translatedBatch = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId);
+    const translatedBatch = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId, context);
 
     // Ensure we always have a result (original strings if LLM failed)
     if (translatedBatch && translatedBatch.length === batch.length) {
@@ -58,8 +64,8 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
     } else {
       hadFallback = true;
       const reason = !translatedBatch ? "Failover exhausted or provider error" : `Line mismatch (Expected ${batch.length}, got ${translatedBatch.length})`;
-      Logger.error('Translator', `Batch ${i+1} failed Line Count check. ${reason}. Using original text.`);
-      sendDebugLog(tabId, `Batch ${i+1} FAILED: ${reason}. Using original text.`, '#f43f5e', true);
+      Logger.error('Translator', `Batch ${i + 1} failed Line Count check. ${reason}. Using original text.`);
+      sendDebugLog(tabId, `Batch ${i + 1} FAILED: ${reason}. Using original text.`, '#f43f5e', true);
       results.push(...batch);
     }
   }
@@ -70,9 +76,12 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
 /**
  * Process a single batch of lines, trying different providers on failure.
  */
-async function translateBatchWithFailover(lines, src, tgt, apiKeys, tabId) {
+async function translateBatchWithFailover(lines, src, tgt, apiKeys, tabId, context) {
   const systemPrompt = `You are a professional subtitle translator. 
-Translate the following subtitle lines from ${src} to ${tgt}.
+VIDEO CONTEXT:
+${context}
+
+Translate the following subtitle lines from ${src} to ${tgt}. The returned result must be 100% in the ${tgt} language, and cannot be in any other language.
 RULES:
 1. Translate each line independently.
 2. PRESERVE THE LINE COUNT EXACTLY. You MUST return exactly ${lines.length} lines.
@@ -81,7 +90,8 @@ RULES:
 4. Each output line should correspond to exactly one input line.
 5. Do NOT add any explanations, numbering, or citations.
 6. Do NOT merge lines. If a line is empty, return only the line number followed by a pipe and an empty string (e.g. 5| ).
-7. Return ONLY the translated lines in the specified format.`;
+7. Return ONLY the translated lines in the specified format.
+8. UNFILTERED & FAITHFUL: Preserve all profanity, slang, and offensive language as-is. Do NOT censor, refine, or "beautify" the translation. If the source is vulgar, the translation MUST be equally vulgar in ${tgt}. 100% honesty to the source is mandatory.`;
 
   const userPrompt = lines.map((l, i) => `${i + 1}| ${l}`).join('\n');
 
@@ -89,7 +99,7 @@ RULES:
   for (let k = 0; k < apiKeys.length; k++) {
     const key = apiKeys[k];
     const startTime = performance.now();
-    
+
     try {
       const result = await Providers.chat(
         key.provider,
@@ -98,32 +108,32 @@ RULES:
         userPrompt,
         {
           systemPrompt,
-          max_tokens: 2000,
           temperature: 0.1 // Low temperature for consistency
         }
       );
 
       const duration = performance.now() - startTime;
-      
+
       sendDebugLog(tabId, `Request with ${key.provider} (${key.model}) returned success=${!!result.success}`, '#94a3b8');
- 
+
       if (result.success && result.text) {
         // 1. Clean response (Markdown, noise, etc.)
         const cleanedText = cleanResponse(result.text);
-        
+
         // 2. Parse result lines (Handling numbering format N| Text)
-        let resultLines = cleanedText.split('\n')
+        let resultLines = cleanedText.split(/\r?\n|(?=\d+[|])/)
+          .map(l => l.trim())
           .filter(l => l.includes('|')) // Only lines that actually have the separator
           .map(l => {
             const pipeIndex = l.indexOf('|');
             let content = l.substring(pipeIndex + 1).trim();
-            
+
             // Sometimes models return "1| 1| Text" or similar noise
-            content = content.replace(/^\d+[|]\s*/, ''); 
-            
+            content = content.replace(/^\d+[|]\s*/, '');
+
             return content;
           });
-        
+
         if (resultLines.length === lines.length) {
           await HealthManager.report(key.provider, key.apiKey, true, duration);
           return resultLines;
@@ -137,7 +147,7 @@ RULES:
       } else {
         Logger.warn('Translator', `Provider ${key.provider} failed: ${result.message}`);
         await HealthManager.report(key.provider, key.apiKey, false, duration);
-        
+
         // If it's a structural failure (Invalid Key, Permissions), mark it
         if (result.message.includes('API key')) {
           await APIManager.markKeyFailed(key.provider, key.apiKey, result.message);
@@ -154,6 +164,38 @@ RULES:
 
   return null; // Signals failure to the caller
 }
+
+/**
+ * Generate a context summary of the video based on the full transcript.
+ */
+async function generateContextSummary(texts, apiKeys, tabId, src, tgt) {
+  const fullTranscript = texts.join('\n');
+  const summaryPrompt = `You are a professional content analyzer.
+Below is the FULL transcript of a video in ${src}. 
+Provide a 2-3 sentence summary in English of the video's topic, context, and key terms to help a translator keep consistency (especially for pronouns and specialized vocabulary). 
+Return ONLY the summary.`;
+
+  sendDebugLog(tabId, "Analyzing FULL transcript for video context...", "#3b82f6");
+  
+  for (const key of apiKeys) {
+    try {
+      const result = await Providers.chat(key.provider, key.model, key.apiKey, fullTranscript, {
+        systemPrompt: summaryPrompt,
+        temperature: 0.3
+      });
+
+      if (result.success && result.text) {
+        const summary = result.text.trim();
+        Logger.info('Translator', 'Context summary generated: ' + summary.substring(0, 100) + '...');
+        return summary;
+      }
+    } catch (e) {
+      Logger.warn('Translator', `Failed to generate summary with ${key.provider}`);
+    }
+  }
+  return "General video content.";
+}
+
 /**
  * Noise reduction: Strip common LLM artifacts to extract raw subtitle lines.
  */
@@ -196,6 +238,6 @@ function sendDebugLog(tabId, msg, color = '#cbd5e1', bold = false) {
       msg,
       color,
       bold
-    }).catch(() => {}); // Catch if tab is closed
-  } catch(e) {}
+    }).catch(() => { }); // Catch if tab is closed
+  } catch (e) { }
 }

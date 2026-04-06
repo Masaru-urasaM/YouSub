@@ -239,3 +239,27 @@ Record of significant technical decisions — architecture, library choices, alg
 **Resolution**: Chose **Option 2 (Numbered Envelopes)** combined with a reduced batch size (20 lines). This provides a balance between speed and structural integrity by giving the model a numeric anchor for every line.
 
 **References**: [translator.js](file:///d:/Xinh/XinhTools/YouSub/src/background/translator.js), [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+### Decision 17 — Full-Transcript Context Strategy
+**Date**: 2026-04-06
+**Status**: RESOLVED
+
+**Problem**: 20-30 line batches often lose the "big picture" of a video, leading to inconsistent pronoun usage or contextually irrelevant translations. Initial 300-line samples were too narrow for long-form content.
+
+**Resolution**: Chose **Option: Entire Transcript Analysis**. The system now performs a preliminary API call on the *full* transcript (no matter how long) to generate a concise summary. This summary is injected into every subsequent translation batch. This ensures thematic coherence and correct terminology throughout the entire video.
+
+---
+
+### Decision 18 — Unfiltered & Uncapped Translation
+**Date**: 2026-04-06
+**Status**: RESOLVED
+
+**Problem**: Standard LLM tuning often censors "offensive" language or attempts to be "helpful" by summarizing or smoothing out vulgar content. Additionally, default `max_tokens` limits (1000-2000) frequently cut off responses when batch sizes were increased to 100 lines.
+
+**Resolution**: 
+1. **Uncensored Prompting**: Modified the `systemPrompt` to explicitly command AI to be "Unfiltered & Faithful," mandating the preservation of all profanity and vulgarity. 
+2. **Uncapped Output**: Set `max_tokens` to an effectively infinite value (100,000) and removed artificial code-level minimums. This prioritizes completeness over token conservation, ensuring the entire subtitle batch is translated without interruption.
+
+**References**: `translator.js`, `providers.js`

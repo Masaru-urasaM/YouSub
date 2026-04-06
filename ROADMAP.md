@@ -59,34 +59,13 @@ When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-23 | Core infrastructure, robustness, quality & distribution | ARCHIVED | M1-M5 |
-| 23.5 | Translation Engine Stabilization (Structural Consistency) | **CURRENT FOCUS** | M5 |
+| 0-23.6 | Core infrastructure, optimization, and uncensored context-aware translation | DONE (2026-04-06) | M5 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 
 ---
 
 ## DETAILED PHASE SPECIFICATIONS
-
-### Phase 23.5: Translation Engine Stabilization (Structural Consistency)
-
-**Goal**: Resolve the "Prose-ification" issue where LLMs merge subtitle lines into paragraphs, and prevent cache poisoning from failed translations.
-
-**Status**: IN PROGRESS
-
-**Deliverables**:
-- [x] Rigorous Debug Logging (Background -> Content Console)
-- [x] Numbered Envelope Strategy (N\| Translation)
-- [x] Batch Size Reduction (40 -> 20 lines)
-- [x] Cache Poisoning Fix — `hadFallback` metadata flow (2026-04-06)
-- [ ] Adaptive Parser (Handle hallucinated numbers or omitted pipes)
-- [ ] Minimal Chunking Fallback (If 20 fails, try 5 or 1)
-
-**Definition of Done**:
-- [ ] 100% success rate on 100+ line subtitle files with Groq/Llama models.
-- [ ] Zero "Line Count Mismatch" fallbacks on standard YouTube videos.
-
----
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 >

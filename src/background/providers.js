@@ -87,7 +87,7 @@ export const Providers = {
           { role: 'system', content: options.systemPrompt || "You are a helpful assistant." },
           { role: 'user', content: prompt }
         ],
-        max_tokens: options.max_tokens || 1000,
+        ...(options.max_tokens ? { max_tokens: options.max_tokens } : {}),
         temperature: options.temperature ?? 0.3
       }),
       signal
@@ -105,7 +105,7 @@ export const Providers = {
         system_instruction: systemInstruction,
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: options.max_tokens || 1000,
+          ...(options.max_tokens ? { maxOutputTokens: options.max_tokens } : {}),
           temperature: options.temperature ?? 0.3
         }
       }),
@@ -125,7 +125,7 @@ export const Providers = {
       body: JSON.stringify({
         model: model,
         system: options.systemPrompt || "",
-        max_tokens: options.max_tokens || 1000,
+        max_tokens: options.max_tokens || 4096, // Anthropic requires this
         temperature: options.temperature ?? 0.3,
         messages: [{ role: 'user', content: prompt }]
       }),
