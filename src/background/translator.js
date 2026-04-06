@@ -34,7 +34,7 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
   const apiKeys = await APIManager.getValidKeys();
   if (apiKeys.length === 0) {
     Logger.warn('Translator', 'No API keys configured. Returning original texts.');
-    return texts;
+    return { translated: texts, hadFallback: true };
   }
 
   // Split into batches
@@ -56,14 +56,18 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
     Logger.info('Translator', `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)`);
     sendDebugLog(tabId, `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)...`, '#a855f7');
 
-    const translatedBatch = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId, context);
+    const translatedResult = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId, context);
 
     // Ensure we always have a result (original strings if LLM failed)
-    if (translatedBatch && translatedBatch.length === batch.length) {
-      results.push(...translatedBatch);
+    if (translatedResult && translatedResult.lines && translatedResult.lines.length === batch.length) {
+      results.push(...translatedResult.lines);
+      if (translatedResult.isPartial) {
+        hadFallback = true;
+        Logger.warn('Translator', `Batch ${i + 1} had a partial response. hadFallback activated to avoid caching.`);
+      }
     } else {
       hadFallback = true;
-      const reason = !translatedBatch ? "Failover exhausted or provider error" : `Line mismatch (Expected ${batch.length}, got ${translatedBatch.length})`;
+      const reason = !translatedResult ? "Failover exhausted or provider error" : `Line mismatch (Expected ${batch.length})`;
       Logger.error('Translator', `Batch ${i + 1} failed Line Count check. ${reason}. Using original text.`);
       sendDebugLog(tabId, `Batch ${i + 1} FAILED: ${reason}. Using original text.`, '#f43f5e', true);
       results.push(...batch);
@@ -86,12 +90,13 @@ RULES:
 1. Translate each line independently.
 2. PRESERVE THE LINE COUNT EXACTLY. You MUST return exactly ${lines.length} lines.
 3. Use the following format for each line: {Line Number}| {Translated Text}
-   Example: 1| Xin chào, 2| Chào buổi sáng
+   Example: 1| Hello, 2| Good morning
+   * If a line is empty, return only the line number followed by a pipe and an empty string (e.g. 5| ). 
 4. Each output line should correspond to exactly one input line.
 5. Do NOT add any explanations, numbering, or citations.
-6. Do NOT merge lines. If a line is empty, return only the line number followed by a pipe and an empty string (e.g. 5| ).
+6. Do NOT merge lines. Never merge 2 lines into 1, even if the content is related, even if the speaker is the same, even if the content is a continuation of the previous line. This must be ABSOLUTELY followed.
 7. Return ONLY the translated lines in the specified format.
-8. UNFILTERED & FAITHFUL: Preserve all profanity, slang, and offensive language as-is. Do NOT censor, refine, or "beautify" the translation. If the source is vulgar, the translation MUST be equally vulgar in ${tgt}. 100% honesty to the source is mandatory.`;
+8. UNFILTERED & FAITHFUL: Preserve all profanity, slang, and offensive language as-is. Do NOT censor, refine, or "beautify" the translation. If the source is vulgar, the translation MUST be equally vulgar in ${tgt}. 100% honesty to the source is mandatory, even if it is a swear word, slur, curse, profanity, or any other offensive, criminal, illegal language.`;
 
   const userPrompt = lines.map((l, i) => `${i + 1}| ${l}`).join('\n');
 
@@ -120,27 +125,51 @@ RULES:
         // 1. Clean response (Markdown, noise, etc.)
         const cleanedText = cleanResponse(result.text);
 
-        // 2. Parse result lines (Handling numbering format N| Text)
-        let resultLines = cleanedText.split(/\r?\n|(?=\d+[|])/)
-          .map(l => l.trim())
-          .filter(l => l.includes('|')) // Only lines that actually have the separator
-          .map(l => {
-            const pipeIndex = l.indexOf('|');
-            let content = l.substring(pipeIndex + 1).trim();
+        // 2. Parse result lines by EXACT Line Number
+        // NEW: Smart Regex Parser (diệt lời nguyền 9 câu)
+        // Quét toàn bộ text để tìm các mẫu: [Số] | [Nội dung]
+        // Regex này chấp nhận mọi kiểu khoảng trắng và không bị ngắt bởi dấu xuống dòng
+        const regex = /(\d+)\s*[|]\s*([\s\S]*?)(?=\s*\d+\s*[|]|$)/g;
+        const parsedMap = {};
+        let validLinesCount = 0;
 
-            // Sometimes models return "1| 1| Text" or similar noise
-            content = content.replace(/^\d+[|]\s*/, '');
+        const matches = [...cleanedText.matchAll(regex)];
+        
+        matches.forEach(match => {
+          const numStr = match[1];
+          const content = match[2].trim();
+          const idx = parseInt(numStr, 10) - 1; // 0-indexed
 
-            return content;
+          // Chỉ chấp nhận nếu chỉ số nằm trong phạm vi của batch hiện tại
+          if (idx >= 0 && idx < lines.length && parsedMap[idx] === undefined) {
+            parsedMap[idx] = content;
+            validLinesCount++;
+          }
+        }); 
+        
+        // Threshold: at least 50% must be parsed correctly to consider this a "success".
+        // If it's the last API key, accept whatever we got instead of throwing it all away.
+        const threshold = Math.max(1, Math.floor(lines.length * 0.5));
+
+        if (validLinesCount >= threshold || k === apiKeys.length - 1) {
+          // Accept the result. Pad missing or empty lines with the original text (user requested fallback to original without shifting).
+          let resultLines = lines.map((originalText, idx) => {
+            return parsedMap[idx] && parsedMap[idx].trim() !== "" ? parsedMap[idx] : originalText;
           });
 
-        if (resultLines.length === lines.length) {
+          let isPartial = false;
+          if (validLinesCount < lines.length) {
+            isPartial = true;
+            Logger.warn('Translator', `Partial translation from ${key.provider}: ${validLinesCount}/${lines.length} lines. Missing filled with original text.`);
+            sendDebugLog(tabId, `Partial: ${validLinesCount}/${lines.length} lines. Missing padded with original.`, '#f59e0b');
+          }
+
           await HealthManager.report(key.provider, key.apiKey, true, duration);
-          return resultLines;
+          return { lines: resultLines, isPartial };
         } else {
-          Logger.warn('Translator', `Line count mismatch with ${key.provider}. Expected ${lines.length}, got ${resultLines.length}.`);
+          Logger.warn('Translator', `Severe line mismatch with ${key.provider}. Got ${validLinesCount}/${lines.length}. Failing over.`);
           Logger.info('Translator', 'Raw result snippet (first 100 chars): ' + result.text.substring(0, 100));
-          sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${lines.length}, got ${resultLines.length}.`, '#f59e0b');
+          sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${lines.length}, got ${validLinesCount}.`, '#f59e0b');
           sendDebugLog(tabId, `Raw Response Sample: ${result.text.substring(0, 200)}...`, '#94a3b8');
           await HealthManager.report(key.provider, key.apiKey, false, duration);
         }
@@ -176,7 +205,7 @@ Provide a 2-3 sentence summary in English of the video's topic, context, and key
 Return ONLY the summary.`;
 
   sendDebugLog(tabId, "Analyzing FULL transcript for video context...", "#3b82f6");
-  
+
   for (const key of apiKeys) {
     try {
       const result = await Providers.chat(key.provider, key.model, key.apiKey, fullTranscript, {

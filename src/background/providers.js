@@ -10,7 +10,7 @@ export const Providers = {
    */
   async testApiKey(providerId, modelId, apiKey) {
     const prompt = "Respond with only: OK";
-    return this.chat(providerId, modelId, apiKey, prompt, { max_tokens: 10, temperature: 0 });
+    return this.chat(providerId, modelId, apiKey, prompt, { temperature: 0 });
   },
 
   /**
@@ -44,8 +44,8 @@ export const Providers = {
 
     const endpoint = providerObj.endpoint;
     const style = providerObj.apiStyle;
-    const timeoutMsg = options.timeoutMsg || 'Request timed out (20s)';
-    const timeoutMs = options.timeoutMs || 20000;
+    const timeoutMsg = options.timeoutMsg || 'Request timed out (60s)';
+    const timeoutMs = options.timeoutMs || 60000;
 
     try {
       const controller = new AbortController();
@@ -75,21 +75,28 @@ export const Providers = {
   },
 
   async callOpenAIStyle(endpoint, apiKey, model, prompt, options, signal) {
+    const payload = {
+      model: model,
+      messages: [
+        { role: 'system', content: options.systemPrompt || "You are a helpful assistant." },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 32768,
+      temperature: options.temperature ?? 0.3
+    };
+
+    console.log(`%c[YouSub-API] OpenAI Request (${model}):`, 'color: #3b82f6; font-weight: bold;', {
+      endpoint,
+      payload
+    });
+
     return fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: options.systemPrompt || "You are a helpful assistant." },
-          { role: 'user', content: prompt }
-        ],
-        ...(options.max_tokens ? { max_tokens: options.max_tokens } : {}),
-        temperature: options.temperature ?? 0.3
-      }),
+      body: JSON.stringify(payload),
       signal
     });
   },
@@ -97,23 +104,42 @@ export const Providers = {
   async callGemini(endpointPattern, apiKey, model, prompt, options, signal) {
     const endpoint = endpointPattern.replace('{model}', model) + `?key=${apiKey}`;
     const systemInstruction = options.systemPrompt ? { parts: [{ text: options.systemPrompt }] } : undefined;
-    
+    const payload = {
+      systemInstruction: systemInstruction,
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        maxOutputTokens: 32768,
+        temperature: options.temperature ?? 0.3
+      }
+    };
+
+    console.log(`%c[YouSub-API] Gemini Request (${model}):`, 'color: #10b981; font-weight: bold;', {
+      endpoint: endpointPattern.replace('{model}', model),
+      payload
+    });
+
     return fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: systemInstruction,
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          ...(options.max_tokens ? { maxOutputTokens: options.max_tokens } : {}),
-          temperature: options.temperature ?? 0.3
-        }
-      }),
+      body: JSON.stringify(payload),
       signal
     });
   },
 
   async callAnthropic(endpoint, apiKey, model, prompt, options, signal) {
+    const payload = {
+      model: model,
+      system: options.systemPrompt || "",
+      max_tokens: 32768, 
+      temperature: options.temperature ?? 0.3,
+      messages: [{ role: 'user', content: prompt }]
+    };
+
+    console.log(`%c[YouSub-API] Anthropic Request (${model}):`, 'color: #f59e0b; font-weight: bold;', {
+      endpoint,
+      payload
+    });
+
     return fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -122,13 +148,7 @@ export const Providers = {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({
-        model: model,
-        system: options.systemPrompt || "",
-        max_tokens: options.max_tokens || 4096, // Anthropic requires this
-        temperature: options.temperature ?? 0.3,
-        messages: [{ role: 'user', content: prompt }]
-      }),
+      body: JSON.stringify(payload),
       signal
     });
   },
@@ -137,8 +157,9 @@ export const Providers = {
     if (response.ok) {
       try {
         const data = await response.json();
+        console.log(`%c[YouSub-API] Response XML/JSON Received (Success):`, 'color: #a855f7; font-weight: bold;', data);
         let text = '';
-        
+
         // Extract text based on style
         if (style === 'openai') {
           text = data.choices?.[0]?.message?.content || '';
@@ -148,7 +169,11 @@ export const Providers = {
           text = data.content?.[0]?.text || '';
         }
 
-        return { success: true, message: 'Success', model: modelId, text: text.trim() };
+        if (text) {
+          return { success: true, message: 'Success', model: modelId, text: text.trim() };
+        } else {
+          return { success: false, message: 'Empty response text from provider', model: modelId };
+        }
       } catch (e) {
         return { success: false, message: 'Parse error', model: modelId };
       }
@@ -169,7 +194,7 @@ export const Providers = {
       const data = await response.json();
       const detail = data.error?.message || data.error || '';
       if (detail) errorMessage += `: ${detail}`;
-    } catch(e) {}
+    } catch (e) { }
 
     return { success: false, message: errorMessage, model: modelId };
   }

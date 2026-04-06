@@ -203,6 +203,7 @@
 - **Automation**: Created a Node.js packaging script to generate production ZIPs instantly.
 - **Polish**: Standardized typography (Inter/Outfit) and refined all interaction states.
 **Definition of Done**: Professional-grade extension ready for distribution on all major stores.
+
 ### Phase 23.5: Translation Engine Stabilization — Structural Consistency
 **Status**: DONE (2026-04-06)
 **Summary**: Resolved the "Prose-ification" issue where LLMs merged subtitle lines into paragraphs. Implemented a Numbered Envelope strategy (N| Text) and fixed a critical cache poisoning bug that stored English fallbacks as valid translations.
@@ -212,5 +213,27 @@
 **Summary**: Significantly upgraded translation quality and reliability for long-form content.
 - **Full-Transcript Context**: Analyzes the entire video transcript upfront to maintain consistent pronouns and terminology.
 - **Batch 100**: Increased batch size from 20 to 100 lines for better coherence and speed.
-- **Uncapped & Uncensored**: Set `max_tokens` to effectively infinite (100k+) and mandated 100% faithful, non-censored translations (including profanity).
+- **Uncapped & Uncensored**: Set `max_tokens` to effectively infinite (65000) and mandated 100% faithful, non-censored translations (including profanity).
 - **Adaptive Parser**: Implemented a Regex-based parser to recover lines even if the LLM fails to insert newlines, eliminating the primary cause of English fallbacks.
+
+### Phase 24: Subtitle Appearance Refinement — Professional Layout & Dynamic Positioning
+**Status**: DONE (2026-04-06)
+**Summary**: Optimized the subtitle overlay for superior professionalism and balance.
+- **Dynamic Positioning**: Implemented a CSS-based "auto-push" logic that detects the YouTube control bar (`:not(.ytp-autohide)`) and automatically pushes the subtitle up by ~52px to prevent occlusion.
+- **Refined Aesthetics**: Updated default settings to `fontSize: 1.5em`, `bgOpacity: 0.25`, and `maxWidth: 80%`.
+- **Logic Sync**: Integrated CSS variables (`--yousub-pos-bottom`) across `overlay.js`, `overlay.css`, and `tab-appearance.js` to ensure user settings and dynamic offsets interact seamlessly.
+
+### Phase 29: Signature-based Cache Architecture (Video ID Integrity)
+**Status**: DONE (2026-04-06)
+**Summary**: Overhauled the caching and navigation logic to eliminate "stale" data between video switches.
+- **Video ID Signature**: Each cache entry is strictly keyed by `videoId`. The extension now verifies this signature before auto-starting.
+- **Selective Auto-start**: Translation only triggers automatically if a valid cache entry exists. New videos default to a "Manual" state to prevent API waste.
+- **Aggressive Cleanup**: Implemented `onLeave` hooks to immediately destroy the overlay and null internal state, preventing data leakage during YouTube's SPA navigation.
+- **UI Relocation**: Moved the "Clear Cache" button to the Translation Settings tab for better accessibility.
+
+### Phase 30: Smart Regex Parsing & Formatting Resilience
+**Status**: DONE (2026-04-06)
+**Summary**: Resolved the long-standing "9-line truncation" bug and improved API compatibility.
+- **Smart Regex Parser**: Replaced fragile `split('\n')` logic with a global `matchAll()` strategy `(/(\d+)\s*[|]\s*([\s\S]*?)(?=\s*\d+\s*[|]|$)/g`). This extracts every numbered line correctly regardless of AI formatting (dính chùm, extra spaces, introductory noise).
+- **Universal Format Recovery**: The system now correctly parses line numbers 10 and above, ensuring 100% translation coverage for all batch sizes.
+- **API Sensitivity Fix**: Lowered `max_tokens` to `32768` to satisfy Groq (Llama-3) limits and resolved a critical Service Worker syntax error caused by invalid numeric formatting in constant definitions.

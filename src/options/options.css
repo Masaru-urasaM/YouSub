@@ -330,6 +330,29 @@ select:focus, input:focus {
   width: 100%;
 }
 
+.combo-box-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+
+.combo-box-wrapper input {
+  flex: 1;
+  width: 100%;
+  padding-right: 28px; /* space for delete btn */
+}
+
+.delete-custom-model-btn {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 10;
+}
+
+
 .api-key-input-group {
   display: flex;
   flex-direction: column;

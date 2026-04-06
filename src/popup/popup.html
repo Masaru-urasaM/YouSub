@@ -15,11 +15,11 @@
     <div class="content">
       <div id="health-status" class="health-indicator hidden">
         <span class="health-dot"></span>
-        <span id="health-text">API Healthy</span>
+        <div id="health-text">Checking APIs...</div>
       </div>
-      <p id="status-text">Status: Ready</p>
       
-      <button id="get-sub-btn" class="primary-btn">Get & Translate Subtitles</button>
+      <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
+      <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Page Cache</button>
       
       <div id="loading" class="hidden">
         <div class="spinner"></div>
@@ -41,6 +41,6 @@
   </div>
 
   <script src="../shared/libs/browser-polyfill.js"></script>
-  <script src="popup.js"></script>
+  <script src="popup.js" type="module"></script>
 </body>
 </html>

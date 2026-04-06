@@ -4,18 +4,125 @@ All notable changes to the YouSub project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] — 2026-04-04
+## [0.2.0] — 2026-04-06
+
+### Phase 31 — Popup UI Polish & Local Cache Purge (2026-04-06)
+
+**Added**
+- "Clear Page Cache" button in Popup for current video.
+- `Cache.removeByVideoId` method to purge all translation variants for a specific video.
+- Support for multi-line API health display showing online models.
+
+**Changed**
+- Removed "Status" text from Popup; status is now indicated solely by "Translate" button color.
+- Redesigned API Health indicator for better readability with model names.
+
+**Fixed during implementation**
+- Corrected logic to hide/show buttons based on video detection in Popup.
+
+**Tests**: 0 -> 0 (Manual verification performed).
+
+### Phase 30 — Smart Regex Parsing & Formatting Resilience (2026-04-06)
+
+**Added**
+- Smart Regex Parser using `matchAll` to robustly extract numbered lines (1| Text) regardless of AI formatting noise.
+- Universal format recovery for long transcripts (lines 10+).
+
+**Fixed during implementation**
+- Resolved "9-line truncation" bug where multi-digit line numbers were failing.
+- Satisfied Groq API limits by capping `max_tokens`.
+
+### Phase 29 — Signature-based Cache Architecture (2026-04-06)
+
+**Added**
+- Video ID Signature verification before auto-starting translations.
+- Aggressive cleanup on SPA navigation to prevent data leakage.
+
+**Changed**
+- Selective auto-start: only triggers if a valid cache entry exists for the specific video.
+
+### Phase 28 — Smart Translation Toggle & Loading Indicators (2026-04-06)
+
+**Added**
+- **Overlay Loading Spinner**: Integrated a hardware-accelerated circular spinner into the subtitle overlay. It automatically appears during extraction and translation phases, providing immediate visual feedback.
+- **Dynamic Popup Toggle**: Refactor the "Get Subtitles" button into a persistent toggle labeled `TRANSLATE TO [LANGUAGE_NAME]`.
+- **Visual Toggle States**: Implemented distinct CSS states for the popup button: Active (Bright Crimson) and Inactive (Slate Grey), with hover transition effects.
+- **Auto-Pipeline Start**: Navigation to new YouTube videos now respects the global `yousub_translation_enabled` state, automatically triggering the translation pipeline if it was previously active.
+
+**Fixed during implementation**
+- **Persistent Spinner Bug**: Updated `main.js` to ensure `setLoading(false)` is called correctly after async translation batches finish or return early.
+- **Token Limit Truncation**: Re-established `max_tokens: 8192` for Gemini and OpenAI providers to prevent default API truncation during large subtitle batch translations.
+
+**Changed**
+- Migrated `popup.js` to an ES Module to leverage shared language registries and improve maintainability.
+- Updated `overlay.css` with a blurring effect for subtitles while a loading state is active.
+
+### Phase 27.2 — Reliability & Caching Fixes (2026-04-06)
+
+**Fixed during implementation**
+- **LLM Context Timeout Fix**: Increased global connection timeout in `providers.js` from `5s` to `60s` to allow large batch generation to complete without triggering `AbortError`.
+- **400 Bad Request Fix**: Removed forced `max_tokens: 65000` from OpenAI and Gemini provider fetch payloads to avoid triggering strict HTTP 400 Bad Request limitations from API gateways; maintained Anthropic at `8192` as required.
+- **Cache Poisoning Fix**: Fixed `translator.js` to properly assign `hadFallback = true` when returning a partial text result (e.g. when LLM outputs 9/69 sentences). This prevents the Service Worker from permanently caching incomplete response blocks.
+
+### Phase 27.1 — Universal Token Limit Enforcer (2026-04-06)
+
+**Changed**
+- **Restored & Standardized Model Token Limit**: Re-introduced `max_tokens` / `maxOutputTokens` parameters into payload configurations across all providers (OpenAI, Gemini, Anthropic), explicitly setting them to `65000`. This establishes a stable, cross-compatible uncapped behavior while satisfying strict validation requirements from API gateways.
+- **API Call Timeout Adjustments**: Increased the default connection timeout fallback from `2000ms` (2s) to `5000ms` (5s) for provider requests.
+
+### Phase 27 — Advanced Model Management & API Key Controls (2026-04-06)
+
+**Added**
+- **Universal Model Deletion**: The _Delete_ `(✕)` button conceptually expanded from just custom models to *all* models. Removing a core/built-in model automatically registers it in the `yousub_hidden_models` LocalStorage blacklist, keeping the dropdown fully curated for the user.
+- **Key Disablement**: Implemented an overarching _Toggle Disable_ feature per-key. `APIManager` now transparently screens out rows flagged as disabled (`opacity: 0.5`) across all primary and backup tiers via a robust UI-state bridge, freeing the user from permanently deleting valuable keys to prevent usage.
+- **Intra-Key Model Rotation**: Elevated the translation resilience engine: If `yousub_model_rotation` is active, `APIManager` now dynamically injects "Clone Keys" directly into the translation queue. When `gpt-4o-mini` API endpoint throws an error (e.g. 404), the rotation protocol immediately executes `gpt-4o` falling back onto the *same API Key token's internal list of active models* before attempting to bridge over to secondary fallback properties.
+
+### Phase 26 — Custom Model UI Management (2026-04-06)
+
+**Added**
+- **Custom Model Combobox**: Migrated the `Model` dropdown in Translation Settings to a native `<input list>` combobox, allowing users to select default models or manually type unsupported/new LLM model identifiers.
+- **Dynamic Auto-Save**: Manual model inputs that are successfully tested via the API test button are automatically persisted to LocalStorage (`yousub_custom_models`).
+- **Custom Model Cleanup**: Injected a contextual _Delete (X)_ button next to the combobox that only appears when a saved custom model is selected, allowing users to prune deprecated models.
+
+### Phase 25.2 — Strict Index Parsing & Sparse Mapping (2026-04-06)
+
+**Changed**
+- **Strict Numbering Layout**: Upgraded LLM translation parsing to map lines explicitly by their pre-pended index (e.g. `2| Text`).
+- **Sparse Backfill Strategy**: If an LLM skips translating a line (e.g. translates line 1 and 3, but skips 2), the translation engine now backfills the missing slot using the explicit original text, instead of rejecting the entire translation batch.
+- **Failback Thresholds**: Decreased batch failure strictness: accepts partial outputs if at least 50% of the lines are parsed correctly (or 100% on the final fallback Key), filling the remainder rather than causing total wipeouts.
+
+### Phase 25.1 — Unlimited Model Token Handling (2026-04-06)
+
+**Changed**
+- **Uncapped Generation Parameter**: Explicitly removed the `max_tokens` / `maxOutputTokens` restraints from API fetch payloads sent to OpenAI and Gemini providers, freeing the models to resolve arbitrarily large context blocks natively without arbitrary truncation. Anthropic fallback was bumped to 65000 tokens.
+
+### Phase 24 — Subtitle Appearance Refinement (2026-04-06)
+
+**Added**
+- **Dynamic Control Bar Offset**: Implemented a CSS-driven logic to push the subtitle overlay up by ~52px when the YouTube control bar is visible (detected via `:not(.ytp-autohide)` on the player).
+- **CSS Variables for Positioning**: Migrated `bottom` positioning to CSS variables (`--yousub-pos-bottom`) to allow seamless interaction between user settings and dynamic offsets.
+
+**Changed**
+- **Refined Default Appearance**:
+    - `fontSize`: 1.85em -> **1.5em** (Improved balance and readability).
+    - `bgOpacity`: 0.65 -> **0.25** (More subtle glassmorphism effect).
+    - `posBottom`: 80px -> **20px** (Positioned closer to the bottom, leveraging the new dynamic offset).
+    - `maxWidth`: 85% -> **80%** (Better fit within the video frame).
+- **Transition Synchronization**: Added `bottom` to the CSS transition list for smooth "push-up" animations when hovering over the video player.
+
+**Fixed during implementation**
+- **Settings Consistency**: Synchronized default values across `overlay.css`, `overlay.js`, and `tab-appearance.js`.
 
 ### Phase 23.6 — Context-Aware & Uncensored Optimization (2026-04-06)
 
 **Added**
 - **Full-Transcript Context**: Implemented `generateContextSummary` which analyzes the *entire* video transcript to generate a 2-3 sentence summary for every translation batch.
-- **Uncapped Output**: Set `max_tokens` to **100,000+** and removed default API token limits (1k -> 4k+) in `providers.js` to ensure zero cut-off responses.
+- **Uncapped Output**: Set `max_tokens` to **65000** and removed default API token limits (1k -> 4k+) in `providers.js` to ensure zero cut-off responses.
 - **Unfiltered Translation Prompt**: Added strict non-censorship rules to `systemPrompt` mandating 100% faithfulness, including profanity and slang (e.g. "Mother fucker" -> "Đụ mẹ mày").
 - **Adaptive Regex Parser**: Switched from rigid `split('\n')` to a Regex-based parser `split(/\r?\n|(?=\d+[|])/)` capable of recovering lines even if the LLM omits newlines.
 
 **Changed**
-- **Increased Batch Size**: Optimized `MAX_LINES_PER_BATCH` to **100** (up from 20) for better context awareness and coherence.
+- **Increased Batch Size**: Optimized `MAX_LINES_PER_BATCH` to **200** for better context awareness and coherence.
 - **System Prompt Hardening**: Strengthened language enforcement for 100% Vietnamese output.
 
 **Fixed during implementation**
@@ -32,7 +139,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Translator metadata**: `translate()` now returns `{ translated, hadFallback }` for downstream cache/UI decisions.
 
 **Changed**
-- Reduced `MAX_LINES_PER_BATCH` from 40 to 20 to improve Model focus and prevent line merging.
 - Enhanced Subtitle Overlay visibility (solid white text + stronger shadow).
 
 **Fixed during implementation**

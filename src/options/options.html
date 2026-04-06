@@ -90,6 +90,16 @@
               <span>Try different models on failure</span>
             </label>
           </div>
+
+          <hr class="divider">
+
+          <div class="cache-management-section">
+            <h3>Cache Management</h3>
+            <p class="description">Clear all locally stored translations to free up space or fix broken data.</p>
+            <div class="action-group">
+              <button id="clear-cache-btn" class="secondary-btn danger-text">Clear Translation Cache</button>
+            </div>
+          </div>
         </div>
 
         <!-- Template for a single API Key Row -->
@@ -97,7 +107,11 @@
           <div class="api-key-row">
             <div class="api-row-header">
               <h4 class="row-title">Primary:</h4>
-              <button class="delete-row-btn text-btn hidden">Delete</button>
+              <div class="row-header-actions" style="display:flex; gap:8px;">
+                <button class="reset-row-btn text-btn" type="button" title="Clear errors & reset cooldown">Reset Stats</button>
+                <button class="toggle-disable-row-btn text-btn" type="button">Disable</button>
+                <button class="delete-row-btn text-btn danger-text hidden" type="button">Delete</button>
+              </div>
             </div>
             
             <div class="api-row-grid">
@@ -107,7 +121,11 @@
               </div>
               <div class="grid-item">
                 <label>Model</label>
-                <select class="model-select"></select>
+                <div class="combo-box-wrapper">
+                  <input type="text" class="model-select" placeholder="Select or type..." />
+                  <button class="delete-custom-model-btn text-btn error-text hidden" type="button" title="Delete custom model" style="padding: 0 4px; color: var(--error);">✕</button>
+                </div>
+                <!-- datalist inserted via JS -->
               </div>
             </div>
 
@@ -213,12 +231,6 @@
           <div class="action-group">
             <p>Export background logs for troubleshooting API or translation failures.</p>
             <button id="export-logs-btn" class="secondary-btn">Export Debug Logs (.jsonl)</button>
-          </div>
-          <hr class="divider">
-          <h3>Cache Management</h3>
-          <div class="action-group">
-            <p>Clear all locally stored translations to free up space or refresh data.</p>
-            <button id="clear-cache-btn" class="secondary-btn danger-text">Clear Translation Cache</button>
           </div>
         </div>
       </section>

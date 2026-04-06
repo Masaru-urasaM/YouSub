@@ -11,7 +11,6 @@ const tabPanes = document.querySelectorAll('.tab-pane');
 const saveStatus = document.getElementById('save-status');
 const resetBtn = document.getElementById('reset-btn');
 const exportLogsBtn = document.getElementById('export-logs-btn');
-const clearCacheBtn = document.getElementById('clear-cache-btn');
 
 function init() {
   setupTabs();
@@ -68,18 +67,8 @@ function attachGlobalEventListeners() {
     exportLogsBtn.addEventListener('click', exportLogs);
   }
 
-  if (clearCacheBtn) {
-    clearCacheBtn.addEventListener('click', () => {
-      if (confirm('Clear all cached translations?')) {
-        browser.runtime.sendMessage({ type: 'YOUSUB_CLEAR_CACHE' }).then((response) => {
-          if (response && response.success) {
-            alert('Cache cleared successfully.');
-          } else {
-            alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
-          }
-        });
-      }
-    });
+  if (exportLogsBtn) {
+    exportLogsBtn.addEventListener('click', exportLogs);
   }
 }
 

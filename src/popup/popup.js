@@ -1,7 +1,9 @@
+import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
+
 document.addEventListener('DOMContentLoaded', function() {
   const getSubBtn = document.getElementById('get-sub-btn');
+  const clearPageCacheBtn = document.getElementById('clear-page-cache-btn');
   const openSettingsBtn = document.getElementById('open-settings-btn');
-  const statusText = document.getElementById('status-text');
   const loadingDiv = document.getElementById('loading');
   const loadingText = document.getElementById('loading-text');
 
@@ -9,55 +11,97 @@ document.addEventListener('DOMContentLoaded', function() {
   const healthStatus = document.getElementById('health-status');
   const healthText = document.getElementById('health-text');
 
-  // Load health status
-  function checkHealth() {
-    browser.storage.local.get(['yousub_api_keys']).then(function(res) {
-      const keys = res.yousub_api_keys || [];
-      const hasKeys = keys.length > 0;
-      const allFailed = hasKeys && keys.every(k => k.status === 'failed');
-      const someFailed = hasKeys && keys.some(k => k.status === 'failed');
+  let currentLang = 'vi';
 
-      if (!hasKeys) {
-        healthStatus.classList.remove('hidden');
-        healthStatus.className = 'health-indicator health-error';
-        healthText.textContent = 'API Not Configured';
-      } else if (allFailed) {
-        healthStatus.classList.remove('hidden');
-        healthStatus.className = 'health-indicator health-error';
-        healthText.textContent = 'All APIs failing';
-      } else if (someFailed) {
-        healthStatus.classList.remove('hidden');
-        healthStatus.className = 'health-indicator health-warning';
-        healthText.textContent = 'Some APIs offline';
-      } else {
-        healthStatus.classList.remove('hidden');
-        healthStatus.className = 'health-indicator';
-        healthText.textContent = 'API Healthy';
+  // Load and apply initial states
+  browser.storage.local.get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled']).then(async function(res) {
+    currentLang = res.targetLang || 'vi';
+    
+    // Update button text with full language name
+    const langObj = YOUSUB_PROVIDERS.languages.find(l => l.code === currentLang);
+    const langName = langObj ? langObj.name.toUpperCase() : currentLang.toUpperCase();
+    getSubBtn.textContent = `Translate to ${langName}`;
+
+    // Update toggle state: ONLY active if global enabled is true AND it exists in cache
+    if (res.yousub_translation_enabled) {
+      const videoId = await getCurrentVideoId();
+      if (videoId) {
+        const check = await browser.runtime.sendMessage({ 
+          type: 'YOUSUB_CHECK_CACHE', 
+          videoId, 
+          targetLang: currentLang 
+        });
+        
+        if (check && check.exists) {
+          getSubBtn.classList.add('active');
+        } else {
+          // New video: Force inactive until clicked
+          getSubBtn.classList.remove('active');
+        }
       }
-    });
-  }
+    }
 
-  // Load current Dual Mode state
-  browser.storage.local.get(['yousub_dual_mode']).then(function(res) {
     dualModeToggle.checked = !!res.yousub_dual_mode;
+    checkHealth(res.yousub_api_keys || []);
+
+    // Show/Hide Clear Cache button
+    const videoId = await getCurrentVideoId();
+    if (videoId) {
+      clearPageCacheBtn.classList.remove('hidden');
+    }
   });
 
-  checkHealth();
+  async function getCurrentVideoId() {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && tabs[0].url) {
+        const url = new URL(tabs[0].url);
+        if (url.pathname === '/watch') {
+          return url.searchParams.get('v');
+        } else if (url.pathname.startsWith('/shorts/')) {
+          return url.pathname.split('/')[2];
+        }
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  function checkHealth(keys) {
+    const hasKeys = keys.length > 0;
+    const onlineKeys = keys.filter(k => k.status === 'success' || (k.key && !k.status)); // Simple heuristic
+    const allFailed = hasKeys && keys.every(k => k.status === 'failed');
+
+    healthStatus.classList.remove('hidden');
+    if (!hasKeys) {
+      healthStatus.className = 'health-indicator health-error';
+      healthText.textContent = 'API Not Configured';
+    } else if (allFailed) {
+      healthStatus.className = 'health-indicator health-error';
+      healthText.textContent = 'All APIs Offline';
+    } else if (onlineKeys.length > 0) {
+      healthStatus.className = 'health-indicator';
+      
+      // Build list of online models
+      const modelNames = onlineKeys.map(k => {
+        const provider = YOUSUB_PROVIDERS.getProvider(k.provider);
+        const model = provider ? (provider.models.find(m => m.id === k.model) || { name: k.model }) : { name: k.model };
+        return `${model.name} (Online)`;
+      });
+      
+      healthText.innerHTML = modelNames.join('<br>');
+    } else {
+      healthStatus.className = 'health-indicator health-warning';
+      healthText.textContent = 'Checking APIs...';
+    }
+  }
 
   dualModeToggle.addEventListener('change', function() {
     const isEnabled = dualModeToggle.checked;
-    
-    // Save to storage
     browser.storage.local.set({ yousub_dual_mode: isEnabled });
 
-    // Inform active tab content script
-    browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
-      if (tabs[0] && tabs[0].url.includes('youtube.com/watch')) {
-        browser.tabs.sendMessage(tabs[0].id, {
-          type: 'YOUSUB_TOGGLE_DUAL_MODE',
-          enabled: isEnabled
-        });
-      }
+    sendMessageToActiveTab({
+      type: 'YOUSUB_TOGGLE_DUAL_MODE',
+      enabled: isEnabled
     });
   });
 
@@ -65,61 +109,75 @@ document.addEventListener('DOMContentLoaded', function() {
     browser.runtime.openOptionsPage();
   });
 
-  getSubBtn.addEventListener('click', function() {
-    // UI Update
-    getSubBtn.disabled = true;
-    loadingDiv.classList.remove('hidden');
-    statusText.textContent = "Processing...";
-    loadingText.textContent = "Extracting transcript...";
+  clearPageCacheBtn.addEventListener('click', async function() {
+    const videoId = await getCurrentVideoId();
+    if (!videoId) return;
 
-    // Get active tab
-    browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
-      const activeTab = tabs[0];
-      
-      if (!activeTab || !activeTab.url.includes('youtube.com/watch')) {
-        showError("Please open a YouTube video first.");
-        return;
-      }
+    clearPageCacheBtn.disabled = true;
+    clearPageCacheBtn.textContent = 'Clearing...';
 
-      // Load language preference and API keys from storage
-      browser.storage.local.get(['targetLang', 'yousub_api_keys']).then(function(result) {
-        const lang = result.targetLang || 'vi';
-        const apiKeys = result.yousub_api_keys || [];
+    browser.runtime.sendMessage({ 
+      type: 'YOUSUB_CLEAR_VIDEO_CACHE', 
+      videoId 
+    }).then(res => {
+      if (res.success) {
+        clearPageCacheBtn.textContent = 'Cache Cleared!';
+        setTimeout(() => {
+          clearPageCacheBtn.disabled = false;
+          clearPageCacheBtn.textContent = 'Clear Page Cache';
+        }, 2000);
         
-        // Gate Logic: Check for valid API Keys
-        const hasValidKey = apiKeys.some(k => k.apiKey && k.apiKey.trim().length > 0);
-        if (!hasValidKey) {
-          showError("Please configure an API key in Settings.");
-          // Open options page automatically
-          setTimeout(() => browser.runtime.openOptionsPage(), 1500);
-          return;
-        }
-
-        // Send start message to content script
-        browser.tabs.sendMessage(activeTab.id, { 
-          type: 'YOUSUB_START_EXTRACTION',
-          targetLang: lang
-        }).then(function(response) {
-          if (response && response.started) {
-            loadingText.textContent = "Translating...";
-            // For MVP, we just wait a bit or let the user close the popup
-            setTimeout(() => {
-              statusText.textContent = "Request sent! Check console for progress.";
-              getSubBtn.disabled = false;
-              loadingDiv.classList.add('hidden');
-            }, 3000);
-          }
-        }).catch(function(err) {
-          showError("Please refresh the YouTube page and try again.");
+        // Disable translation if it was active, as cache is gone
+        getSubBtn.classList.remove('active');
+        browser.storage.local.set({ yousub_translation_enabled: false });
+        sendMessageToActiveTab({
+          type: 'YOUSUB_TOGGLE_TRANSLATION',
+          enabled: false,
+          targetLang: currentLang
         });
-      });
+      } else {
+        clearPageCacheBtn.textContent = 'Error clearing';
+        setTimeout(() => {
+          clearPageCacheBtn.disabled = false;
+          clearPageCacheBtn.textContent = 'Clear Page Cache';
+        }, 2000);
+      }
     });
   });
 
+  getSubBtn.addEventListener('click', function() {
+    const wasActive = getSubBtn.classList.contains('active');
+    const newState = !wasActive;
+
+    // UI Update
+    if (newState) {
+      getSubBtn.classList.add('active');
+    } else {
+      getSubBtn.classList.remove('active');
+    }
+
+    // Save state
+    browser.storage.local.set({ yousub_translation_enabled: newState });
+
+    // Inform content script
+    sendMessageToActiveTab({
+      type: 'YOUSUB_TOGGLE_TRANSLATION',
+      enabled: newState,
+      targetLang: currentLang
+    });
+  });
+
+  function sendMessageToActiveTab(msg) {
+    browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
+      if (tabs[0] && tabs[0].url.includes('youtube.com/watch')) {
+        browser.tabs.sendMessage(tabs[0].id, msg).catch(() => {});
+      }
+    });
+  }
+
   function showError(msg) {
-    statusText.textContent = msg;
-    statusText.style.color = "#ff1744";
-    getSubBtn.disabled = false;
-    loadingDiv.classList.add('hidden');
+    console.error(`YouSub Error: ${msg}`);
+    getSubBtn.classList.remove('active');
+    browser.storage.local.set({ yousub_translation_enabled: false });
   }
 });

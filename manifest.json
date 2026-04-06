@@ -3,17 +3,37 @@
   "name": "YouSub",
   "version": "0.1.0",
   "description": "Real-time subtitle translator for YouTube",
-  "permissions": ["storage", "activeTab"],
-  "host_permissions": ["*://*.youtube.com/*", "*://lingva.ml/*"],
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://lingva.ml/*"
+  ],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*"],
-      "js": ["src/shared/libs/browser-polyfill.js", "src/shared/constants.js", "src/content/page-detector.js", "src/content/video-binder.js", "src/content/subtitle-extractor.js", "src/content/subtitle-parser.js", "src/content/overlay.js", "src/content/sync-engine.js", "src/content/main.js"],
-      "css": ["src/content/overlay.css"],
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "src/shared/libs/browser-polyfill.js",
+        "src/shared/constants.js",
+        "src/content/page-detector.js",
+        "src/content/video-binder.js",
+        "src/content/subtitle-extractor.js",
+        "src/content/subtitle-parser.js",
+        "src/content/overlay.js",
+        "src/content/sync-engine.js",
+        "src/content/main.js"
+      ],
+      "css": [
+        "src/content/overlay.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -33,8 +53,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/content/main-world-extractor.js", "src/content/main-world-fetcher.js"],
-      "matches": ["*://*.youtube.com/*"]
+      "resources": [
+        "src/content/main-world-extractor.js",
+        "src/content/main-world-fetcher.js"
+      ],
+      "matches": [
+        "*://*.youtube.com/*"
+      ]
     }
   ],
   "browser_specific_settings": {

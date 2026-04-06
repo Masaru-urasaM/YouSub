@@ -7,6 +7,7 @@
   var translatedElement = null;
   var originalElement = null;
   var statusContainer = null;
+  var spinnerElement = null;
   var playerElement = null; // Cached reference to player
  
   var currentStyles = {}; // Track applied styles to avoid redundant updates
@@ -38,6 +39,12 @@
     originalElement.id = 'yousub-text-original';
     originalElement.className = 'yousub-text-line hidden';
  
+    // Spinner (Loading indicator)
+    spinnerElement = document.createElement('div');
+    spinnerElement.id = 'yousub-spinner';
+    spinnerElement.className = 'hidden';
+    container.appendChild(spinnerElement);
+
     container.appendChild(translatedElement);
     container.appendChild(originalElement);
     playerElement.appendChild(container);
@@ -66,6 +73,23 @@
     hide: function () {
       if (container) {
         container.classList.remove('yousub-visible');
+      }
+    },
+
+    setLoading: function (isLoading) {
+      createOverlay();
+      if (!container || !spinnerElement) return;
+
+      if (isLoading) {
+        container.classList.add('yousub-loading');
+        spinnerElement.classList.remove('hidden');
+        if (translatedElement) translatedElement.classList.add('yousub-dimmed');
+        if (originalElement) originalElement.classList.add('yousub-dimmed');
+      } else {
+        container.classList.remove('yousub-loading');
+        spinnerElement.classList.add('hidden');
+        if (translatedElement) translatedElement.classList.remove('yousub-dimmed');
+        if (originalElement) originalElement.classList.remove('yousub-dimmed');
       }
     },
 
@@ -149,7 +173,7 @@
       }
 
       if (styles.posBottom !== undefined && currentStyles.posBottom !== styles.posBottom) {
-        container.style.bottom = styles.posBottom + 'px';
+        container.style.setProperty('--yousub-pos-bottom', styles.posBottom + 'px');
         currentStyles.posBottom = styles.posBottom;
       }
     },

@@ -16,7 +16,7 @@ export function initAppearanceTab(saveIndicatorCallback) {
   bgOpacityVal = document.getElementById('bg-opacity-val');
   posBottomInput = document.getElementById('pos-bottom');
   posBottomVal = document.getElementById('pos-bottom-val');
-  
+
   // Preview Element
   previewOverlay = document.getElementById('subtitle-preview');
 
@@ -27,10 +27,10 @@ export function initAppearanceTab(saveIndicatorCallback) {
 function loadSettings() {
   chrome.storage.local.get(['yousub_appearance'], (res) => {
     const styles = res.yousub_appearance || {
-      fontSize: 1.6,
+      fontSize: 1.5,
       fontColor: '#ffffff',
-      bgOpacity: 0.75,
-      posBottom: 80
+      bgOpacity: 0.25,
+      posBottom: 20
     };
 
     // Update Inputs
@@ -46,7 +46,7 @@ function loadSettings() {
 
 function attachEventListeners() {
   const inputs = [fontSizeInput, fontColorInput, bgOpacityInput, posBottomInput];
-  
+
   inputs.forEach(input => {
     input.addEventListener('input', () => {
       updateUIStrings();
@@ -84,20 +84,20 @@ function debouncedSave() {
 function loadAppearance() {
   browser.storage.local.get(['yousub_appearance']).then((res) => {
     const appearance = res.yousub_appearance || {};
-    
+
     // Set form values
-    fontSizeInput.value = appearance.fontSize || 1.6;
-    fontSizeVal.textContent = appearance.fontSize || 1.6;
+    fontSizeInput.value = appearance.fontSize || 1.5;
+    fontSizeVal.textContent = appearance.fontSize || 1.5;
 
     const fontColor = appearance.fontColor || '#ffffff';
     fontColorInput.value = fontColor;
     fontColorHex.textContent = fontColor.toUpperCase();
 
-    const bgOpacity = appearance.bgOpacity !== undefined ? appearance.bgOpacity : 0.75;
+    const bgOpacity = appearance.bgOpacity !== undefined ? appearance.bgOpacity : 0.25;
     bgOpacityInput.value = bgOpacity;
     bgOpacityVal.textContent = Math.round(bgOpacity * 100) + '%';
 
-    const posBottom = appearance.posBottom || 80;
+    const posBottom = appearance.posBottom !== undefined ? appearance.posBottom : 20;
     posBottomInput.value = posBottom;
     posBottomVal.textContent = posBottom + 'px';
 

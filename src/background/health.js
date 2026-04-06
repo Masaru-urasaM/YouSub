@@ -41,6 +41,7 @@ export const HealthManager = {
         if (success) {
           entry.successCount++;
           entry.consecutiveFails = 0;
+          entry.circuitBreakerUntil = 0; // Phase 29: Auto-thaw on success
           // Weighted moving average for speed (80% old, 20% new)
           if (entry.avgTime === 0) {
             entry.avgTime = duration;

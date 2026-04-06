@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 4.0
 > **Last updated**: 2026-04-06
-> **Total phases**: 30 (Phases 0-23 = archived, Phase 23.5+ = active/pending)
+> **Total phases**: 31 (Phases 0-28 = archived, Phase 29+ = active/pending)
 
 ---
 
@@ -59,7 +59,10 @@ When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-23.6 | Core infrastructure, optimization, and uncensored context-aware translation | DONE (2026-04-06) | M5 |
+| 0-28 | Core infrastructure, optimization, uncensored translation, advanced model routing, smart toggle UI | DONE (2026-04-06) | M5 |
+| 29 | Signature-based Cache Architecture (Video ID Integrity) | DONE (2026-04-06) | M3 |
+| 30 | Smart Regex Parsing & Formatting Resilience | DONE (2026-04-06) | M3 |
+| 31 | Popup UI Polish & Local Cache Purge | DONE (2026-04-06) | M3 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 

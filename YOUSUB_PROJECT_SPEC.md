@@ -372,7 +372,7 @@ Body: {
     {"role": "system", "content": "You are a subtitle translator..."},
     {"role": "user", "content": "line1\nline2\nline3"}
   ],
-  "max_tokens": 2000,
+  "max_tokens": 65000,
   "temperature": 0.3
 }
 Response: { "choices": [{ "message": { "content": "translated1\ntranslated2\ntranslated3" } }] }
@@ -394,7 +394,7 @@ POST https://api.anthropic.com/v1/messages
 Headers: x-api-key: {API_KEY}, anthropic-version: 2023-06-01, Content-Type: application/json
 Body: {
   "model": "{model_id}",
-  "max_tokens": 2000,
+  "max_tokens": 65000,
   "messages": [{ "role": "user", "content": "Translate these subtitles..." }]
 }
 Response: { "content": [{ "text": "translated text" }] }

@@ -4,18 +4,20 @@ import { Logger } from '../shared/logger.js';
 let apiKeys = [];
 let failoverEnabled = true;
 let modelRotation = false;
+let customModelsRegistry = {};
+let hiddenModelsRegistry = {};
 
 // DOM Elements
-let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, noKeysAlert, targetLangSelect;
+let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, noKeysAlert, targetLangSelect, clearCacheBtn;
 let triggerSaveCallback = null;
 let saveTimeout = null;
 
 export function initTranslationTab(saveIndicatorCallback) {
   triggerSaveCallback = saveIndicatorCallback;
-  
+
   // Translation Language Dropdown
   targetLangSelect = document.getElementById('target-lang');
-  
+
   // API Keys Config Elements
   container = document.getElementById('api-keys-list');
   template = document.getElementById('api-key-row-template');
@@ -24,6 +26,7 @@ export function initTranslationTab(saveIndicatorCallback) {
   failoverCheckbox = document.getElementById('enable-failover');
   rotationCheckbox = document.getElementById('enable-rotation');
   noKeysAlert = document.getElementById('no-keys-alert');
+  clearCacheBtn = document.getElementById('clear-cache-btn');
 
   loadSettings();
   attachEventListeners();
@@ -35,6 +38,8 @@ function loadSettings() {
     'yousub_api_keys',
     'yousub_failover_enabled',
     'yousub_model_rotation',
+    'yousub_custom_models',
+    'yousub_hidden_models',
     'yousub_health_stats'
   ]).then((items) => {
     // 1. Target Language
@@ -49,6 +54,8 @@ function loadSettings() {
 
     failoverEnabled = items.yousub_failover_enabled !== false; // default true
     modelRotation = items.yousub_model_rotation || false;
+    customModelsRegistry = items.yousub_custom_models || {};
+    hiddenModelsRegistry = items.yousub_hidden_models || {};
 
     failoverCheckbox.checked = failoverEnabled;
     rotationCheckbox.checked = modelRotation;
@@ -71,7 +78,7 @@ function createEmptyKey() {
 
 function renderKeysUI(healthStats = {}) {
   container.innerHTML = '';
-  
+
   let validKeyCount = 0;
 
   apiKeys.forEach((keyData, index) => {
@@ -102,8 +109,11 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const rowDev = clone.querySelector('.api-key-row');
   const title = clone.querySelector('.row-title');
   const deleteBtn = clone.querySelector('.delete-row-btn');
+  const disableBtn = clone.querySelector('.toggle-disable-row-btn');
+  const resetBtn = clone.querySelector('.reset-row-btn');
   const providerSelect = clone.querySelector('.provider-select');
-  const modelSelect = clone.querySelector('.model-select');
+  const modelInput = clone.querySelector('.model-select');
+  const deleteCustomBtn = clone.querySelector('.delete-custom-model-btn');
   const apiKeyInput = clone.querySelector('.api-key-input');
   const visibilityBtn = clone.querySelector('.toggle-visibility-btn');
   const testBtn = clone.querySelector('.test-key-btn');
@@ -114,6 +124,46 @@ function renderSingleRow(keyData, index, healthStats = {}) {
 
   const isPrimary = (index === 0);
   title.textContent = isPrimary ? "Primary Key:" : `Backup Key ${index}:`;
+
+  if (keyData.disabled) {
+    rowDev.style.opacity = '0.5';
+    disableBtn.textContent = 'Enable';
+  } else {
+    rowDev.style.opacity = '1';
+    disableBtn.textContent = 'Disable';
+  }
+
+  disableBtn.addEventListener('click', () => {
+    keyData.disabled = !keyData.disabled;
+    if (keyData.disabled) {
+      rowDev.style.opacity = '0.5';
+      disableBtn.textContent = 'Enable';
+    } else {
+      rowDev.style.opacity = '1';
+      disableBtn.textContent = 'Disable';
+    }
+    debouncedSave();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    browser.storage.local.get(['yousub_health_stats']).then(res => {
+      const stats = res.yousub_health_stats || {};
+      const keyHash = `${keyData.provider}_${(keyData.apiKey || '').slice(-6)}`;
+
+      if (stats[keyHash]) {
+        delete stats[keyHash];
+        browser.storage.local.set({ yousub_health_stats: stats }).then(() => {
+          keyData.status = 'untested';
+          keyData.statusMessage = '';
+          debouncedSave();
+          // Load updated stats and re-render
+          browser.storage.local.get(['yousub_health_stats']).then(r => renderKeysUI(r.yousub_health_stats));
+        });
+      } else {
+        alert("This key is already completely clean. No stats to reset.");
+      }
+    });
+  });
 
   if (!isPrimary) {
     deleteBtn.classList.remove('hidden');
@@ -134,9 +184,9 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     const total = stats.successCount + stats.failCount;
     const rate = Math.round((stats.successCount / total) * 100);
     const speed = Math.round(stats.avgTime || 0);
-    
+
     healthStatsText.textContent = `Success: ${rate}% • ${speed}ms`;
-    
+
     // Dot color
     healthIndicator.className = 'health-indicator';
     if (Date.now() < (stats.circuitBreakerUntil || 0)) {
@@ -151,7 +201,6 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     }
   }
 
-  // Populate Provider Dropdown
   providerSelect.innerHTML = `<option value="auto">-- Auto-Detect --</option>`;
   YOUSUB_PROVIDERS.providers.forEach(p => {
     const opt = document.createElement('option');
@@ -161,38 +210,97 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   });
   providerSelect.value = keyData.provider || 'auto';
 
+  // Create unique datalist for this row
+  const datalistId = `model-list-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const datalist = document.createElement('datalist');
+  datalist.id = datalistId;
+  modelInput.setAttribute('list', datalistId);
+  modelInput.parentNode.appendChild(datalist);
+
   const populateModels = () => {
     const provId = providerSelect.value;
-    modelSelect.innerHTML = `<option value="auto">Auto-Select Best Model</option>`;
+    datalist.innerHTML = `<option value="auto">Auto-Select Best Model</option>`;
     if (provId && provId !== 'auto') {
       const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
+      const hidden = hiddenModelsRegistry[provId] || [];
+
       models.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.id;
-        opt.textContent = m.name;
-        modelSelect.appendChild(opt);
+        if (!hidden.includes(m.id)) {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.name;
+          datalist.appendChild(opt);
+        }
       });
+      // Append Custom Models
+      if (customModelsRegistry[provId]) {
+        customModelsRegistry[provId].forEach(cm => {
+          if (!hidden.includes(cm)) {
+            const opt = document.createElement('option');
+            opt.value = cm;
+            opt.textContent = `${cm} (Custom)`;
+            datalist.appendChild(opt);
+          }
+        });
+      }
     }
-    if (Array.from(modelSelect.options).some(o => o.value === keyData.model)) {
-      modelSelect.value = keyData.model;
+  };
+
+  const checkCustomModelStatus = () => {
+    const val = modelInput.value;
+    if (val && val !== 'auto' && val.trim().length > 0) {
+      deleteCustomBtn.classList.remove('hidden');
     } else {
-      modelSelect.value = 'auto';
-      keyData.model = 'auto';
+      deleteCustomBtn.classList.add('hidden');
     }
   };
 
   populateModels();
+  modelInput.value = keyData.model || 'auto';
+  checkCustomModelStatus();
 
   providerSelect.addEventListener('change', (e) => {
     keyData.provider = e.target.value;
     populateModels();
-    keyData.model = modelSelect.value;
+    keyData.model = 'auto';
+    modelInput.value = 'auto';
+    checkCustomModelStatus();
     debouncedSave();
   });
 
-  modelSelect.addEventListener('change', (e) => {
+  modelInput.addEventListener('input', (e) => {
     keyData.model = e.target.value;
+    checkCustomModelStatus();
     debouncedSave();
+  });
+
+  deleteCustomBtn.addEventListener('click', () => {
+    const provId = providerSelect.value;
+    const val = modelInput.value;
+    if (provId === 'auto' || val === 'auto') return;
+
+    if (confirm(`Delete model '${val}'?`)) {
+      // If it exists in custom, remove it
+      if (customModelsRegistry[provId]) {
+        customModelsRegistry[provId] = customModelsRegistry[provId].filter(m => m !== val);
+      }
+
+      // If it is built-in, add to hidden registry
+      const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
+      const isBuiltin = models.some(m => m.id === val);
+      if (isBuiltin) {
+        if (!hiddenModelsRegistry[provId]) hiddenModelsRegistry[provId] = [];
+        if (!hiddenModelsRegistry[provId].includes(val)) {
+          hiddenModelsRegistry[provId].push(val);
+        }
+      }
+
+      keyData.model = 'auto';
+      modelInput.value = 'auto';
+      populateModels();
+      checkCustomModelStatus();
+      debouncedSave();
+    }
   });
 
   apiKeyInput.value = keyData.apiKey || '';
@@ -235,7 +343,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     testBtn.disabled = true;
     statusText.className = 'status-text';
     statusText.textContent = 'Testing connection...';
-    
+
     browser.runtime.sendMessage({
       type: 'YOUSUB_TEST_API_KEY',
       provider: keyData.provider,
@@ -249,6 +357,22 @@ function renderSingleRow(keyData, index, healthStats = {}) {
           statusText.textContent = `OK (tested ${dateStr})`;
           keyData.status = 'ok';
           keyData.statusMessage = `Tested ${dateStr}`;
+
+          // If custom model tested successfully, save it!
+          const provId = keyData.provider;
+          const currentModel = keyData.model;
+          if (provId && provId !== 'auto' && currentModel && currentModel !== 'auto') {
+            const builtinModels = YOUSUB_PROVIDERS.getModelsForProvider(provId);
+            const isBuiltin = builtinModels.some(m => m.id === currentModel);
+            if (!isBuiltin) {
+              if (!customModelsRegistry[provId]) customModelsRegistry[provId] = [];
+              if (!customModelsRegistry[provId].includes(currentModel)) {
+                customModelsRegistry[provId].push(currentModel);
+                populateModels();
+                checkCustomModelStatus();
+              }
+            }
+          }
         } else {
           statusText.classList.add('failed');
           statusText.textContent = `Failed: ${response.message}`;
@@ -307,6 +431,19 @@ function attachEventListeners() {
     modelRotation = rotationCheckbox.checked;
     debouncedSave();
   });
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', () => {
+      if (confirm('Clear all cached translations? This will remove all saved video signatures.')) {
+        browser.runtime.sendMessage({ type: 'YOUSUB_CLEAR_CACHE' }).then((response) => {
+          if (response && response.success) {
+            alert(`Cache cleared successfully! Removed ${response.count || 0} entries.`);
+          } else {
+            alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
+          }
+        });
+      }
+    });
+  }
 }
 
 function debouncedSave() {
@@ -319,7 +456,9 @@ function performSave() {
     targetLang: targetLangSelect.value,
     yousub_api_keys: apiKeys,
     yousub_failover_enabled: failoverEnabled,
-    yousub_model_rotation: modelRotation
+    yousub_model_rotation: modelRotation,
+    yousub_custom_models: customModelsRegistry,
+    yousub_hidden_models: hiddenModelsRegistry
   };
   browser.storage.local.set(settings).then(() => {
     if (triggerSaveCallback) triggerSaveCallback();

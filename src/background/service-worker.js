@@ -83,8 +83,8 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
           sendResponse({ success: true, translated: translated, hadFallback: !!hadFallback });
         })
         .catch(function (error) {
-          Logger.error('ServiceWorker', `Translation error: ${error.message}`);
-          sendResponse({ success: false, error: error.message });
+          Logger.error('ServiceWorker', `Translation error: ${error.stack}`);
+          sendResponse({ success: false, error: error.stack });
         });
     });
 
@@ -92,12 +92,31 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   }
 
   // ------------------------------------------------------------------
-  // YOUSUB_CLEAR_CACHE — Manually clear translation cache (Phase 19)
-  // ------------------------------------------------------------------
   if (request.type === 'YOUSUB_CLEAR_CACHE') {
     Cache.clearAll()
+      .then((count) => sendResponse({ success: true, count }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // ------------------------------------------------------------------
+  // YOUSUB_CLEAR_VIDEO_CACHE — Clear cache for specific video (Phase 31)
+  // ------------------------------------------------------------------
+  if (request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
+    Cache.removeByVideoId(request.videoId)
       .then(() => sendResponse({ success: true }))
       .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  // ------------------------------------------------------------------
+  // YOUSUB_CHECK_CACHE — Check if video has signature (Phase 30)
+  // ------------------------------------------------------------------
+  if (request.type === 'YOUSUB_CHECK_CACHE') {
+    const { videoId, sourceLang, targetLang } = request;
+    Cache.get(videoId, sourceLang || 'auto', targetLang)
+      .then(cached => sendResponse({ exists: !!cached }))
+      .catch(() => sendResponse({ exists: false }));
     return true;
   }
 

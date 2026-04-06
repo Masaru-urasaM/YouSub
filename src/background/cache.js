@@ -11,7 +11,7 @@ import { Logger } from '../shared/logger.js';
 const CACHE_PREFIX = 'yousub_vcache_';
 const META_KEY = 'yousub_vcache_metadata';
 const MAX_ENTRIES = 100;
-const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export const Cache = {
   /**
@@ -24,7 +24,7 @@ export const Cache = {
   async get(videoId, sl, tl) {
     if (!videoId) return null;
     const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
-    
+
     try {
       const res = await browser.storage.local.get([key, META_KEY]);
       const data = res[key];
@@ -43,7 +43,7 @@ export const Cache = {
       // Cache HIT — Update lastUsed in metadata
       Logger.info('Cache', `Cache HIT for ${videoId} (${sl}->${tl})`);
       await this._updateMetadata(videoId, sl, tl, meta, key);
-      
+
       return data.translated;
     } catch (e) {
       Logger.error('Cache', `Error reading cache: ${e.message}`);
@@ -60,7 +60,7 @@ export const Cache = {
    */
   async set(videoId, sl, tl, translated) {
     if (!videoId || !translated || translated.length === 0) return;
-    
+
     const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
     const now = Date.now();
     const entry = {
@@ -77,13 +77,13 @@ export const Cache = {
 
       // Add or Update key in metadata for LRU
       await this._updateMetadata(videoId, sl, tl, meta, key);
-      
+
       // Save data
       await browser.storage.local.set({ [key]: entry });
-      
+
       // Enforce limit
       await this._evictIfNeeded();
-      
+
       Logger.info('Cache', `Cache SET for ${videoId} (${sl}->${tl}) - ${translated.length} entries`);
     } catch (e) {
       Logger.error('Cache', `Error writing cache: ${e.message}`);
@@ -96,7 +96,7 @@ export const Cache = {
   async remove(videoId, sl, tl) {
     const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
     await browser.storage.local.remove(key);
-    
+
     const res = await browser.storage.local.get([META_KEY]);
     let meta = res[META_KEY];
     if (meta && meta.keys) {
@@ -106,13 +106,37 @@ export const Cache = {
   },
 
   /**
+   * Clear all translation variants for a specific video.
+   * @param {string} videoId 
+   */
+  async removeByVideoId(videoId) {
+    if (!videoId) return;
+    const res = await browser.storage.local.get(null);
+    const keysToRemove = Object.keys(res).filter(k => k.startsWith(`${CACHE_PREFIX}${videoId}_`));
+    
+    if (keysToRemove.length > 0) {
+      await browser.storage.local.remove(keysToRemove);
+      
+      const metaRes = await browser.storage.local.get([META_KEY]);
+      let meta = metaRes[META_KEY];
+      if (meta && meta.keys) {
+        meta.keys = meta.keys.filter(k => !keysToRemove.includes(k.key));
+        await browser.storage.local.set({ [META_KEY]: meta });
+      }
+      Logger.info('Cache', `Removed ${keysToRemove.length} cache items for video ${videoId}`);
+    }
+  },
+
+  /**
    * Clear all translation cache.
+   * @returns {Promise<number>} Number of keys removed
    */
   async clearAll() {
     const res = await browser.storage.local.get(null);
     const keysToRemove = Object.keys(res).filter(k => k.startsWith(CACHE_PREFIX) || k === META_KEY);
     await browser.storage.local.remove(keysToRemove);
     Logger.info('Cache', `Cache CLEARED completely. Removed ${keysToRemove.length} items.`);
+    return keysToRemove.length;
   },
 
   /**
@@ -126,11 +150,11 @@ export const Cache = {
     meta.keys.unshift({
       key,
       videoId,
-      sl, 
+      sl,
       tl,
       lastUsed: now
     });
-    
+
     await browser.storage.local.set({ [META_KEY]: meta });
   },
 
@@ -148,7 +172,7 @@ export const Cache = {
     const keysToRemove = toRemove.map(k => k.key);
     await browser.storage.local.remove(keysToRemove);
     await browser.storage.local.set({ [META_KEY]: meta });
-    
+
     Logger.info('Cache', `LRU Eviction: Removed ${keysToRemove.length} oldest entries.`);
   }
 };

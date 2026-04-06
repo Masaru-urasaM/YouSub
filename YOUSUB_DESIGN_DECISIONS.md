@@ -256,10 +256,40 @@ Record of significant technical decisions — architecture, library choices, alg
 **Date**: 2026-04-06
 **Status**: RESOLVED
 
-**Problem**: Standard LLM tuning often censors "offensive" language or attempts to be "helpful" by summarizing or smoothing out vulgar content. Additionally, default `max_tokens` limits (1000-2000) frequently cut off responses when batch sizes were increased to 100 lines.
+**Problem**: Standard LLM tuning often censors "offensive" language or attempts to be "helpful" by summarizing or smoothing out vulgar content. Additionally, default `max_tokens` limits (65000) frequently cut off responses when batch sizes were increased to 100 lines.
 
 **Resolution**: 
 1. **Uncensored Prompting**: Modified the `systemPrompt` to explicitly command AI to be "Unfiltered & Faithful," mandating the preservation of all profanity and vulgarity. 
-2. **Uncapped Output**: Set `max_tokens` to an effectively infinite value (100,000) and removed artificial code-level minimums. This prioritizes completeness over token conservation, ensuring the entire subtitle batch is translated without interruption.
+2. **Uncapped Output**: Set `max_tokens` to an effectively high value (65000) and removed artificial code-level minimums. This prioritizes completeness over token conservation, ensuring the entire subtitle batch is translated without interruption.
 
 **References**: `translator.js`, `providers.js`
+
+---
+
+### Decision 19 — Signature-based Cache Flow (Video ID Integrity)
+**Date**: 2026-04-06
+**Status**: RESOLVED
+
+**Problem**: YouTube's SPA (Single Page Application) navigation often causes race conditions where subtitles from a previous video "leak" into a new video. Additionally, previous failed translations (e.g., 9-line truncation) were being cached and persisted even after page reload, making it impossible for users to get a fresh start.
+
+**Resolution**: 
+1. **Video ID signature**: Every cache entry is strictly keyed by `videoId`. Before auto-starting, the content script asks the background worker to verify if the current video has a valid "signature" (cached translation).
+2. **Selective Auto-start**: Translation only starts automatically for *cached* videos. For new videos, the system remains in a manual state, waiting for the user to click the "Translate" button. This prevents API waste and ensures user intent.
+3. **Aggressive Cleanup**: On `yt-navigate-start`, the overlay and internal memory are immediately destroyed and nulled, ensuring no cross-video data contamination.
+
+**References**: `main.js`, `service-worker.js`, `cache.js`
+
+---
+
+### Decision 20 — Smart Regex Parser (Fixing "9-line" Format Curse)
+**Date**: 2026-04-06
+**Status**: RESOLVED
+
+**Problem**: Standard line-by-line splitting (`split('\n')`) failed when LLMs changed formatting at the 10th line (transition from 1 to 2 digits) or if the model omitted newlines. This led to a "curse" where only 9 lines were translated and the rest defaulted to original text.
+
+**Resolution**: 
+1. **MatchAll Strategy**: Abandoned `split()` in favor of `String.prototype.matchAll()` with a lookahead regex: `/(\d+)\s*[|]\s*([\s\S]*?)(?=\s*\d+\s*[|]|$)/g`.
+2. **Flexible Extraction**: The new parser searches the entire response text for `[Number] | [Content]` patterns regardless of newlines, extra spaces, or introductory noise. 
+3. **Data Integrity**: This ensures that even if the AI responds in a single block or adds markdown lists, the parser extracts every numbered line correctly, breaking the 9-line truncation issue.
+
+**References**: `translator.js`

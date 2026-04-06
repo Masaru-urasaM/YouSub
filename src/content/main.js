@@ -113,6 +113,16 @@
     YS.VideoBinder.bind(function (video) {
       if (YS.SyncEngine) YS.SyncEngine.start(YS._lastSubtitles, video);
     });
+
+    // Final visibility sync
+    browser.storage.local.get(['yousub_translation_enabled']).then(function(res) {
+      if (res.yousub_translation_enabled) {
+        YS.Overlay.show();
+      } else {
+        YS.Overlay.hide();
+      }
+      if (YS.Overlay) YS.Overlay.setLoading(false);
+    });
   }
  
   /**
@@ -122,7 +132,10 @@
   async function startSubtitlePipeline(videoId) {
     console.log('[YouSub] Starting pipeline for video:', videoId);
     
-    if (YS.Overlay) YS.Overlay.showStatus('Extracting subtitles...', 'info', 2000);
+    if (YS.Overlay) {
+      YS.Overlay.setLoading(true);
+      YS.Overlay.show();
+    }
  
     // Step 1: Discover tracks and check live status via a quick extraction probe
     YS.SubtitleExtractor.extract(async function (tracks, parsedEntries, error) {
@@ -134,7 +147,9 @@
  
       // 1.2 If we already got parsed entries (DOM scraping worked or was cached)
       if (parsedEntries && parsedEntries.length > 0) {
-        processEntries(parsedEntries, videoId);
+        processEntries(parsedEntries, videoId).finally(() => {
+          if (YS.Overlay) YS.Overlay.setLoading(false);
+        });
         return;
       }
  
@@ -147,7 +162,9 @@
             var fetchedEntries = await YS.SubtitleParser.fetch(bestTrack.baseUrl);
             if (fetchedEntries && fetchedEntries.length > 0) {
               console.log('[YouSub] Hybrid: XHR fetch success!');
-              processEntries(fetchedEntries, videoId);
+              processEntries(fetchedEntries, videoId).finally(() => {
+                if (YS.Overlay) YS.Overlay.setLoading(false);
+              });
               return;
             }
           } catch (e) {
@@ -162,6 +179,8 @@
       } else if (!parsedEntries && !tracks) {
         if (YS.Overlay) YS.Overlay.showStatus('Could not find subtitles for this video', 'warning', 4000);
       }
+
+      if (YS.Overlay) YS.Overlay.setLoading(false);
     });
   }
  
@@ -169,9 +188,33 @@
   YS.PageDetector.init(
     function onEnter(videoId) {
       console.log('[YouSub] Main: Video page entered. Video ID: ' + videoId);
+      
+      // Immediate cleanup of old overlay if any (Race condition prevention)
+      if (YS.Overlay) YS.Overlay.destroy();
+      YS._lastSubtitles = null;
+
       // Wait for binding
       YS.VideoBinder.bind(function(videoEl) {
         console.log('[YouSub] Main: Video element bound. Ready.');
+        
+        // Check settings and cache signature
+        browser.storage.local.get(['yousub_translation_enabled', 'targetLang']).then(function(res) {
+          if (res.yousub_translation_enabled) {
+            // New Rule: Auto-start ONLY if video is already in cache (known signature)
+            browser.runtime.sendMessage({
+              type: 'YOUSUB_CHECK_CACHE',
+              videoId: videoId,
+              targetLang: res.targetLang || 'vi'
+            }, function(checkRes) {
+              if (checkRes && checkRes.exists) {
+                console.log('[YouSub] Signature detected in cache. Auto-starting...');
+                startSubtitlePipeline(videoId);
+              } else {
+                console.log('[YouSub] New signature (not in cache). Translation is DISABLED for this video until manual click.');
+              }
+            });
+          }
+        });
       });
     }, 
     function onLeave() {
@@ -179,6 +222,7 @@
       if (YS.SyncEngine) YS.SyncEngine.stop();
       YS._lastSubtitles = null;
       YS.VideoBinder.unbind();
+      // Aggressive cleanup on leave
       if (YS.Overlay) YS.Overlay.destroy();
       if (YS.SubtitleExtractor) YS.SubtitleExtractor.destroy();
     }
@@ -186,11 +230,22 @@
  
   // Listen for popup trigger
   browser.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-    if (message.type === 'YOUSUB_START_EXTRACTION') {
+    if (message.type === 'YOUSUB_TOGGLE_TRANSLATION') {
       sendResponse({ started: true });
-      var videoId = YS.PageDetector.getCurrentVideoId();
-      if (videoId) {
-        startSubtitlePipeline(videoId);
+      const isEnabled = !!message.enabled;
+      
+      if (isEnabled) {
+        // Shown
+        if (!YS._lastSubtitles) {
+          // Trigger pipeline if no data
+          const videoId = YS.PageDetector.getCurrentVideoId();
+          if (videoId) startSubtitlePipeline(videoId);
+        } else {
+          YS.Overlay.show();
+        }
+      } else {
+        // Hidden
+        YS.Overlay.hide();
       }
     } else if (message.type === 'YOUSUB_TOGGLE_DUAL_MODE') {
       if (YS.SyncEngine) {

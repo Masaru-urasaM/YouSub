@@ -90,6 +90,9 @@
         videoElement.addEventListener('timeupdate', onTimeUpdateBound);
         isRunning = true;
         console.log('[YouSub] SyncEngine: Started (Dual Mode: ' + isDualMode + ')');
+
+        // Force initial render in case video is currently paused
+        onTimeUpdateBound();
       });
     },
 

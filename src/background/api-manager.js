@@ -1,6 +1,7 @@
 import '../shared/libs/browser-polyfill.js';
 import { Logger } from '../shared/logger.js';
 import { HealthManager } from './health.js';
+import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 
 /**
  * api-manager.js
@@ -15,12 +16,21 @@ export const APIManager = {
    */
   async getValidKeys() {
     return new Promise(async (resolve) => {
-      browser.storage.local.get(['yousub_api_keys', 'yousub_failover_enabled']).then(async (res) => {
+      browser.storage.local.get([
+        'yousub_api_keys', 
+        'yousub_failover_enabled', 
+        'yousub_model_rotation',
+        'yousub_custom_models',
+        'yousub_hidden_models'
+      ]).then(async (res) => {
         const keys = res.yousub_api_keys || [];
         const failoverEnabled = res.yousub_failover_enabled !== false;
+        const modelRotation = res.yousub_model_rotation || false;
+        const customs = res.yousub_custom_models || {};
+        const hiddens = res.yousub_hidden_models || {};
 
-        // Filter out keys that are empty
-        const configKeys = keys.filter(k => k.apiKey && k.apiKey.trim().length > 0);
+        // Filter out keys that are empty or disabled by user
+        const configKeys = keys.filter(k => k.apiKey && k.apiKey.trim().length > 0 && !k.disabled);
         
         if (configKeys.length === 0) return resolve([]);
 
@@ -35,26 +45,52 @@ export const APIManager = {
           }
         }
 
+        let finalKeys = [];
+        
         if (activeKeys.length <= 1 || !failoverEnabled) {
-          return resolve(activeKeys.slice(0, 1));
+          finalKeys = activeKeys.slice(0, 1);
+        } else {
+          // If failover is enabled, sort Backups by health score
+          const primary = activeKeys[0];
+          const backups = activeKeys.slice(1);
+
+          const scoredBackups = await Promise.all(backups.map(async (bk) => {
+            const score = await HealthManager.getScore(bk.provider, bk.apiKey);
+            return { key: bk, score };
+          }));
+
+          scoredBackups.sort((a, b) => b.score - a.score);
+          finalKeys = [primary, ...scoredBackups.map(sb => sb.key)];
         }
 
-        // If failover is enabled, sort Backups by health score
-        const primary = activeKeys[0];
-        const backups = activeKeys.slice(1);
+        // Intra-Key Model Rotation
+        if (modelRotation) {
+           const expanded = [];
+           for (const k of finalKeys) {
+             expanded.push(k);
+             const prov = YOUSUB_PROVIDERS.getProvider(k.provider);
+             if (!prov) continue;
+             
+             const builtinIds = prov.models.map(m => m.id);
+             const customIds = customs[k.provider] || [];
+             const hiddenIds = hiddens[k.provider] || [];
+             
+             // Get all active models (built-ins + customs) - hidden
+             const allModels = [...builtinIds, ...customIds].filter(m => !hiddenIds.includes(m));
+             const currentModel = k.model === 'auto' ? prov.defaultModel : k.model;
+             
+             // Append clones for all remaining models for this API key
+             for (const m of allModels) {
+                if (m !== currentModel) {
+                   expanded.push({ ...k, model: m, isRotationClone: true });
+                }
+             }
+           }
+           finalKeys = expanded;
+        }
 
-        // Map scores
-        const scoredBackups = await Promise.all(backups.map(async (bk) => {
-          const score = await HealthManager.getScore(bk.provider, bk.apiKey);
-          return { key: bk, score };
-        }));
-
-        // Sort backups: highest score first
-        scoredBackups.sort((a, b) => b.score - a.score);
-
-        const sorted = [primary, ...scoredBackups.map(sb => sb.key)];
-        Logger.debug('APIManager', `Loaded ${sorted.length} keys in priority order.`);
-        resolve(sorted);
+        Logger.debug('APIManager', `Loaded ${finalKeys.length} keys in priority order (includes clones if rotated).`);
+        resolve(finalKeys);
       });
     });
   },

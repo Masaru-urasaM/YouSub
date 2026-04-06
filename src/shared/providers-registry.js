@@ -64,7 +64,7 @@ export const YOUSUB_PROVIDERS = {
       keyPatterns: ['gsk_'],
       models: [
         { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
-        { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B' }
+        { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' }
       ],
       defaultModel: 'llama-3.3-70b-versatile'
     },
