@@ -2,9 +2,9 @@
 
 > **Document purpose**: This is the single source of truth for the YouSub project. It is written as an AI-readable prompt/specification so that any AI coding assistant (Gemini, Claude, etc.) can read this document and understand the full scope, architecture, decisions, and constraints of the project. It is also readable by human developers.
 >
-> **Document version**: 2.0
-> **Last updated**: 2026-04-06
-> **Status**: **STABLE** — v0.2.0 (Multi-Provider Translation Engine + Cache Fix)
+> **Document version**: 2.1
+> **Last updated**: 2026-04-07
+> **Status**: **STABLE** — v0.4.0 (Absolute ID Tracking & Debug Visibility)
 >
 > **Structure**: This file is the navigation hub and architecture reference. For active/pending development phases, see [ROADMAP.md](ROADMAP.md). For completed phases, see [ROADMAP_DONE.md](ROADMAP_DONE.md).
 
@@ -98,14 +98,11 @@ Step 6:  Content script injects <script> to read ytInitialPlayerResponse from MA
 Step 7:  ytInitialPlayerResponse.captions → array of { baseUrl, languageCode, kind }
 Step 8:  Fetch baseUrl + "&fmt=json3" → JSON response with events
 Step 9:  Parse into normalized array: [{ startMs, endMs, text }, ...]
-Step 10: Send text array to background worker via chrome.runtime.sendMessage
-Step 11: Background worker loads API config from chrome.storage
-Step 12: Background worker calls Primary provider API with translation prompt
-Step 13: If Primary fails → try Backup 1 → Backup 2 → Backup 3 (failover chain)
-Step 14: Provider health updated (success/failure tracking)
-Step 15: Translated array sent back to content script
-Step 16: Content script builds: [{ startMs, endMs, original, translated }, ...]
-Step 17: Sync engine: video.ontimeupdate → binary search → update overlay
+Step 10: Multi-provider failover: if Primary fails, try Backup 1 -> Backup 2...
+Step 11: LLM Prompt Injection:
+     - **Global Absolute IDs**: Each line is tagged with its video-wide index `[#ID]` (e.g., Batch 2 starts at `[#501]`).
+     - **Smart Regex Parser**: Uses `matchAll` to extract lines by ID, preventing alignment shifts even if AI merges output.
+Step 12: Cache result in `chrome.storage.local` keyed by `videoId`.
 ```
 
 ### 2.3 API Key Data Flow
@@ -479,3 +476,4 @@ self.YouSub_Health && self.YouSub_Health.getStats()
 | 1.2 | 2026-04-04 | Updated with Cross-Browser support and Health Monitoring |
 | 1.3 | 2026-04-04 | Final v0.1.0 - Premium UI, Automated Packaging, Documentation COMPLETE |
 | 2.0 | 2026-04-06 | Major restructure: absorbed architecture reference and appendices from ROADMAP.md. Added detailed system diagram, data flow, folder structure, YouTube platform reference, file dependency graph, and all appendices. Updated to v0.2.0 status. |
+| 2.1 | 2026-04-07 | Updated to v0.4.0. Implemented Global Absolute ID Tracking to eliminate alignment shifting. Added AI Raw Response streaming and interactive Logger utils (`tail`, `export`). |

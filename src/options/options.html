@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>YouSub Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
+
 <body>
   <div class="settings-container">
     <header class="settings-header">
       <div class="header-brand">
-        <img src="../../assets/icons/icon48.png" alt="YouSub Logo" class="logo">
+        <img src="../../assets/icons/icon618.png" alt="YouSub Logo" class="logo">
         <h1>YouSub Settings</h1>
       </div>
       <span class="version-badge">v0.1.0</span>
@@ -28,7 +30,7 @@
       <!-- Translation Tab -->
       <section id="tab-translation" class="tab-pane active">
         <h2>Translation Settings</h2>
-        
+
         <div class="card">
           <h3>Target Language</h3>
           <p class="description">Select the language into which you want the subtitles to be translated.</p>
@@ -63,7 +65,7 @@
         <div class="card" id="api-config-card">
           <h3>API Configuration</h3>
           <p class="description">Configure your LLM API keys here to power the translation engine.</p>
-          
+
           <div class="info-alert warning hidden" id="no-keys-alert">
             <span class="icon">⚠️</span>
             <span>You must configure at least one API key for translation to work.</span>
@@ -79,7 +81,7 @@
           </div>
 
           <hr class="divider">
-          
+
           <div class="failover-options">
             <label class="checkbox-label">
               <input type="checkbox" id="enable-failover" checked>
@@ -108,12 +110,13 @@
             <div class="api-row-header">
               <h4 class="row-title">Primary:</h4>
               <div class="row-header-actions" style="display:flex; gap:8px;">
-                <button class="reset-row-btn text-btn" type="button" title="Clear errors & reset cooldown">Reset Stats</button>
+                <button class="reset-row-btn text-btn" type="button" title="Clear errors & reset cooldown">Reset
+                  Stats</button>
                 <button class="toggle-disable-row-btn text-btn" type="button">Disable</button>
                 <button class="delete-row-btn text-btn danger-text hidden" type="button">Delete</button>
               </div>
             </div>
-            
+
             <div class="api-row-grid">
               <div class="grid-item">
                 <label>Provider</label>
@@ -123,7 +126,8 @@
                 <label>Model</label>
                 <div class="combo-box-wrapper">
                   <input type="text" class="model-select" placeholder="Select or type..." />
-                  <button class="delete-custom-model-btn text-btn error-text hidden" type="button" title="Delete custom model" style="padding: 0 4px; color: var(--error);">✕</button>
+                  <button class="delete-custom-model-btn text-btn error-text hidden" type="button"
+                    title="Delete custom model" style="padding: 0 4px; color: var(--error);">✕</button>
                 </div>
                 <!-- datalist inserted via JS -->
               </div>
@@ -154,12 +158,12 @@
       <!-- Appearance Tab -->
       <section id="tab-appearance" class="tab-pane">
         <h2>Appearance Settings</h2>
-        
+
         <div class="appearance-grid">
           <div class="controls-panel">
             <div class="card">
               <h3>Typography & Style</h3>
-              
+
               <div class="form-group">
                 <label for="font-size">Font Size (em)</label>
                 <div class="range-with-value">
@@ -198,7 +202,7 @@
             <div class="card">
               <h3>Live Preview</h3>
               <p class="description">This is how your subtitles will look on the video.</p>
-              
+
               <div class="preview-container">
                 <img src="../../assets/preview_bg.jpg" alt="Preview background" class="preview-bg">
                 <div id="subtitle-preview" class="yousub-overlay-preview">
@@ -216,7 +220,7 @@
         <h2>About YouSub</h2>
         <div class="card">
           <div class="about-info">
-            <img src="../../assets/icons/icon128.png" alt="YouSub large logo" class="large-logo">
+            <img src="../../assets/icons/icon618.png" alt="YouSub large logo" class="large-logo">
             <div class="about-text">
               <h3>Version 0.1.0</h3>
               <p>Real-time AI subtitle translator for YouTube</p>
@@ -244,7 +248,24 @@
     </footer>
   </div>
 
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Confirm Action</h3>
+      </div>
+      <div class="modal-body">
+        <p id="modal-message">Are you sure you want to proceed?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-cancel-btn" class="secondary-btn">No, Cancel</button>
+        <button id="modal-confirm-btn" class="secondary-btn danger-btn">Yes, Proceed</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../shared/libs/browser-polyfill.js"></script>
   <script type="module" src="options.js"></script>
 </body>
+
 </html>

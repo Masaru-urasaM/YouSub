@@ -31,6 +31,43 @@ export const Logger = {
   error(tag, msg, data) { this.log('ERROR', tag, msg, data); },
   debug(tag, msg, data) { this.log('DEBUG', tag, msg, data); },
 
+  async tail(n = 50) {
+    const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+    if (!api || !api.storage || !api.storage.local) return console.warn('Storage not available');
+    
+    const res = await api.storage.local.get(['yousub_logs']);
+    const logs = res.yousub_logs || [];
+    const sliced = logs.slice(-n);
+    
+    console.group(`YouSub Logs (Last ${n})`);
+    sliced.forEach(l => {
+      try {
+        const p = JSON.parse(l);
+        const color = p.level === 'ERROR' ? '#ef4444' : (p.level === 'WARN' ? '#f59e0b' : '#3b82f6');
+        console.log(`%c[${p.level}] [${p.tag}] ${p.msg}`, `color: ${color}`, p);
+      } catch (e) { console.log(l); }
+    });
+    console.groupEnd();
+  },
+
+  async export() {
+    const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
+    if (!api || !api.storage || !api.storage.local) return alert('Storage not available');
+    
+    const res = await api.storage.local.get(['yousub_logs']);
+    const logs = res.yousub_logs || [];
+    const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `yousub_logs_${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
   _persist(jsonStr) {
     const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
     if (api && api.storage && api.storage.local) {
@@ -47,3 +84,11 @@ export const Logger = {
     }
   }
 };
+
+// Universal Attachment
+if (typeof window !== 'undefined') {
+  window.YouSub = window.YouSub || {};
+  window.YouSub.Logger = Logger;
+} else if (typeof self !== 'undefined') {
+  self.YouSub_Logger = Logger;
+}

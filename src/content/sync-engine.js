@@ -130,6 +130,18 @@
       if (onTimeUpdateBound) {
         onTimeUpdateBound();
       }
+    },
+
+    /**
+     * Update the subtitle data without stopping the engine (Phase 35).
+     * Used for incremental/streaming results.
+     */
+    updateSubtitles: function (newSubs) {
+      subtitles = newSubs || [];
+      console.log('[YouSub] SyncEngine: Subtitles updated incrementally. Count: ' + subtitles.length);
+      if (isRunning && onTimeUpdateBound) {
+        onTimeUpdateBound();
+      }
     }
   };
 

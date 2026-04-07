@@ -4,6 +4,95 @@ All notable changes to the YouSub project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Phase 35.2 — Global Absolute IDs & AI Transparency (2026-04-06)
+
+**Added**
+- **Global Absolute ID Tracking**: Subtitles are now tagged with their unique, video-wide sentence number (e.g., [#501], [#502]) instead of restarting from 1 for every batch. This eliminates AI "relative numbering" hallucinations.
+- **AI Raw Response Streaming**: Background logs now push the raw AI text content to the YouTube console (`[YouSub-Bg] RAW RESPONSE`).
+- **Interactive Logger Utils**: Added `tail()` and `export()` methods to the `Logger` for manual console troubleshooting.
+
+**Changed**
+- **Universal Logger Attachment**: `logger.js` now detects its environment (SW or Content) and attaches itself to the global scope for console accessibility.
+- Updated `manifest.json` to include `logger.js` in all YouTube content scripts.
+
+**Fixed during implementation**
+- Solved the "Alignment Shift" bug by using absolute pointer IDs that AI models are less likely to re-sequence.
+
+### Phase 35.1 — Rigid Identifier Tagging ([#ID]) (2026-04-06)
+
+**Changed**
+- **Identifier Format Migration**: Transitioned from sequential `1|` numbering to rigid `[#1]` tags in translation batches.
+- **Prompt Hardening**: Instructed LLMs to treat `[#ID]` as a fixed database key that must never be re-sequenced or modified, even if lines are merged.
+- **Alignment Recovery**: Updated the regex parser to map translations explicitly by their `[#ID]`. If an ID is missing, the system now preserves the original text for that specific index, preventing "cascading shifts" for the rest of the batch.
+
+**Tests**: Manual verification of regex logic and prompt structure; confirmed alignment remains intact even with simulated line merges.
+
+### Phase 31.1 — Premium Confirmation Modal (2026-04-06)
+
+**Added**
+- Custom **Glassmorphism Confirmation Modal** in both Options page and Popup UI to replace native `confirm()` and unprotected actions.
+- `showConfirmModal()` utility for reusable confirmation logic across all UI surfaces.
+- CSS animations (fade-in, slide-up) and backdrop blur optimized for both full-page and compact popup views.
+
+**Changed**
+- Updated "Clear Translation Cache" (Options) and "Clear Page Cache" (Popup) buttons to require explicit "Yes/No" confirmation.
+- Updated "Delete All API Keys" and "Remove Backup Key" buttons in Options to use the new modal system.
+
+**Tests**: Manual UI verification via browser subagent confirmed DOM presence and styling for both surfaces.
+
+## [0.2.1] — 2026-04-06
+
+### Phase 35 — Incremental Subtitle Display (2026-04-06)
+
+**Added**
+- Support for "Streaming" translations: Subtitles now update on the video as soon as the first batch (200 lines) is ready.
+- `YOUSUB_TRANSLATE_PARTIAL` message type for background-to-content communication.
+- `YS.SyncEngine.updateSubtitles` for live data patching without video interruption.
+
+**Changed**
+- Updated `translator.js` to support batch-completion callbacks.
+- Refactored `main.js` pipeline to initialize with original text immediately, providing zero-latency startup.
+- Improved `service-worker.js` to push partial translation blocks to active tabs.
+
+**Tests**: 0 -> 0 (Manual verification of incremental UI updates).
+
+### Phase 34 — Gemini Safety Filter Bypass (2026-04-06)
+
+**Changed**
+- Disabled Gemini safety filters by adding `safetySettings` with `BLOCK_NONE` for all categories (Harassment, Hate Speech, Sexually Explicit, Dangerous Content).
+- Improved error reporting for Gemini: "Empty response" errors now include the model's `finishReason` (e.g., `SAFETY`, `RECITATION`) for easier debugging.
+
+**Fixed during implementation**
+- Resolved "Empty response text from provider" errors on Gemini when translating content with profanity or sensitive terms.
+
+**Tests**: 0 -> 0 (Manual verification of Gemini output with unfiltered content).
+
+### Phase 33 — Interactive Error Notifications (2026-04-06)
+
+**Added**
+- Interactive Error Toast: When all translation attempts fail, a red notification appears with a "Mở Cài đặt" link.
+- `YOUSUB_OPEN_SETTINGS` message handler to trigger `browser.runtime.openOptionsPage()`.
+- Pointer-event support for status messages on the video overlay.
+
+**Changed**
+- Updated `YS.Overlay.showStatus` to support HTML content and dynamic action listeners (e.g., `data-action="open-settings"`).
+- Refined translation failure logic in `main.js` to provide better user guidance.
+
+**Tests**: 0 -> 0 (Manual verification of status interaction).
+
+### Phase 32 — API Key Test TPM Limit Fix (2026-04-06)
+
+**Changed**
+- Reduced `max_tokens` for API Key testing from 32,768 to **20**.
+- Refactored `Providers.chat` and provider-specific calls (`callOpenAIStyle`, `callGemini`, `callAnthropic`) to accept an optional `maxTokens` parameter.
+
+**Fixed during implementation**
+- Resolved HTTP 413 "Request too large" errors on Groq (and other providers) during API key validation caused by high default token reservations exceeding TPM limits.
+
+**Tests**: 0 -> 0 (Manual verification on Groq `llama-3.3-70b-versatile`).
+
 ## [0.2.0] — 2026-04-06
 
 ### Phase 31 — Popup UI Polish & Local Cache Purge (2026-04-06)

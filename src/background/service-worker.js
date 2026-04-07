@@ -68,7 +68,17 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
       // 2. Cache MISS — Call API
       Logger.info('ServiceWorker', `Cache MISS for ${videoId}, calling translator...`);
-      translate(texts, sourceLang, targetLang, sender.tab.id)
+      translate(texts, sourceLang, targetLang, sender.tab.id, (startIndex, translatedBatch) => {
+        // Phase 35: Push partial result back to content script
+        browser.tabs.sendMessage(sender.tab.id, {
+          type: 'YOUSUB_TRANSLATE_PARTIAL',
+          videoId: videoId,
+          startIndex: startIndex,
+          translated: translatedBatch
+        }).catch(() => {
+          // Tab might be closed, ignore
+        });
+      })
         .then(function (result) {
           const { translated, hadFallback } = result;
           Logger.info('ServiceWorker', `Translation complete — returning ${translated.length} entries (hadFallback: ${hadFallback})`);
@@ -125,11 +135,20 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   // ------------------------------------------------------------------
   if (request.type === 'YOUSUB_TEST_API_KEY') {
     const { provider, model, apiKey } = request;
-    
+
     Providers.testApiKey(provider, model, apiKey)
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, message: err.message, model }));
 
     return true; // Keep channel open for async response
+  }
+
+  // ------------------------------------------------------------------
+  // YOUSUB_OPEN_SETTINGS — Open extension options page (Phase 33)
+  // ------------------------------------------------------------------
+  if (request.type === 'YOUSUB_OPEN_SETTINGS') {
+    browser.runtime.openOptionsPage();
+    sendResponse({ success: true });
+    return true;
   }
 });

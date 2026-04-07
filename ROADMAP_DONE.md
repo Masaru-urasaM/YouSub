@@ -237,3 +237,35 @@
 - **Smart Regex Parser**: Replaced fragile `split('\n')` logic with a global `matchAll()` strategy `(/(\d+)\s*[|]\s*([\s\S]*?)(?=\s*\d+\s*[|]|$)/g`). This extracts every numbered line correctly regardless of AI formatting (dính chùm, extra spaces, introductory noise).
 - **Universal Format Recovery**: The system now correctly parses line numbers 10 and above, ensuring 100% translation coverage for all batch sizes.
 - **API Sensitivity Fix**: Lowered `max_tokens` to `32768` to satisfy Groq (Llama-3) limits and resolved a critical Service Worker syntax error caused by invalid numeric formatting in constant definitions.
+
+### Phase 31: Popup UI Polish & Local Cache Purge
+**Status**: DONE (2026-04-06)
+**Summary**: Refined the extension Popup by removing redundant status text and centralizing state feedback into the "Translate" button color (Crimson/Grey). Implemented a "Clear Page Cache" button in the Popup to allow per-video reset of translations, enabling users to re-trigger the pipeline for specific content without clearing the entire global cache.
+
+### Phase 31.1: Premium Confirmation Modal (Options & Popup)
+**Status**: DONE (2026-04-06)
+**Summary**: Replaced native browser `confirm()` dialogs and unprotected destructive actions with a custom-built, Glassmorphism-styled confirmation modal. Implemented a reusable `showConfirmModal` utility across both the Options page and Popup UI. Added premium CSS animations (fade-in, slide-up) and backdrop blur to enhance the extension's high-end aesthetic while preventing accidental data loss (API keys, cache).
+
+### Phase 32: API Key Test TPM Limit Fix
+**Status**: DONE (2026-04-06)
+**Summary**: Resolved HTTP 413 "Request too large" errors during API key validation on high-throughput models (e.g., Llama 3 on Groq). Reduced the `max_tokens` for validation "pings" from 32k to 20 tokens, ensuring tests pass instantly within Tier 1 TPM/RPM limits.
+
+### Phase 33: Interactive Error Notifications
+**Status**: DONE (2026-04-06)
+**Summary**: Upgraded the subtitle failure toast to be interactive. When translation fails completely, the on-video notification now includes a "Click to Open Settings" link, allowing users to troubleshoot API issues or switch models directly from the player.
+
+### Phase 34: Gemini Safety Filter Bypass
+**Status**: DONE (2026-04-06)
+**Summary**: Configured Google Gemini to bypass all default safety filters (`BLOCK_NONE`). This ensures 100% faithful, uncensored translation of subtitles containing profanity, slang, or sensitive topics, which were previously causing "Empty response" errors.
+
+### Phase 35: Incremental Subtitle Display (Fast Display)
+**Status**: DONE (2026-04-06)
+**Summary**: Implemented a "Streaming-like" user experience for non-cached videos. The extension now displays and updates subtitles on the player as soon as each individual batch (e.g., first 100 lines) is completed by the AI, significantly reducing the "Perceived Wait Time" for long videos compared to waiting for the entire transcript to finish.
+
+### Phase 35.1 — Rigid Identifier Tagging ([#ID])
+**Status**: DONE (2026-04-06)
+**Summary**: Replaced sequential `1|` numbering with bracketed `[#1]` tags to prevent AI re-indexing. Instructed models to treat IDs as fixed keys. Updated parser to map translations by ID and backfill missing slots with original text, effectively stopping cascading alignment shifts within batches. 
+
+### Phase 35.2 — Global Absolute IDs & AI Transparency
+**Status**: DONE (2026-04-07)
+**Summary**: Implemented video-wide absolute IDs (e.g., [#501] for the second batch) to eliminate AI "relative list" hallucinations. Added Raw AI Response streaming to the YouTube console for developer transparency. Upgraded the `Logger` utility with `tail()` and `export()` methods for easier debugging. Unified `logger.js` for both Background and Content script contexts.

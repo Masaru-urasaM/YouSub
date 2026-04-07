@@ -21,6 +21,7 @@
     "jest-environment-jsdom": "^30.3.0"
   },
   "dependencies": {
+    "jimp": "^1.6.0",
     "webextension-polyfill": "^0.12.0"
   }
 }

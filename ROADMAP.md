@@ -59,10 +59,8 @@ When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-28 | Core infrastructure, optimization, uncensored translation, advanced model routing, smart toggle UI | DONE (2026-04-06) | M5 |
-| 29 | Signature-based Cache Architecture (Video ID Integrity) | DONE (2026-04-06) | M3 |
-| 30 | Smart Regex Parsing & Formatting Resilience | DONE (2026-04-06) | M3 |
-| 31 | Popup UI Polish & Local Cache Purge | DONE (2026-04-06) | M3 |
+| 0-35 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, and Absolute ID Tracking | DONE (2026-04-07) | M5 |
+| 36 | Subtitle Multi-track Selection in Popup | | M4 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 

@@ -12,6 +12,9 @@ let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationC
 let triggerSaveCallback = null;
 let saveTimeout = null;
 
+// Modal Elements
+let confirmModal, modalTitle, modalMessage, modalCancelBtn, modalConfirmBtn;
+
 export function initTranslationTab(saveIndicatorCallback) {
   triggerSaveCallback = saveIndicatorCallback;
 
@@ -27,6 +30,13 @@ export function initTranslationTab(saveIndicatorCallback) {
   rotationCheckbox = document.getElementById('enable-rotation');
   noKeysAlert = document.getElementById('no-keys-alert');
   clearCacheBtn = document.getElementById('clear-cache-btn');
+
+  // Confirmation Modal Elements
+  confirmModal = document.getElementById('confirm-modal');
+  modalTitle = document.getElementById('modal-title');
+  modalMessage = document.getElementById('modal-message');
+  modalCancelBtn = document.getElementById('modal-cancel-btn');
+  modalConfirmBtn = document.getElementById('modal-confirm-btn');
 
   loadSettings();
   attachEventListeners();
@@ -168,11 +178,15 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   if (!isPrimary) {
     deleteBtn.classList.remove('hidden');
     deleteBtn.addEventListener('click', () => {
-      if (confirm(`Remove Backup Key ${index}?`)) {
-        apiKeys.splice(index, 1);
-        debouncedSave();
-        renderKeysUI();
-      }
+      showConfirmModal(
+        'Remove Backup Key',
+        `Are you sure you want to remove Backup Key ${index}? This action cannot be undone.`,
+        () => {
+          apiKeys.splice(index, 1);
+          debouncedSave();
+          renderKeysUI();
+        }
+      );
     });
   }
 
@@ -279,28 +293,32 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     const val = modelInput.value;
     if (provId === 'auto' || val === 'auto') return;
 
-    if (confirm(`Delete model '${val}'?`)) {
-      // If it exists in custom, remove it
-      if (customModelsRegistry[provId]) {
-        customModelsRegistry[provId] = customModelsRegistry[provId].filter(m => m !== val);
-      }
-
-      // If it is built-in, add to hidden registry
-      const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
-      const isBuiltin = models.some(m => m.id === val);
-      if (isBuiltin) {
-        if (!hiddenModelsRegistry[provId]) hiddenModelsRegistry[provId] = [];
-        if (!hiddenModelsRegistry[provId].includes(val)) {
-          hiddenModelsRegistry[provId].push(val);
+    showConfirmModal(
+      'Delete Custom Model',
+      `Are you sure you want to delete the model '${val}'?`,
+      () => {
+        // If it exists in custom, remove it
+        if (customModelsRegistry[provId]) {
+          customModelsRegistry[provId] = customModelsRegistry[provId].filter(m => m !== val);
         }
-      }
 
-      keyData.model = 'auto';
-      modelInput.value = 'auto';
-      populateModels();
-      checkCustomModelStatus();
-      debouncedSave();
-    }
+        // If it is built-in, add to hidden registry
+        const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
+        const isBuiltin = models.some(m => m.id === val);
+        if (isBuiltin) {
+          if (!hiddenModelsRegistry[provId]) hiddenModelsRegistry[provId] = [];
+          if (!hiddenModelsRegistry[provId].includes(val)) {
+            hiddenModelsRegistry[provId].push(val);
+          }
+        }
+
+        keyData.model = 'auto';
+        modelInput.value = 'auto';
+        populateModels();
+        checkCustomModelStatus();
+        debouncedSave();
+      }
+    );
   });
 
   apiKeyInput.value = keyData.apiKey || '';
@@ -417,11 +435,15 @@ function attachEventListeners() {
     }
   });
   deleteAllBtn.addEventListener('click', () => {
-    if (confirm("Are you sure?")) {
-      apiKeys = [createEmptyKey()];
-      renderKeysUI();
-      debouncedSave();
-    }
+    showConfirmModal(
+      'Delete All API Keys',
+      'Are you sure you want to delete ALL configured API keys? This action cannot be undone.',
+      () => {
+        apiKeys = [createEmptyKey()];
+        renderKeysUI();
+        debouncedSave();
+      }
+    );
   });
   failoverCheckbox.addEventListener('change', () => {
     failoverEnabled = failoverCheckbox.checked;
@@ -433,17 +455,59 @@ function attachEventListeners() {
   });
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', () => {
-      if (confirm('Clear all cached translations? This will remove all saved video signatures.')) {
-        browser.runtime.sendMessage({ type: 'YOUSUB_CLEAR_CACHE' }).then((response) => {
-          if (response && response.success) {
-            alert(`Cache cleared successfully! Removed ${response.count || 0} entries.`);
-          } else {
-            alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
-          }
-        });
-      }
+      showConfirmModal(
+        'Clear Translation Cache',
+        'Clear all cached translations? This will remove all saved video signatures and require re-translating videos the next time you watch them.',
+        () => {
+          browser.runtime.sendMessage({ type: 'YOUSUB_CLEAR_CACHE' }).then((response) => {
+            if (response && response.success) {
+              alert(`Cache cleared successfully! Removed ${response.count || 0} entries.`);
+            } else {
+              alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
+            }
+          });
+        }
+      );
     });
   }
+}
+
+/**
+ * Shows a custom confirmation modal
+ * @param {string} title
+ * @param {string} message
+ * @param {function} onConfirm
+ */
+function showConfirmModal(title, message, onConfirm) {
+  if (!confirmModal) return;
+
+  modalTitle.textContent = title;
+  modalMessage.textContent = message;
+
+  const handleConfirm = () => {
+    closeModal();
+    onConfirm();
+  };
+
+  const handleCancel = () => {
+    closeModal();
+  };
+
+  const closeModal = () => {
+    confirmModal.classList.add('hidden');
+    modalConfirmBtn.removeEventListener('click', handleConfirm);
+    modalCancelBtn.removeEventListener('click', handleCancel);
+  };
+
+  modalConfirmBtn.addEventListener('click', handleConfirm);
+  modalCancelBtn.addEventListener('click', handleCancel);
+
+  // Close on backdrop click
+  confirmModal.onclick = (e) => {
+    if (e.target === confirmModal) closeModal();
+  };
+
+  confirmModal.classList.remove('hidden');
 }
 
 function debouncedSave() {

@@ -113,10 +113,10 @@ export const Cache = {
     if (!videoId) return;
     const res = await browser.storage.local.get(null);
     const keysToRemove = Object.keys(res).filter(k => k.startsWith(`${CACHE_PREFIX}${videoId}_`));
-    
+
     if (keysToRemove.length > 0) {
       await browser.storage.local.remove(keysToRemove);
-      
+
       const metaRes = await browser.storage.local.get([META_KEY]);
       let meta = metaRes[META_KEY];
       if (meta && meta.keys) {

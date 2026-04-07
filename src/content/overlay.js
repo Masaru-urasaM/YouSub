@@ -107,7 +107,18 @@
 
       var msgEl = document.createElement('div');
       msgEl.className = 'yousub-status-msg yousub-status-' + (type || 'info');
-      msgEl.textContent = message;
+      msgEl.innerHTML = message; // Use innerHTML to allow links/buttons
+
+      // Enable click handling for specialized actions (e.g. Open Settings)
+      var actionLink = msgEl.querySelector('[data-action="open-settings"]');
+      if (actionLink) {
+        actionLink.style.cursor = 'pointer';
+        actionLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          browser.runtime.sendMessage({ type: 'YOUSUB_OPEN_SETTINGS' });
+        });
+      }
 
       statusContainer.appendChild(msgEl);
 

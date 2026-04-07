@@ -91,6 +91,18 @@
   color: #fff;
   animation: yousub-fade-in 0.3s ease;
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  pointer-events: auto; /* Enable click/hover for interactive messages (Phase 33) */
+}
+
+.yousub-status-msg [data-action] {
+  text-decoration: underline;
+  margin-left: 5px;
+  opacity: 0.85;
+}
+
+.yousub-status-msg [data-action]:hover {
+  opacity: 1;
+  color: #e2e8f0;
 }
 
 .yousub-status-info { background: rgba(3, 169, 244, 0.9); }     /* Blue */

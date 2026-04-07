@@ -1,26 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>YouSub</title>
   <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <div class="container">
     <div class="header">
       <img src="../../assets/icons/icon48.png" alt="YouSub" class="logo">
       <h1>YouSub</h1>
     </div>
-    
+
     <div class="content">
       <div id="health-status" class="health-indicator hidden">
         <span class="health-dot"></span>
         <div id="health-text">Checking APIs...</div>
       </div>
-      
+
       <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
       <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Page Cache</button>
-      
+
       <div id="loading" class="hidden">
         <div class="spinner"></div>
         <p id="loading-text">Extracting...</p>
@@ -35,12 +37,25 @@
       </div>
 
       <hr class="divider">
-      
+
       <button id="open-settings-btn" class="secondary-btn">Open Settings</button>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h3 id="modal-title">Confirm</h3>
+      <p id="modal-message">Are you sure?</p>
+      <div class="modal-footer">
+        <button id="modal-cancel-btn" class="secondary-btn">No</button>
+        <button id="modal-confirm-btn" class="secondary-btn danger-btn">Yes</button>
+      </div>
     </div>
   </div>
 
   <script src="../shared/libs/browser-polyfill.js"></script>
   <script src="popup.js" type="module"></script>
 </body>
+
 </html>

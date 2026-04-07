@@ -14,16 +14,14 @@ import { HealthManager } from './health.js';
  * 5. Verify results, fallback to original on persistent failure.
  */
 
-const MAX_LINES_PER_BATCH = 100;
+const MAX_LINES_PER_BATCH = 500;
 const RETRY_ATTEMPTS = 1; // Number of retries with smaller chunks on mismatch
-
-
 
 /**
  * Main translation entry point.
  */
-export async function translate(texts, sourceLang, targetLang, tabId = null) {
-  if (!texts || texts.length === 0) return [];
+export async function translate(texts, sourceLang, targetLang, tabId = null, onBatchComplete = null) {
+  if (!texts || texts.length === 0) return { translated: [], hadFallback: false };
 
   const src = sourceLang || 'auto';
   const tgt = targetLang || 'vi';
@@ -31,74 +29,63 @@ export async function translate(texts, sourceLang, targetLang, tabId = null) {
   Logger.info('Translator', `Translating ${texts.length} lines [${src} → ${tgt}]`);
   sendDebugLog(tabId, `Starting translation of ${texts.length} lines → ${tgt}`, '#2dd4bf', true);
 
-  const apiKeys = await APIManager.getValidKeys();
-  if (apiKeys.length === 0) {
+  const apiKeys = await APIManager.getValidKeys(); // Phase 13.8: Use all configured keys
+  if (!apiKeys || apiKeys.length === 0) {
     Logger.warn('Translator', 'No API keys configured. Returning original texts.');
     return { translated: texts, hadFallback: true };
   }
 
-  // Split into batches
-  const batches = [];
-  for (let i = 0; i < texts.length; i += MAX_LINES_PER_BATCH) {
-    batches.push(texts.slice(i, i + MAX_LINES_PER_BATCH));
-  }
+  const finalResults = new Array(texts.length).fill(null);
+  let globalHadFallback = false;
 
-  const results = [];
-  let hadFallback = false;
-
-  // 1.5 Generate Context Summary
   const context = await generateContextSummary(texts, apiKeys, tabId, src, tgt);
   sendDebugLog(tabId, `Context Summary Ready: ${context.substring(0, 100)}...`, '#6366f1');
 
-  // Process each batch
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    Logger.info('Translator', `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)`);
-    sendDebugLog(tabId, `Processing batch ${i + 1}/${batches.length} (${batch.length} lines)...`, '#a855f7');
+  // Process in batches of 500
+  for (let i = 0; i * MAX_LINES_PER_BATCH < texts.length; i++) {
+    const startIndex = i * MAX_LINES_PER_BATCH;
+    const batch = texts.slice(startIndex, startIndex + MAX_LINES_PER_BATCH);
+    
+    Logger.info('Translator', `Processing batch ${i + 1} (${batch.length} lines, start: ${startIndex})`);
+    sendDebugLog(tabId, `Processing batch ${i + 1} (${batch.length} lines)...`, '#a855f7');
 
-    const translatedResult = await translateBatchWithFailover(batch, src, tgt, apiKeys, tabId, context);
+    const result = await translateBatchWithFailover(batch, startIndex, src, tgt, apiKeys, tabId, context);
+    
+    // Merge batch results into final list
+    result.translated.forEach((t, j) => {
+      finalResults[startIndex + j] = t;
+    });
 
-    // Ensure we always have a result (original strings if LLM failed)
-    if (translatedResult && translatedResult.lines && translatedResult.lines.length === batch.length) {
-      results.push(...translatedResult.lines);
-      if (translatedResult.isPartial) {
-        hadFallback = true;
-        Logger.warn('Translator', `Batch ${i + 1} had a partial response. hadFallback activated to avoid caching.`);
-      }
-    } else {
-      hadFallback = true;
-      const reason = !translatedResult ? "Failover exhausted or provider error" : `Line mismatch (Expected ${batch.length})`;
-      Logger.error('Translator', `Batch ${i + 1} failed Line Count check. ${reason}. Using original text.`);
-      sendDebugLog(tabId, `Batch ${i + 1} FAILED: ${reason}. Using original text.`, '#f43f5e', true);
-      results.push(...batch);
+    if (result.hadFallback) globalHadFallback = true;
+
+    if (typeof onBatchComplete === 'function') {
+      onBatchComplete(startIndex, result.translated);
     }
   }
 
-  return { translated: results, hadFallback };
+  return { translated: finalResults, hadFallback: globalHadFallback };
 }
 
 /**
  * Process a single batch of lines, trying different providers on failure.
  */
-async function translateBatchWithFailover(lines, src, tgt, apiKeys, tabId, context) {
+async function translateBatchWithFailover(lines, startIndex, src, tgt, apiKeys, tabId, context) {
   const systemPrompt = `You are a professional subtitle translator. 
 VIDEO CONTEXT:
 ${context}
 
-Translate the following subtitle lines from ${src} to ${tgt}. The returned result must be 100% in the ${tgt} language, and cannot be in any other language.
+Translate the following subtitle lines from ${src} to ${tgt}.
 RULES:
-1. Translate each line independently.
-2. PRESERVE THE LINE COUNT EXACTLY. You MUST return exactly ${lines.length} lines.
-3. Use the following format for each line: {Line Number}| {Translated Text}
-   Example: 1| Hello, 2| Good morning
-   * If a line is empty, return only the line number followed by a pipe and an empty string (e.g. 5| ). 
-4. Each output line should correspond to exactly one input line.
-5. Do NOT add any explanations, numbering, or citations.
-6. Do NOT merge lines. Never merge 2 lines into 1, even if the content is related, even if the speaker is the same, even if the content is a continuation of the previous line. This must be ABSOLUTELY followed.
-7. Return ONLY the translated lines in the specified format.
-8. UNFILTERED & FAITHFUL: Preserve all profanity, slang, and offensive language as-is. Do NOT censor, refine, or "beautify" the translation. If the source is vulgar, the translation MUST be equally vulgar in ${tgt}. 100% honesty to the source is mandatory, even if it is a swear word, slur, curse, profanity, or any other offensive, criminal, illegal language.`;
+1. PRESERVE THE LINE COUNT EXACTLY. Return exactly ${lines.length} lines.
+2. REQUIRED FORMAT: [#ID] {Translated Text}
+   Example: [#12] Hello, [#13] Good morning
+3. THE ID TAG IS A FIXED POINTER. The ID refers to the absolute sentence number in the video. 
+   If you merge content, you MUST still provide an entry for every ID (e.g., leave the skipped ID with empty content).
+4. ABSOLUTELY NO RENUMBERING. Do not start from 1 unless the first line in this list is actually the first line of the video.
+5. Return ONLY the translated lines. No explanations.
+6. UNFILTERED & FAITHFUL: Preserve all profanity and slang. 100% honesty to the source is mandatory.`;
 
-  const userPrompt = lines.map((l, i) => `${i + 1}| ${l}`).join('\n');
+  const userPrompt = lines.map((l, i) => `[#${startIndex + i + 1}] ${l}`).join('\n');
 
   // Loop through available keys until success
   for (let k = 0; k < apiKeys.length; k++) {
@@ -122,62 +109,58 @@ RULES:
       sendDebugLog(tabId, `Request with ${key.provider} (${key.model}) returned success=${!!result.success}`, '#94a3b8');
 
       if (result.success && result.text) {
+        // Log Raw Response for developer visibility
+        sendDebugLog(tabId, `RAW RESPONSE:\n${result.text}`, '#6366f1');
+
         // 1. Clean response (Markdown, noise, etc.)
         const cleanedText = cleanResponse(result.text);
 
-        // 2. Parse result lines by EXACT Line Number
-        // NEW: Smart Regex Parser (diệt lời nguyền 9 câu)
-        // Quét toàn bộ text để tìm các mẫu: [Số] | [Nội dung]
-        // Regex này chấp nhận mọi kiểu khoảng trắng và không bị ngắt bởi dấu xuống dòng
-        const regex = /(\d+)\s*[|]\s*([\s\S]*?)(?=\s*\d+\s*[|]|$)/g;
+        // 2. Parse result lines by EXACT Line Tag ([#ID])
+        const regex = /\[#(\d+)\]\s*([\s\S]*?)(?=\s*\[#\d+\]|$)/g;
         const parsedMap = {};
         let validLinesCount = 0;
 
-        const matches = [...cleanedText.matchAll(regex)];
-        
-        matches.forEach(match => {
+        let match;
+        while ((match = regex.exec(cleanedText)) !== null) {
           const numStr = match[1];
           const content = match[2].trim();
-          const idx = parseInt(numStr, 10) - 1; // 0-indexed
+          const parsedId = parseInt(numStr, 10);
+          const idx = parsedId - startIndex - 1; // Map absolute ID → batch relative index (0-indexed)
 
-          // Chỉ chấp nhận nếu chỉ số nằm trong phạm vi của batch hiện tại
           if (idx >= 0 && idx < lines.length && parsedMap[idx] === undefined) {
             parsedMap[idx] = content;
             validLinesCount++;
           }
-        }); 
-        
+        }
+
         // Threshold: at least 50% must be parsed correctly to consider this a "success".
         // If it's the last API key, accept whatever we got instead of throwing it all away.
         const threshold = Math.max(1, Math.floor(lines.length * 0.5));
 
         if (validLinesCount >= threshold || k === apiKeys.length - 1) {
-          // Accept the result. Pad missing or empty lines with the original text (user requested fallback to original without shifting).
+          // Accept the result. Pad missing or empty lines with the original text
           let resultLines = lines.map((originalText, idx) => {
-            return parsedMap[idx] && parsedMap[idx].trim() !== "" ? parsedMap[idx] : originalText;
+            return parsedMap[idx] !== undefined && parsedMap[idx].trim() !== "" ? parsedMap[idx] : originalText;
           });
 
-          let isPartial = false;
+          let hadFallback = false;
           if (validLinesCount < lines.length) {
-            isPartial = true;
+            hadFallback = true;
             Logger.warn('Translator', `Partial translation from ${key.provider}: ${validLinesCount}/${lines.length} lines. Missing filled with original text.`);
             sendDebugLog(tabId, `Partial: ${validLinesCount}/${lines.length} lines. Missing padded with original.`, '#f59e0b');
           }
 
           await HealthManager.report(key.provider, key.apiKey, true, duration);
-          return { lines: resultLines, isPartial };
+          return { translated: resultLines, hadFallback };
         } else {
           Logger.warn('Translator', `Severe line mismatch with ${key.provider}. Got ${validLinesCount}/${lines.length}. Failing over.`);
-          Logger.info('Translator', 'Raw result snippet (first 100 chars): ' + result.text.substring(0, 100));
           sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${lines.length}, got ${validLinesCount}.`, '#f59e0b');
-          sendDebugLog(tabId, `Raw Response Sample: ${result.text.substring(0, 200)}...`, '#94a3b8');
           await HealthManager.report(key.provider, key.apiKey, false, duration);
         }
       } else {
         Logger.warn('Translator', `Provider ${key.provider} failed: ${result.message}`);
         await HealthManager.report(key.provider, key.apiKey, false, duration);
 
-        // If it's a structural failure (Invalid Key, Permissions), mark it
         if (result.message.includes('API key')) {
           await APIManager.markKeyFailed(key.provider, key.apiKey, result.message);
         }
@@ -191,7 +174,7 @@ RULES:
     Logger.info('Translator', `Failover: Trying next available key if any...`);
   }
 
-  return null; // Signals failure to the caller
+  return { translated: lines, hadFallback: true };
 }
 
 /**
@@ -201,7 +184,7 @@ async function generateContextSummary(texts, apiKeys, tabId, src, tgt) {
   const fullTranscript = texts.join('\n');
   const summaryPrompt = `You are a professional content analyzer.
 Below is the FULL transcript of a video in ${src}. 
-Provide a 2-3 sentence summary in English of the video's topic, context, and key terms to help a translator keep consistency (especially for pronouns and specialized vocabulary). 
+Provide a about 200 words summary in English of the video's topic, context, and key terms to help a translator keep consistency (especially for pronouns and specialized vocabulary). 
 Return ONLY the summary.`;
 
   sendDebugLog(tabId, "Analyzing FULL transcript for video context...", "#3b82f6");

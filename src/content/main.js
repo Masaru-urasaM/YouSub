@@ -98,21 +98,33 @@
     
     if (YS.Overlay) YS.Overlay.showStatus('Translating...', 'info', 2000);
     
-    // requestTranslation returns a Promise
-    var translatedEntries = await requestTranslation(entries, videoId, 'auto');
-    
-    if (translatedEntries && translatedEntries.length > 0) {
-      if (YS.Overlay) YS.Overlay.showStatus('Translation ready!', 'success', 2000);
-      YS._lastSubtitles = translatedEntries;
-    } else {
-      if (YS.Overlay) YS.Overlay.showStatus('Translation failed - showing original', 'warning', 4000);
-      YS._lastSubtitles = entries;
-    }
- 
-    // Ensure elements are bound and sync is running
+    // Phase 35: Initialize master list with original texts immediately
+    YS._lastSubtitles = entries.map(function(e) {
+      return {
+        startMs: e.startMs,
+        endMs: e.endMs,
+        original: e.text,
+        text: e.text // Start with original
+      };
+    });
+
+    // Start sync engine immediately with original text (will update as partials arrive)
     YS.VideoBinder.bind(function (video) {
       if (YS.SyncEngine) YS.SyncEngine.start(YS._lastSubtitles, video);
     });
+
+    // requestTranslation returns a Promise (for final status/completion)
+    var finalTranslated = await requestTranslation(entries, videoId, 'auto');
+    
+    if (finalTranslated && finalTranslated.length > 0) {
+      if (YS.Overlay) YS.Overlay.showStatus('Translation complete!', 'success', 2000);
+      // Final merge (safety net)
+      YS._lastSubtitles = finalTranslated;
+      if (YS.SyncEngine) YS.SyncEngine.updateSubtitles(YS._lastSubtitles);
+    } else {
+      // Partial results will still be there in _lastSubtitles
+      console.warn('[YouSub] Main: Final translation result was empty, but partials may have updated.');
+    }
 
     // Final visibility sync
     browser.storage.local.get(['yousub_translation_enabled']).then(function(res) {
@@ -255,6 +267,25 @@
       const { msg, color, bold } = message;
       const style = `color: ${color || '#fff'}; ${bold ? 'font-weight: bold;' : ''}`;
       console.log(`%c[YouSub-Bg] ${msg}`, style);
+    } else if (message.type === 'YOUSUB_TRANSLATE_PARTIAL') {
+      const { videoId, startIndex, translated } = message;
+      const currentVideoId = YS.PageDetector.getCurrentVideoId();
+      
+      // Safety check: ensure we are on the same video and have a base list
+      if (videoId === currentVideoId && YS._lastSubtitles && Array.isArray(translated)) {
+        console.log('[YouSub] Partial translation received. Merging batch at index ' + startIndex);
+        
+        translated.forEach((text, i) => {
+          if (YS._lastSubtitles[startIndex + i]) {
+            YS._lastSubtitles[startIndex + i].text = text;
+          }
+        });
+
+        // Live update the engine
+        if (YS.SyncEngine) {
+          YS.SyncEngine.updateSubtitles(YS._lastSubtitles);
+        }
+      }
     }
   });
 

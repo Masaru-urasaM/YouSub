@@ -10,7 +10,7 @@ export const Providers = {
    */
   async testApiKey(providerId, modelId, apiKey) {
     const prompt = "Respond with only: OK";
-    return this.chat(providerId, modelId, apiKey, prompt, { temperature: 0 });
+    return this.chat(providerId, modelId, apiKey, prompt, { temperature: 0, maxTokens: 100 });
   },
 
   /**
@@ -44,8 +44,8 @@ export const Providers = {
 
     const endpoint = providerObj.endpoint;
     const style = providerObj.apiStyle;
-    const timeoutMsg = options.timeoutMsg || 'Request timed out (60s)';
-    const timeoutMs = options.timeoutMs || 60000;
+    const timeoutMsg = options.timeoutMsg || 'Request timed out (120s)';
+    const timeoutMs = options.timeoutMs || 120000;
 
     try {
       const controller = new AbortController();
@@ -81,7 +81,7 @@ export const Providers = {
         { role: 'system', content: options.systemPrompt || "You are a helpful assistant." },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 32768,
+      max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3
     };
 
@@ -108,9 +108,15 @@ export const Providers = {
       systemInstruction: systemInstruction,
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        maxOutputTokens: 32768,
+        maxOutputTokens: options.maxTokens || 65000,
         temperature: options.temperature ?? 0.3
-      }
+      },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+      ]
     };
 
     console.log(`%c[YouSub-API] Gemini Request (${model}):`, 'color: #10b981; font-weight: bold;', {
@@ -130,7 +136,7 @@ export const Providers = {
     const payload = {
       model: model,
       system: options.systemPrompt || "",
-      max_tokens: 32768, 
+      max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3,
       messages: [{ role: 'user', content: prompt }]
     };
@@ -172,7 +178,11 @@ export const Providers = {
         if (text) {
           return { success: true, message: 'Success', model: modelId, text: text.trim() };
         } else {
-          return { success: false, message: 'Empty response text from provider', model: modelId };
+          let errorMsg = 'Empty response text from provider';
+          if (style === 'gemini' && data.candidates?.[0]?.finishReason) {
+            errorMsg += ` (FinishReason: ${data.candidates[0].finishReason})`;
+          }
+          return { success: false, message: errorMsg, model: modelId };
         }
       } catch (e) {
         return { success: false, message: 'Parse error', model: modelId };
