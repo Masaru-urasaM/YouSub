@@ -6,6 +6,115 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 35.10 — Dual Subtitles & Cache Transparency (2026-04-07)
+
+**Added**
+- **Cache Transparency**: The extension now explicitly notifies the user when subtitles are loaded from the local cache instead of via a live API call ("Loaded from cache" vs "Translation complete!").
+- **Cache Hit Indicator**: Added a `fromCache` flag to background translation responses to inform the content script of the data source.
+- **Dual Mode Real-time Toggle**: Content script now listens for `YOUSUB_TOGGLE_DUAL_MODE` and updates the display immediately without requiring a page refresh or re-translation.
+
+**Changed**
+- Updated `service-worker.js` to pass source metadata back to the requester.
+- Refactored `main.js` to handle real-time configuration changes for dual-mode display.
+
+**Fixed during implementation**
+- Resolved the "Ghost Translation" confusion where translations would appear even with all API keys disabled (due to silent cache hits).
+
+### Phase 35.9 — Pipeline Initialization & Message Sync (2026-04-07)
+
+**Added**
+- **Cache-Busting Loader**: Implemented a timestamp query parameter for the main content script import to bypass browser module caching.
+- **Message Type Synchronization**: Unified translation trigger messages between Popup (`TOGGLE`) and Content Script (`START/TOGGLE`).
+
+**Changed**
+- Refactored `main.js` storage access to use traditional callback patterns for better reliability in unstable background environments.
+- Enhanced diagnostic logging throughout the initialization sequence.
+
+**Fixed during implementation**
+- Fixed a critical "unresponsive button" bug caused by a mismatch in message type identifiers between the popup UI and the content script.
+
+### Phase 35.8 — Strict Error Enforcement (2026-04-07)
+
+**Added**
+- Strict error propagation: `translator.js` now returns `success: false` if no API keys are active.
+- Pipeline hard-stop: `main.js` now terminates the translation process immediately on configuration/API errors to prevent "silent success" with original text.
+- High-visibility Error UI: Updated `Overlay` to show persistent red error messages with deep-links to Settings.
+- Popup "All API Keys Disabled" status: New red indicator in the popup health dashboard.
+
+**Changed**
+- Refactored `requestTranslation` (main.js) to properly return structured failure objects.
+- Updated `service-worker.js` to avoid caching partial or failed translation attempts.
+
+### Phase 35.7 — Cache & Pipeline Reliability (2026-04-07)
+
+**Added**
+- **Real-time Popup UI Sync**: Popup button text now updates instantly when the target language is changed in the Settings tab.
+- **Broadcast Invalidation**: Added a broadcast mechanism from background to content scripts to notify all open YouTube tabs when the translation cache is cleared.
+- **Hard State Reset**: Content scripts now perform a complete cleanup of local subtitle state when starting a new translation or receiving a cache clear notification, preventing "stale" subtitles from appearing.
+
+**Changed**
+- **Incremental Merge Logic**: Replaced all-or-nothing subtitle updates with `SyncEngine.updatePartial`, allowing batch-by-batch merging of translated strings into the master subtitle list.
+- **Explicit Target Language Control**: Refactored the core translation pipeline (`main.js`) to pass the target language explicitly from message trigger to final API call.
+
+**Fixed during implementation**
+- Resolved the "Stale Japanese" issue where subtitles were stuck in the content script memory even after clearing cache.
+- Fixed a bug where partial translation batches would overwrite the entire master subtitle list.
+
+### Phase 35.6 — Live API Health & Status Sync (2026-04-07)
+
+**Added**
+- **Live UI Updates**: Implemented a storage listener in the Options page to reflect API key status changes in real-time.
+- **Visual Pulse Alerts**: Added a `pulse-red` animation to the "Failed" status text for immediate user awareness.
+- **Non-Destructive Sync**: Status updates are targeted to specific DOM elements, ensuring that user focus and unsaved input in API key fields are preserved.
+
+**Changed**
+- **Broader Error Detection**: Updated `translator.js` to automatically mark keys as "failed" in the UI for a wider range of critical errors, including rate limits, quota exhaustion, and missing models.
+
+**Fixed during implementation**
+- Resolved the "Stale Settings" issue where the API settings page wouldn't reflect failures that occurred while the page was already open.
+
+### Phase 35.5 — Detailed API Failure Notifications (2026-04-07)
+
+**Added**
+- **Detailed Failure Tracking**: Background engine now tracks exactly which provider and model caused an API error during translation.
+- **Failover Diagnostics**: If all translation attempts fail, the UI now displays a list of the specific provider/model pairs that failed (e.g., `Failed: [Groq/llama3, OpenAI/gpt4]`).
+- **Error Categories**: Added `failureReason` flag (`NO_API_KEYS`, `ALL_PROVIDERS_FAILED`) for more precise UI messaging.
+
+**Changed**
+- **Actionable Error UI**: Replaced silent console warnings with high-visibility red status notifications on the video overlay.
+- **Interactive Settings Link**: Added a direct "Open Settings" link within the error message for immediate troubleshooting.
+
+**Fixed during implementation**
+- Resolved the "Silent Fallback" issue where the system would quietly revert to English subtitles when API keys were invalid, leaving the user confused.
+
+### Phase 35.4 — Smart Packaging & Production Logging (2026-04-07)
+
+**Added**
+- `IS_PRODUCTION` flag in `src/shared/constants.js`.
+- Intelligent build-time override in `scripts/package.js` that automatically sets `IS_PRODUCTION: true` inside the ZIP while keeping the source code as `false`.
+
+**Changed**
+- Updated `src/shared/logger.js` to silence non-ERROR logs when `IS_PRODUCTION` is true.
+
+**Tests**
+- Verified ZIP content: `src/shared/constants.js` correctly shows `IS_PRODUCTION: true`.
+- Verified local source: `src/shared/constants.js` remains `IS_PRODUCTION: false`.
+
+### Phase 35.3 — ESM Refactor & Architecture Modernization (2026-04-07)
+
+**Added**
+- **Dynamic Module Loader**: Created `src/content/loader.js` to enable ES Module support in Manifest V3 content scripts.
+- **ESM Migration**: Converted 9+ files (`main.js`, `overlay.js`, `sync-engine.js`, etc.) to standard `import/export` syntax.
+- **Unified Manifest**: Simplified `manifest.json` by migrating from a static list of scripts to a single entry point + `web_accessible_resources`.
+
+**Changed**
+- **Architecture**: Transitioned from global `window.YouSub` name-spacing to explicit module dependency management.
+- **Background SW**: Standardized all internal logic to use standard ESM imports.
+
+**Fixed during implementation**
+- Resolved: `SyntaxError: Cannot use import statement outside a module`.
+- Fixed race conditions and load-order issues inherent in legacy static script injection.
+
 ### Phase 35.2 — Global Absolute IDs & AI Transparency (2026-04-06)
 
 **Added**
@@ -134,7 +243,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 **Added**
 - **Overlay Loading Spinner**: Integrated a hardware-accelerated circular spinner into the subtitle overlay. It automatically appears during extraction and translation phases, providing immediate visual feedback.
-- **Dynamic Popup Toggle**: Refactor the "Get Subtitles" button into a persistent toggle labeled `TRANSLATE TO [LANGUAGE_NAME]`.
+- **Dynamic Popup Toggle**: Refactor the "Get Subtitles" button into a persistent toggle labeled `Translate to [LANGUAGE_NAME]`.
 - **Visual Toggle States**: Implemented distinct CSS states for the popup button: Active (Bright Crimson) and Inactive (Slate Grey), with hover transition effects.
 - **Auto-Pipeline Start**: Navigation to new YouTube videos now respects the global `yousub_translation_enabled` state, automatically triggering the translation pipeline if it was previously active.
 

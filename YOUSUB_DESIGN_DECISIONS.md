@@ -58,16 +58,14 @@ Include specific technical details and rationale.
 ## Part 3: Architecture Summary
 
 <!-- Update this checklist as decisions are made:
-
-- [ ] Language / Framework chosen
-- [ ] State management approach
-- [ ] Database / storage strategy
-- [ ] API / protocol design
-- [ ] Authentication / authorization
-- [ ] Testing strategy
-- [ ] Deployment / distribution
-- [ ] Logging / monitoring
--->
+- [x] Language / Framework chosen: Vanilla JS (EMAScript 2022+)
+- [x] State management approach: Message Passing + LocalStorage
+- [x] Database / storage strategy: chrome.storage.local
+- [x] API / protocol design: Custom Message Protocol
+- [x] Authentication / authorization: API Key BYOK (Bring Your Own Key)
+- [x] Testing strategy: Jest + Manual Verification
+- [x] Deployment / distribution: Unpacked Extension / ZIP Packaging
+- [x] Logging / monitoring: JSONL Logger (LocalStorage)
 
 ---
 

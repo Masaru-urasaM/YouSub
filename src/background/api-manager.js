@@ -34,15 +34,19 @@ export const APIManager = {
         
         if (configKeys.length === 0) return resolve([]);
 
-        // Filter by circuit breaker
-        const activeKeys = [];
-        for (const k of configKeys) {
+        // 3. Filter by circuit breaker (Parallelized)
+        const healthResults = await Promise.all(configKeys.map(async (k) => {
           const isOpen = await HealthManager.isCircuitOpen(k.provider, k.apiKey);
-          if (!isOpen) {
-            activeKeys.push(k);
-          } else {
-            Logger.warn('APIManager', `Skipping ${k.provider} (Circuit Open)`);
-          }
+          return { key: k, isOpen };
+        }));
+
+        const activeKeys = healthResults
+          .filter(r => !r.isOpen)
+          .map(r => r.key);
+
+        if (activeKeys.length === 0) {
+          Logger.warn('APIManager', 'All configured keys are in cooldown (Circuit Open).');
+          return resolve([]);
         }
 
         let finalKeys = [];
@@ -50,7 +54,7 @@ export const APIManager = {
         if (activeKeys.length <= 1 || !failoverEnabled) {
           finalKeys = activeKeys.slice(0, 1);
         } else {
-          // If failover is enabled, sort Backups by health score
+          // If failover is enabled, sort Backups by health score (Parallelized)
           const primary = activeKeys[0];
           const backups = activeKeys.slice(1);
 

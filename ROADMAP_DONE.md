@@ -189,7 +189,11 @@
 - **Hybrid Manifest**: Single `manifest.json` supports both Service Workers (Chrome/Edge) and Event Scripts (Firefox).
 - **ESM Integration**: Correctly handled polyfill loading in ESM background worker and content scripts.
 - **Verified**: 31 unit tests passing with the new unified API structure.
-**Definition of Done**: Single codebase running on 3 browsers.
+- **Definition of Done**: Single codebase running on 3 browsers.
+
+### Phase 35.4: Smart Packaging & Production Logging — Multi-Environment Release
+**Status**: DONE (2026-04-07)
+**Summary**: Implemented an automated build-time environment switching mechanism. Added `IS_PRODUCTION` flag to `constants.js` and updated `logger.js` to suppress console output in production. Modified `package.js` to automatically toggle this flag during ZIP creation while leaving development source code untouched. Cleaned up manifest permissions by removing unused `lingva.ml` host access to ensure a faster, more secure store review process. Created `STORE_ASSETS.md` with full marketing metadata and privacy policy templates.
 
 ### Phase 23: Visual Polish + Packaging — Production Release
 **Status**: DONE (2026-04-04)
@@ -269,3 +273,22 @@
 ### Phase 35.2 — Global Absolute IDs & AI Transparency
 **Status**: DONE (2026-04-07)
 **Summary**: Implemented video-wide absolute IDs (e.g., [#501] for the second batch) to eliminate AI "relative list" hallucinations. Added Raw AI Response streaming to the YouTube console for developer transparency. Upgraded the `Logger` utility with `tail()` and `export()` methods for easier debugging. Unified `logger.js` for both Background and Content script contexts.
+
+### Phase 35.3 — ESM Refactor & Architecture Modernization
+**Status**: DONE (2026-04-07)
+**Summary**: Migrated all content scripts from legacy IIFE/globals to modern ES Modules. Implemented a dynamic `loader.js` entry point to bypass Manifest V3 content script limitations. Standardized the codebase to use `import/export` across both Background and Content scripts, resolving syntax errors and improving code maintainability.
+### Phase 35.7 — Cache Invalidation & Pipeline Reliability
+**Status**: DONE (2026-04-07)
+**Summary**: Resolved "stale" subtitle issues by implementing a broadcast-based cache invalidation system. When the translation cache is cleared, all active YouTube tabs are now notified to perform a hard reset of their internal subtitle state, ensuring new translations always start from a clean slate.
+
+### Phase 35.8 — Strict Error Enforcement (No API Case)
+**Status**: DONE (2026-04-07)
+**Summary**: Hardened the translation pipeline against configuration errors. The extension now explicitly fails with an actionable "No API Keys" error message and deep-links to Settings when no valid keys are configured, preventing silent fallback to original text.
+
+### Phase 35.9 — Pipeline Initialization & Message Sync
+**Status**: DONE (2026-04-07)
+**Summary**: Fixed a critical "unresponsive button" bug by synchronizing message types (`TOGGLE` vs `START`) between the Popup and Content Script. Implemented a cache-busting loader for `main.js` to ensure the latest ESM code is always executed by the browser.
+
+### Phase 35.10 — Dual Subtitles & Cache Transparency
+**Status**: DONE (2026-04-07)
+**Summary**: Fully resolved the Dual Subtitles toggle issue by implementing real-time message handling in `main.js`. Introduced "Cache Transparency" to eliminate user confusion regarding "ghost translations"; the UI now explicitly indicates when a translation is being served from the local cache ("Loaded from cache").

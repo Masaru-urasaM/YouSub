@@ -1,4 +1,5 @@
 import '../shared/libs/browser-polyfill.js';
+import { Constants } from './constants.js';
 
 const MAX_LOGS = 1000;
 
@@ -13,13 +14,18 @@ export const Logger = {
     };
     
     // Print to console for human developer / LLM review
+    // Only print INFO/WARN/DEBUG in non-production mode
+    const isProd = Constants && Constants.IS_PRODUCTION;
     const output = JSON.stringify(entry);
+    
     if (level === 'ERROR') {
       console.error(output);
-    } else if (level === 'WARN') {
-      console.warn(output);
-    } else {
-      console.log(output);
+    } else if (!isProd) {
+      if (level === 'WARN') {
+        console.warn(output);
+      } else {
+        console.log(output);
+      }
     }
 
     // Attempt to buffer to storage

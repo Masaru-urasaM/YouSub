@@ -18,45 +18,64 @@ document.addEventListener('DOMContentLoaded', function () {
   const modalCancelBtn = document.getElementById('modal-cancel-btn');
   const modalConfirmBtn = document.getElementById('modal-confirm-btn');
 
+  // Phase 35.8: Add fail-safe timeout for "Checking APIs..."
+  const healthTimeout = setTimeout(() => {
+    if (healthStatus.textContent.includes('Checking')) {
+      console.warn('[YouSub] Popup: Health check timed out. Showing fallback.');
+      healthStatus.textContent = '● System Ready (Check Skipped)';
+      healthStatus.className = 'status-dot neutral';
+    }
+  }, 2000);
+
   let currentLang = 'vi';
 
   // Load and apply initial states
   browser.storage.local.get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled']).then(async function (res) {
-    currentLang = res.targetLang || 'vi';
+    // 1. Immediate UI Updates (No await)
+    updateLanguageUI(res.targetLang);
+    dualModeToggle.checked = !!res.yousub_dual_mode;
+    
+    // Clear timeout as we got data
+    clearTimeout(healthTimeout);
+    checkHealth(res.yousub_api_keys || []);
 
+    // 2. Async/Optional Updates (Wrapped in try-catch to prevent UI freeze)
+    try {
+      const videoId = await getCurrentVideoId();
+      if (videoId) {
+        clearPageCacheBtn.classList.remove('hidden');
+
+        if (res.yousub_translation_enabled) {
+          const check = await browser.runtime.sendMessage({
+            type: 'YOUSUB_CHECK_CACHE',
+            videoId,
+            targetLang: res.targetLang || 'vi'
+          });
+
+          if (check && check.exists) {
+            getSubBtn.classList.add('active');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
+    }
+  });
+
+  // Sync language changes from Options page in real-time
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.targetLang) {
+      updateLanguageUI(changes.targetLang.newValue);
+    }
+  });
+
+  function updateLanguageUI(newLang) {
+    currentLang = newLang || 'vi';
     // Update button text with full language name
     const langObj = YOUSUB_PROVIDERS.languages.find(l => l.code === currentLang);
     const langName = langObj ? langObj.name.toUpperCase() : currentLang.toUpperCase();
     getSubBtn.textContent = `Translate to ${langName}`;
-
-    // Update toggle state: ONLY active if global enabled is true AND it exists in cache
-    if (res.yousub_translation_enabled) {
-      const videoId = await getCurrentVideoId();
-      if (videoId) {
-        const check = await browser.runtime.sendMessage({
-          type: 'YOUSUB_CHECK_CACHE',
-          videoId,
-          targetLang: currentLang
-        });
-
-        if (check && check.exists) {
-          getSubBtn.classList.add('active');
-        } else {
-          // New video: Force inactive until clicked
-          getSubBtn.classList.remove('active');
-        }
-      }
-    }
-
-    dualModeToggle.checked = !!res.yousub_dual_mode;
-    checkHealth(res.yousub_api_keys || []);
-
-    // Show/Hide Clear Cache button
-    const videoId = await getCurrentVideoId();
-    if (videoId) {
-      clearPageCacheBtn.classList.remove('hidden');
-    }
-  });
+  }
 
   async function getCurrentVideoId() {
     try {
@@ -75,16 +94,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function checkHealth(keys) {
     const hasKeys = keys.length > 0;
-    const onlineKeys = keys.filter(k => k.status === 'success' || (k.key && !k.status)); // Simple heuristic
-    const allFailed = hasKeys && keys.every(k => k.status === 'failed');
+    const activeKeys = keys.filter(k => k.apiKey && k.apiKey.trim() !== '' && !k.disabled);
+    const onlineKeys = activeKeys.filter(k => k.status === 'success' || !k.status); 
+    const allDisabled = hasKeys && activeKeys.length === 0;
 
     healthStatus.classList.remove('hidden');
+    
     if (!hasKeys) {
       healthStatus.className = 'health-indicator health-error';
       healthText.textContent = 'API Not Configured';
-    } else if (allFailed) {
+    } else if (allDisabled) {
       healthStatus.className = 'health-indicator health-error';
-      healthText.textContent = 'All APIs Offline';
+      healthText.textContent = 'All API Keys Disabled';
     } else if (onlineKeys.length > 0) {
       healthStatus.className = 'health-indicator';
 

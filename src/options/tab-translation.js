@@ -40,6 +40,15 @@ export function initTranslationTab(saveIndicatorCallback) {
 
   loadSettings();
   attachEventListeners();
+
+  // Live Sync: Monitor background changes (e.g., API failures while user is watching)
+  if (typeof browser !== 'undefined' && browser.storage) {
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && (changes.yousub_api_keys || changes.yousub_health_stats)) {
+        updateRealtimeStatuses();
+      }
+    });
+  }
 }
 
 function loadSettings() {
@@ -133,6 +142,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const healthStatsText = clone.querySelector('.health-stats');
 
   const isPrimary = (index === 0);
+  rowDev.setAttribute('data-index', index);
   title.textContent = isPrimary ? "Primary Key:" : `Backup Key ${index}:`;
 
   if (keyData.disabled) {
@@ -422,7 +432,84 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     statusText.textContent = '-- Not tested --';
   }
 
+  // Set initial classes for real-time updates
+  if (keyData.status === 'failed') {
+    statusText.classList.add('pulse-red');
+  }
+
   return clone;
+}
+
+/**
+ * Updates only the status and health indicators of existing rows without full re-render.
+ * This preserves user focus and unsaved input in the fields.
+ */
+function updateRealtimeStatuses() {
+  browser.storage.local.get(['yousub_api_keys', 'yousub_health_stats']).then((items) => {
+    const keys = items.yousub_api_keys || [];
+    const healthStats = items.yousub_health_stats || {};
+
+    keys.forEach((keyData, index) => {
+      const row = container.querySelector(`.api-key-row[data-index="${index}"]`);
+      if (!row) return;
+
+      // Update Status Text
+      const statusText = row.querySelector('.status-text');
+      if (statusText) {
+        statusText.className = 'status-text';
+        if (keyData.status === 'ok') {
+          statusText.classList.add('ok');
+          statusText.textContent = keyData.statusMessage ? `OK (${keyData.statusMessage})` : 'OK';
+        } else if (keyData.status === 'failed') {
+          statusText.classList.add('failed');
+          statusText.classList.add('pulse-red');
+          statusText.textContent = keyData.statusMessage ? `Failed: ${keyData.statusMessage}` : 'Failed';
+        } else {
+          statusText.classList.add('untested');
+          statusText.textContent = '-- Not tested --';
+        }
+      }
+
+      // Update Health Indicator
+      const healthIndicator = row.querySelector('.health-indicator');
+      const healthStatsText = row.querySelector('.health-stats');
+      if (healthIndicator) {
+        const keyHash = `${keyData.provider}_${(keyData.apiKey || '').slice(-6)}`;
+        const stats = healthStats[keyHash];
+        
+        if (stats && (stats.successCount + stats.failCount) > 0) {
+          healthIndicator.classList.remove('hidden');
+          const total = stats.successCount + stats.failCount;
+          const rate = Math.round((stats.successCount / total) * 100);
+          const speed = Math.round(stats.avgTime || 0);
+
+          healthStatsText.textContent = `Success: ${rate}% • ${speed}ms`;
+          healthIndicator.className = 'health-indicator';
+          
+          if (Date.now() < (stats.circuitBreakerUntil || 0)) {
+            healthIndicator.classList.add('broken');
+            healthStatsText.textContent = `BROKEN (Cooldown until ${new Date(stats.circuitBreakerUntil).toLocaleTimeString()})`;
+          } else if (rate > 90) {
+            healthIndicator.classList.add('good');
+          } else if (rate > 60) {
+            healthIndicator.classList.add('fair');
+          } else {
+            healthIndicator.classList.add('poor');
+          }
+        } else {
+          healthIndicator.classList.add('hidden');
+        }
+      }
+    });
+
+    // Update the local apiKeys reference if the user is NOT actively typing
+    // We check if any input has focus
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+      // Don't merge data yet to avoid overwriting current input
+    } else {
+      apiKeys = keys;
+    }
+  });
 }
 
 function attachEventListeners() {

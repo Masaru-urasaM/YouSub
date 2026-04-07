@@ -1,9 +1,11 @@
 /**
  * service-worker.js — YouSub Background Service Worker
  *
- * Handles two message types from content scripts:
- *  1. YOUSUB_FETCH_TEXT          — proxy fetch to bypass page-level CSP/CORS
- *  2. YOUSUB_TRANSLATE_REQUEST   — translate subtitle strings via Lingva API
+ * Central router for all background operations:
+ * 1. Translation requests (with caching)
+ * 2. Proxy fetching for subtitle tracks
+ * 3. Cache management (clear, check, remove)
+ * 4. API Key testing
  */
 
 import '../shared/libs/browser-polyfill.js';
@@ -15,140 +17,119 @@ import { Cache } from './cache.js';
 Logger.info('ServiceWorker', 'Background Service Worker loaded.');
 
 // ---------------------------------------------------------------------------
-// Message router
+// Message Router
 // ---------------------------------------------------------------------------
 
 browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+  // Logger.info('ServiceWorker', `Received message: ${request.type}`);
 
-  // ------------------------------------------------------------------
-  // YOUSUB_FETCH_TEXT — Proxy fetch for content script (Phase 6)
-  // Uses credentials: 'include' to send YouTube cookies.
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_FETCH_TEXT') {
-    var shortUrl = request.url.substring(0, 100) + '...';
-    Logger.info('ServiceWorker', `Fetching URL: ${shortUrl}`);
+  try {
+    // 1. YOUSUB_TRANSLATE_REQUEST — Translate subtitle segments
+    if (request.type === 'YOUSUB_TRANSLATE_REQUEST') {
+      const { texts, videoId, sourceLang, targetLang } = request;
+      const tabId = sender.tab ? sender.tab.id : null;
 
-    fetch(request.url, { credentials: 'include' })
-      .then(function (response) {
-        Logger.info('ServiceWorker', `HTTP ${response.status} ${response.statusText} for: ${shortUrl}`);
-        if (!response.ok) {
-          throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+      // Check Cache first
+      Cache.get(videoId, sourceLang || 'auto', targetLang).then(cached => {
+        if (cached) {
+          Logger.info('ServiceWorker', `Cache HIT for ${videoId}. Skipping API.`);
+          sendResponse({ success: true, translated: cached, fromCache: true });
+          return;
         }
-        return response.text();
-      })
-      .then(function (text) {
-        Logger.info('ServiceWorker', `Fetch success. Body length: ${text.length} chars`);
-        if (text.length === 0) {
-          Logger.warn('ServiceWorker', 'WARNING — Response body is EMPTY (0 bytes)');
-        }
-        sendResponse({ success: true, text: text });
-      })
-      .catch(function (error) {
-        Logger.error('ServiceWorker', `Fetch FAILED: ${error.message}`);
-        sendResponse({ success: false, error: error.message });
+
+        // Cache MISS — Call translator
+        Logger.info('ServiceWorker', `Cache MISS for ${videoId}. Calling translator...`);
+        translate(texts, sourceLang, targetLang, tabId)
+          .then(result => {
+            // Only cache if fully successful (no fallback originals)
+            if (result.success && !result.hadFallback) {
+              Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+            }
+            sendResponse(result);
+          })
+          .catch(err => {
+            Logger.error('ServiceWorker', `Translation CRASH: ${err.message}`);
+            sendResponse({ success: false, failureReason: 'INTERNAL_ERROR', error: err.message });
+          });
+      }).catch(err => {
+        sendResponse({ success: false, failureReason: 'CACHE_ERROR', error: err.message });
       });
 
-    return true; // Keep channel open for async response
-  }
+      return true; // Keep channel open
+    }
 
-  // ------------------------------------------------------------------
-  // YOUSUB_TRANSLATE_REQUEST — Translate subtitle strings (Phase 7)
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_TRANSLATE_REQUEST') {
-    const { texts, videoId, sourceLang, targetLang } = request;
-    Logger.info('ServiceWorker', `Translate request — ${texts && texts.length} entries`);
-
-    // 1. Check Cache
-    Cache.get(videoId, sourceLang, targetLang).then(cached => {
-      if (cached) {
-        Logger.info('ServiceWorker', `Cache HIT for ${videoId}, skipped API call.`);
-        sendResponse({ success: true, translated: cached });
-        return;
-      }
-
-      // 2. Cache MISS — Call API
-      Logger.info('ServiceWorker', `Cache MISS for ${videoId}, calling translator...`);
-      translate(texts, sourceLang, targetLang, sender.tab.id, (startIndex, translatedBatch) => {
-        // Phase 35: Push partial result back to content script
-        browser.tabs.sendMessage(sender.tab.id, {
-          type: 'YOUSUB_TRANSLATE_PARTIAL',
-          videoId: videoId,
-          startIndex: startIndex,
-          translated: translatedBatch
-        }).catch(() => {
-          // Tab might be closed, ignore
-        });
-      })
-        .then(function (result) {
-          const { translated, hadFallback } = result;
-          Logger.info('ServiceWorker', `Translation complete — returning ${translated.length} entries (hadFallback: ${hadFallback})`);
-
-          // 3. Only cache if translation was fully successful (no fallback to originals)
-          if (!hadFallback) {
-            Cache.set(videoId, sourceLang, targetLang, translated);
-          } else {
-            Logger.warn('ServiceWorker', `Skipping cache for ${videoId} — translation had fallback batches.`);
-          }
-
-          sendResponse({ success: true, translated: translated, hadFallback: !!hadFallback });
+    // 2. YOUSUB_FETCH_TEXT — Proxy fetch to bypass CSP/CORS
+    if (request.type === 'YOUSUB_FETCH_TEXT') {
+      fetch(request.url, { credentials: 'include' })
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.text();
         })
-        .catch(function (error) {
-          Logger.error('ServiceWorker', `Translation error: ${error.stack}`);
-          sendResponse({ success: false, error: error.stack });
-        });
-    });
+        .then(text => sendResponse({ success: true, text }))
+        .catch(err => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
 
-    return true; // Keep channel open for async response
+    // 3. YOUSUB_CHECK_CACHE — Fast check if translation exists
+    if (request.type === 'YOUSUB_CHECK_CACHE') {
+      Cache.get(request.videoId, request.sourceLang || 'auto', request.targetLang)
+        .then(cached => sendResponse({ exists: !!cached }))
+        .catch(() => sendResponse({ exists: false }));
+      return true;
+    }
+
+    // 4. YOUSUB_CLEAR_VIDEO_CACHE — Reset cache for one video
+    if (request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
+      Cache.removeByVideoId(request.videoId)
+        .then(() => {
+          broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED', videoId: request.videoId });
+          sendResponse({ success: true });
+        })
+        .catch(err => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
+    // 5. YOUSUB_CLEAR_CACHE — Reset ALL cache
+    if (request.type === 'YOUSUB_CLEAR_CACHE') {
+      Cache.clearAll()
+        .then(count => {
+          broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED' });
+          sendResponse({ success: true, count });
+        })
+        .catch(err => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
+    // 6. YOUSUB_TEST_API_KEY — Test key in settings
+    if (request.type === 'YOUSUB_TEST_API_KEY') {
+      Providers.testApiKey(request.provider, request.model, request.apiKey)
+        .then(res => sendResponse(res))
+        .catch(err => sendResponse({ success: false, message: err.message }));
+      return true;
+    }
+
+    // 7. YOUSUB_OPEN_SETTINGS
+    if (request.type === 'YOUSUB_OPEN_SETTINGS') {
+      browser.runtime.openOptionsPage();
+      sendResponse({ success: true });
+      return true;
+    }
+
+  } catch (err) {
+    Logger.error('ServiceWorker', `Fatal Listener Error: ${err.message}`);
+    sendResponse({ success: false, failureReason: 'BACKGROUND_CRASH', error: err.message });
   }
 
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_CLEAR_CACHE') {
-    Cache.clearAll()
-      .then((count) => sendResponse({ success: true, count }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
-
-  // ------------------------------------------------------------------
-  // YOUSUB_CLEAR_VIDEO_CACHE — Clear cache for specific video (Phase 31)
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
-    Cache.removeByVideoId(request.videoId)
-      .then(() => sendResponse({ success: true }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
-  }
-
-  // ------------------------------------------------------------------
-  // YOUSUB_CHECK_CACHE — Check if video has signature (Phase 30)
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_CHECK_CACHE') {
-    const { videoId, sourceLang, targetLang } = request;
-    Cache.get(videoId, sourceLang || 'auto', targetLang)
-      .then(cached => sendResponse({ exists: !!cached }))
-      .catch(() => sendResponse({ exists: false }));
-    return true;
-  }
-
-  // ------------------------------------------------------------------
-  // YOUSUB_TEST_API_KEY — Verify if API key config works (Phase 13.7)
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_TEST_API_KEY') {
-    const { provider, model, apiKey } = request;
-
-    Providers.testApiKey(provider, model, apiKey)
-      .then(result => sendResponse(result))
-      .catch(err => sendResponse({ success: false, message: err.message, model }));
-
-    return true; // Keep channel open for async response
-  }
-
-  // ------------------------------------------------------------------
-  // YOUSUB_OPEN_SETTINGS — Open extension options page (Phase 33)
-  // ------------------------------------------------------------------
-  if (request.type === 'YOUSUB_OPEN_SETTINGS') {
-    browser.runtime.openOptionsPage();
-    sendResponse({ success: true });
-    return true;
-  }
+  return false;
 });
+
+/**
+ * Helper: Send message to all tabs
+ */
+function broadcastToTabs(msg) {
+  browser.tabs.query({}).then(tabs => {
+    tabs.forEach(tab => {
+      browser.tabs.sendMessage(tab.id, msg).catch(() => {});
+    });
+  });
+}

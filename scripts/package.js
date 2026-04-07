@@ -43,7 +43,16 @@ function addRecursive(srcPath) {
   } else {
     // Add file
     const zipPath = path.relative(process.cwd(), srcPath);
-    zip.addLocalFile(srcPath, path.dirname(zipPath));
+    const normalizedZipPath = zipPath.replace(/\\/g, '/');
+
+    if (normalizedZipPath === 'src/shared/constants.js') {
+      console.log('  --> Splicing constants.js: setting IS_PRODUCTION to true');
+      let content = fs.readFileSync(srcPath, 'utf8');
+      content = content.replace('IS_PRODUCTION: false', 'IS_PRODUCTION: true');
+      zip.addFile(normalizedZipPath, Buffer.from(content));
+    } else {
+      zip.addLocalFile(srcPath, path.dirname(zipPath));
+    }
   }
 }
 

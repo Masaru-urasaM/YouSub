@@ -484,6 +484,17 @@ select:focus, input:focus {
   100% { opacity: 1; }
 }
 
+@keyframes pulse-red {
+  0% { transform: scale(1); text-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+  50% { transform: scale(1.02); text-shadow: 0 0 5px rgba(239, 68, 68, 0.4); }
+  100% { transform: scale(1); text-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.pulse-red {
+  animation: pulse-red 2s infinite ease-in-out;
+  display: inline-block;
+}
+
 /* Appearance Settings Layout */
 .appearance-grid {
   display: grid;

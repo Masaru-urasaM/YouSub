@@ -34,12 +34,14 @@
 - **[2026-04-06] Phase 33**: **Interactive Error Notifications**. Upgraded toast system to support HTML and settings shortcuts on translation failure.
 - **[2026-04-06] Phase 34**: **Gemini Safety Filter Bypass**. Disabled Google's default safety filters to allow "Unfiltered" translation and improved error reporting for `finishReason`.
 - **[2026-04-06] Phase 35**: **Incremental Subtitle Display**. Implemented "Streaming-like" UX where subtitles update as each batch completes, reducing perceived latency for long videos.
-- **[2026-04-07] Phase 35.1-35.2**: **Absolute ID Tracking & Debugging**. Replaced relative numbering with global absolute IDs (`[#501]`) to eliminate AI alignment halluncinations. Added Raw Response streaming to the YouTube console.
+- **[2026-04-07] Phase 35.1-35.3**: **Absolute ID Tracking & ESM Refactor**. Replaced relative numbering with global IDs ([#501]) and migrated entire codebase (9+ files) to modern ES Modules.
+- **[2026-04-07] Phase 35.9-35.10**: **Stabilization & Transparency**. Fixed "Unresponsive Button" bug by synchronizing message types. Implemented **Cache Transparency** to notify users of cached vs live translations. Fixed the **Dual Subtitles Toggle** using real-time message handling.
 
 ### Milestone 5: Distribution (2026-04-04 →)
 - **Phase 23 [DONE]**: Visual polish + packaging.
 - **Phase 29 [DONE]**: Signature-based Cache Architecture.
 - **Phase 30 [DONE]**: Smart Regex Parser & Formatting Resilience.
+- **Phase 35.10 [DONE]**: Dual Toggle & Cache Transparency.
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (XHR Fetch + DOM Fallback). 

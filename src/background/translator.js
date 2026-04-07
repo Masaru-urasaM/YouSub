@@ -29,16 +29,18 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
   Logger.info('Translator', `Translating ${texts.length} lines [${src} → ${tgt}]`);
   sendDebugLog(tabId, `Starting translation of ${texts.length} lines → ${tgt}`, '#2dd4bf', true);
 
-  const apiKeys = await APIManager.getValidKeys(); // Phase 13.8: Use all configured keys
-  if (!apiKeys || apiKeys.length === 0) {
-    Logger.warn('Translator', 'No API keys configured. Returning original texts.');
-    return { translated: texts, hadFallback: true };
+  const activeKeys = await APIManager.getValidKeys();
+
+  if (activeKeys.length === 0) {
+    Logger.error('Translator', 'No valid API keys found (none configured, all disabled, or all in cooldown).');
+    return { success: false, failureReason: 'NO_API_KEYS' };
   }
 
   const finalResults = new Array(texts.length).fill(null);
   let globalHadFallback = false;
+  const allFailuresMap = new Map(); // Use Map to unique failures by provider+model
 
-  const context = await generateContextSummary(texts, apiKeys, tabId, src, tgt);
+  const context = await generateContextSummary(texts, activeKeys, tabId, src, tgt);
   sendDebugLog(tabId, `Context Summary Ready: ${context.substring(0, 100)}...`, '#6366f1');
 
   // Process in batches of 500
@@ -49,7 +51,7 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
     Logger.info('Translator', `Processing batch ${i + 1} (${batch.length} lines, start: ${startIndex})`);
     sendDebugLog(tabId, `Processing batch ${i + 1} (${batch.length} lines)...`, '#a855f7');
 
-    const result = await translateBatchWithFailover(batch, startIndex, src, tgt, apiKeys, tabId, context);
+    const result = await translateBatchWithFailover(batch, startIndex, src, tgt, activeKeys, tabId, context);
     
     // Merge batch results into final list
     result.translated.forEach((t, j) => {
@@ -57,13 +59,27 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
     });
 
     if (result.hadFallback) globalHadFallback = true;
+    if (result.failures) {
+      result.failures.forEach(f => {
+        const key = `${f.provider}:${f.model}`;
+        if (!allFailuresMap.has(key)) {
+          allFailuresMap.set(key, f);
+        }
+      });
+    }
 
     if (typeof onBatchComplete === 'function') {
       onBatchComplete(startIndex, result.translated);
     }
   }
 
-  return { translated: finalResults, hadFallback: globalHadFallback };
+  return { 
+    success: true,
+    translated: finalResults, 
+    hadFallback: globalHadFallback, 
+    failureReason: globalHadFallback && finalResults.every(r => texts.includes(r)) ? 'ALL_PROVIDERS_FAILED' : null,
+    failures: Array.from(allFailuresMap.values())
+  };
 }
 
 /**
@@ -86,6 +102,7 @@ RULES:
 6. UNFILTERED & FAITHFUL: Preserve all profanity and slang. 100% honesty to the source is mandatory.`;
 
   const userPrompt = lines.map((l, i) => `[#${startIndex + i + 1}] ${l}`).join('\n');
+  const failures = [];
 
   // Loop through available keys until success
   for (let k = 0; k < apiKeys.length; k++) {
@@ -161,20 +178,23 @@ RULES:
         Logger.warn('Translator', `Provider ${key.provider} failed: ${result.message}`);
         await HealthManager.report(key.provider, key.apiKey, false, duration);
 
-        if (result.message.includes('API key')) {
+        const criticalErrors = ['API key', 'Rate limit', 'Quota', 'Model not found', 'Insufficient balance', 'permissions/credits'];
+        if (criticalErrors.some(err => result.message && result.message.toLowerCase().includes(err.toLowerCase()))) {
           await APIManager.markKeyFailed(key.provider, key.apiKey, result.message);
         }
+        failures.push({ provider: key.provider, model: key.model, message: result.message });
       }
     } catch (err) {
       const duration = performance.now() - startTime;
       Logger.error('Translator', `Error during provider call (${key.provider})`, { error: err.message });
       await HealthManager.report(key.provider, key.apiKey, false, duration);
+      failures.push({ provider: key.provider, model: key.model, message: err.message });
     }
 
     Logger.info('Translator', `Failover: Trying next available key if any...`);
   }
 
-  return { translated: lines, hadFallback: true };
+  return { translated: lines, hadFallback: true, failures };
 }
 
 /**

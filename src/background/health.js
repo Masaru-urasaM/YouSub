@@ -6,7 +6,7 @@ import { Logger } from '../shared/logger.js';
  * Tracks success/failure and response times for each provider/key.
  */
 export const HealthManager = {
-  COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
+  COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (Relaxed from 5m)
 
   /**
    * Generates a hash for identifying a unique provider-key combination.
@@ -53,8 +53,8 @@ export const HealthManager = {
           entry.consecutiveFails++;
           entry.lastFailureTime = Date.now();
 
-          // Open circuit breaker if 3 consecutive fails
-          if (entry.consecutiveFails >= 3) {
+          // Open circuit breaker if 5 consecutive fails (Relaxed from 3)
+          if (entry.consecutiveFails >= 5) {
             entry.circuitBreakerUntil = Date.now() + this.COOLDOWN_MS;
             Logger.warn('Health', `Circuit breaker OPEN for ${providerId} until ${new Date(entry.circuitBreakerUntil).toLocaleTimeString()}`);
           }
@@ -68,19 +68,23 @@ export const HealthManager = {
 
   /**
    * Checks if the circuit is currently open (cooling down).
+   * Fast-path: Returns false instantly if no stats exist.
    */
   async isCircuitOpen(providerId, apiKey) {
     const hash = this.getHash(providerId, apiKey);
-    return new Promise((resolve) => {
-      browser.storage.local.get(['yousub_health_stats']).then((res) => {
-        const stats = res.yousub_health_stats || {};
-        const entry = stats[hash];
-        if (!entry || !entry.circuitBreakerUntil) return resolve(false);
+    try {
+      const res = await browser.storage.local.get(['yousub_health_stats']);
+      const stats = res.yousub_health_stats || {};
+      const entry = stats[hash];
+      
+      if (!entry || !entry.circuitBreakerUntil) return false;
 
-        const isOpen = Date.now() < entry.circuitBreakerUntil;
-        resolve(isOpen);
-      });
-    });
+      const isOpen = Date.now() < entry.circuitBreakerUntil;
+      return isOpen;
+    } catch (e) {
+      Logger.error('Health', `Check error: ${e.message}`);
+      return false; // Fail-safe: assume open by default? No, better to try and fail-fast.
+    }
   },
 
   /**
@@ -99,7 +103,7 @@ export const HealthManager = {
 
         const total = entry.successCount + entry.failCount;
         const successRate = entry.successCount / total;
-        
+
         // Speed score (bonus for fast providers, e.g., < 1000ms is good)
         let speedMult = 1.0;
         if (entry.avgTime > 0) {
