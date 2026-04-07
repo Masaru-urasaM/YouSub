@@ -59,7 +59,7 @@ When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-35.11 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, ESM Refactor, Error Notifications, Live API Sync, Dual Mode Fix, Cache Transparency, and Timestamp Tracking | DONE (2026-04-07) | M5 |
+| 0-35.12 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, ESM Refactor, Error Notifications, Live API Sync, Dual Mode Fix, Cache Transparency, Timestamp Tracking, and Merge Propagation | DONE (2026-04-07) | M5 |
 | 36   | Production Bundling & Log Management   | TODO               | M4 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started

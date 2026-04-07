@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 35.12 — Subtitle Propagation & Merge Handling (2026-04-07)
+
+**Added**
+- **Translation Propagation**: Implemented a "sticky" translation mechanism where missing timestamps are automatically filled with the previous segment's translation. This specifically handles cases where AI LLMs merge multiple dialogue lines into a single response.
+- **Smart Sync Logic**: Enhanced `translateBatchWithFailover` to track `lastTranslation` state, preventing original text flickering during merged segments.
+- **Merged Segment Logging**: Added specialized debug logs (`Propagated X translations for merged segments`) to provide transparency when line merging occurs.
+
+**Changed**
+- Refined mapping threshold to accept partial batches if propagation successfully recovers sync.
+- Updated system prompt instructions to discourage merging while handling it gracefully if it happens.
+
 ### Phase 35.11 — Timestamp-Based Translation Tracking [HH:MM:SS] (2026-04-07)
 
 **Added**

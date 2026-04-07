@@ -159,15 +159,26 @@ RULES:
           totalParsed++;
         }
 
-        // Build result array by matching segments to parsedQueues
+        // Build result array by matching segments to parsedQueues with Propagation
         let validLinesCount = 0;
+        let propagationCount = 0;
+        let lastTranslation = null;
+
         const resultLines = segments.map(s => {
           const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, ''); // Extract HH:MM:SS
           if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
             validLinesCount++;
-            return parsedQueues[ts].shift(); // Pull in order
+            lastTranslation = parsedQueues[ts].shift();
+            return lastTranslation;
           }
-          return s.text; // Fallback
+          
+          // Propagation logic: If missing and we have a previous translation, use it (merged segments)
+          if (lastTranslation) {
+            propagationCount++;
+            return lastTranslation;
+          }
+
+          return s.text; // Absolute fallback to original
         });
 
         const threshold = Math.max(1, Math.floor(segments.length * 0.5));
@@ -175,9 +186,16 @@ RULES:
         if (validLinesCount >= threshold || k === apiKeys.length - 1) {
           let hadFallback = validLinesCount < segments.length;
 
-          if (hadFallback) {
+          if (propagationCount > 0) {
+            Logger.info('Translator', `Propagated ${propagationCount} segments due to line merging.`);
+            sendDebugLog(tabId, `Propagated ${propagationCount} translations for merged segments.`, '#38bdf8');
+          }
+
+          if (hadFallback && propagationCount === 0) {
             Logger.warn('Translator', `Partial match: ${validLinesCount}/${segments.length}. Missing filled with original.`);
             sendDebugLog(tabId, `Parsed ${validLinesCount}/${segments.length} timestamps. Mismatches kept as original.`, '#f59e0b');
+          } else if (hadFallback) {
+             sendDebugLog(tabId, `Sync fixed: ${validLinesCount} matched, ${propagationCount} propagated.`, '#22c55e');
           } else {
             sendDebugLog(tabId, `Perfect match! All ${segments.length} timestamps synchronized.`, '#22c55e');
           }
