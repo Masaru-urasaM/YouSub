@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 35.11 — Timestamp-Based Translation Tracking [HH:MM:SS] (2026-04-07)
+
+**Added**
+- **Timestamp Tracking**: Replaced numeric IDs `[#ID]` with video timestamps `[HH:MM:SS]` for translation segment identification.
+- **Queue-based Matching**: Implemented a sophisticated matching logic that handles multiple subtitle segments sharing the same second by using a queue per timestamp, ensuring perfect synchronization even with high-frequency subtitles.
+- **Strict Sync Enforcement**: Any transcript line that fails to match its original timestamp in the AI response now falls back to the original text, preventing cascading alignment shifts.
+- **Enhanced Debug Logs**: Added high-visibility, color-coded console logs detailing the timestamp matching process, parsed queues, and synchronization success/failure.
+
+**Changed**
+- Updated `translator.js` with new `formatTimestamp` utility and prompt hardening.
+- Modified `main.js` and `service-worker.js` communication protocol to include `startMs` metadata in translation requests.
+
+**Fixed during implementation**
+- Resolved "alignment drift" issues where AI merging or skipping lines would offset all subsequent subtitles in a batch.
+
+
 ### Phase 35.10 — Dual Subtitles & Cache Transparency (2026-04-07)
 
 **Added**

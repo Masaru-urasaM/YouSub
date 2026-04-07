@@ -18,41 +18,58 @@ const MAX_LINES_PER_BATCH = 500;
 const RETRY_ATTEMPTS = 1; // Number of retries with smaller chunks on mismatch
 
 /**
- * Main translation entry point.
+ * Helper: Format milliseconds to [HH:MM:SS]
  */
-export async function translate(texts, sourceLang, targetLang, tabId = null, onBatchComplete = null) {
-  if (!texts || texts.length === 0) return { translated: [], hadFallback: false };
+function formatTimestamp(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const h = String(hours).padStart(2, '0');
+  const m = String(minutes).padStart(2, '0');
+  const s = String(seconds).padStart(2, '0');
+
+  return `[${h}:${m}:${s}]`;
+}
+
+/**
+ * Main translation entry point.
+ * @param {Array} segments - Array of { text, startMs }
+ */
+export async function translate(segments, sourceLang, targetLang, tabId = null, onBatchComplete = null) {
+  if (!segments || segments.length === 0) return { translated: [], hadFallback: false };
 
   const src = sourceLang || 'auto';
   const tgt = targetLang || 'vi';
 
-  Logger.info('Translator', `Translating ${texts.length} lines [${src} → ${tgt}]`);
-  sendDebugLog(tabId, `Starting translation of ${texts.length} lines → ${tgt}`, '#2dd4bf', true);
+  Logger.info('Translator', `Translating ${segments.length} segments [${src} → ${tgt}]`);
+  sendDebugLog(tabId, `Starting translation of ${segments.length} segments → ${tgt}`, '#2dd4bf', true);
 
   const activeKeys = await APIManager.getValidKeys();
 
   if (activeKeys.length === 0) {
-    Logger.error('Translator', 'No valid API keys found (none configured, all disabled, or all in cooldown).');
+    Logger.error('Translator', 'No valid API keys found.');
     return { success: false, failureReason: 'NO_API_KEYS' };
   }
 
-  const finalResults = new Array(texts.length).fill(null);
+  const finalResults = new Array(segments.length).fill(null);
   let globalHadFallback = false;
-  const allFailuresMap = new Map(); // Use Map to unique failures by provider+model
+  const allFailuresMap = new Map();
 
-  const context = await generateContextSummary(texts, activeKeys, tabId, src, tgt);
-  sendDebugLog(tabId, `Context Summary Ready: ${context.substring(0, 100)}...`, '#6366f1');
+  const context = await generateContextSummary(segments.map(s => s.text), activeKeys, tabId, src, tgt);
+  sendDebugLog(tabId, `Context Summary Ready`, '#6366f1');
 
-  // Process in batches of 500
-  for (let i = 0; i * MAX_LINES_PER_BATCH < texts.length; i++) {
+  // Process in batches
+  for (let i = 0; i * MAX_LINES_PER_BATCH < segments.length; i++) {
     const startIndex = i * MAX_LINES_PER_BATCH;
-    const batch = texts.slice(startIndex, startIndex + MAX_LINES_PER_BATCH);
-    
-    Logger.info('Translator', `Processing batch ${i + 1} (${batch.length} lines, start: ${startIndex})`);
+    const batch = segments.slice(startIndex, startIndex + MAX_LINES_PER_BATCH);
+
+    Logger.info('Translator', `Processing batch ${i + 1} (${batch.length} segments)`);
     sendDebugLog(tabId, `Processing batch ${i + 1} (${batch.length} lines)...`, '#a855f7');
 
-    const result = await translateBatchWithFailover(batch, startIndex, src, tgt, activeKeys, tabId, context);
-    
+    const result = await translateBatchWithFailover(batch, src, tgt, activeKeys, tabId, context);
+
     // Merge batch results into final list
     result.translated.forEach((t, j) => {
       finalResults[startIndex + j] = t;
@@ -62,9 +79,7 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
     if (result.failures) {
       result.failures.forEach(f => {
         const key = `${f.provider}:${f.model}`;
-        if (!allFailuresMap.has(key)) {
-          allFailuresMap.set(key, f);
-        }
+        if (!allFailuresMap.has(key)) allFailuresMap.set(key, f);
       });
     }
 
@@ -73,11 +88,11 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
     }
   }
 
-  return { 
+  return {
     success: true,
-    translated: finalResults, 
-    hadFallback: globalHadFallback, 
-    failureReason: globalHadFallback && finalResults.every(r => texts.includes(r)) ? 'ALL_PROVIDERS_FAILED' : null,
+    translated: finalResults,
+    hadFallback: globalHadFallback,
+    failureReason: globalHadFallback && finalResults.every((r, idx) => segments[idx].text === r) ? 'ALL_PROVIDERS_FAILED' : null,
     failures: Array.from(allFailuresMap.values())
   };
 }
@@ -85,26 +100,25 @@ export async function translate(texts, sourceLang, targetLang, tabId = null, onB
 /**
  * Process a single batch of lines, trying different providers on failure.
  */
-async function translateBatchWithFailover(lines, startIndex, src, tgt, apiKeys, tabId, context) {
+async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, context) {
   const systemPrompt = `You are a professional subtitle translator. 
 VIDEO CONTEXT:
 ${context}
 
 Translate the following subtitle lines from ${src} to ${tgt}.
 RULES:
-1. PRESERVE THE LINE COUNT EXACTLY. Return exactly ${lines.length} lines.
-2. REQUIRED FORMAT: [#ID] {Translated Text}
-   Example: [#12] Hello, [#13] Good morning
-3. THE ID TAG IS A FIXED POINTER. The ID refers to the absolute sentence number in the video. 
-   If you merge content, you MUST still provide an entry for every ID (e.g., leave the skipped ID with empty content).
-4. ABSOLUTELY NO RENUMBERING. Do not start from 1 unless the first line in this list is actually the first line of the video.
-5. Return ONLY the translated lines. No explanations.
-6. UNFILTERED & FAITHFUL: Preserve all profanity and slang. 100% honesty to the source is mandatory.`;
+1. PRESERVE THE LINE COUNT EXACTLY. Return exactly ${segments.length} lines. 
+2. REQUIRED FORMAT: [HH:MM:SS] {Translated Text}
+   Example: [00:00:12] Hello, [00:00:13] Good morning
+3. THE TIMESTAMP IS THE POINTER. I use timestamp to sync subtitles. So you must return the same timestamp for each translated line as provided in the input.
+4. Don't merge content, but you MUST still provide an entry for every timestamp (e.g., leave the skipped timestamp with empty content).
+5. Return ONLY the translated lines. No explanations. The translated text must be in ${tgt}. 
+6. UNFILTERED & FAITHFUL: Preserve all profanity, slang, and offensive language as-is. Do NOT censor, refine, or "beautify" the translation. If the source is vulgar, the translation MUST be equally vulgar in ${tgt}. 100% honesty to the source is mandatory, even if it is a swear word, slur, curse, profanity, or any other offensive, criminal, illegal language.
+`; // Never change UNFILTERED & FAITHFUL rule, it is the most important rule.
 
-  const userPrompt = lines.map((l, i) => `[#${startIndex + i + 1}] ${l}`).join('\n');
+  const userPrompt = segments.map(s => `${formatTimestamp(s.startMs)} ${s.text}`).join('\n');
   const failures = [];
 
-  // Loop through available keys until success
   for (let k = 0; k < apiKeys.length; k++) {
     const key = apiKeys[k];
     const startTime = performance.now();
@@ -117,71 +131,67 @@ RULES:
         userPrompt,
         {
           systemPrompt,
-          temperature: 0.1 // Low temperature for consistency
+          temperature: 0.1
         }
       );
 
       const duration = performance.now() - startTime;
-
-      sendDebugLog(tabId, `Request with ${key.provider} (${key.model}) returned success=${!!result.success}`, '#94a3b8');
+      sendDebugLog(tabId, `Request with ${key.provider} returned success=${!!result.success}`, '#94a3b8');
 
       if (result.success && result.text) {
-        // Log Raw Response for developer visibility
-        sendDebugLog(tabId, `RAW RESPONSE:\n${result.text}`, '#6366f1');
+        sendDebugLog(tabId, `RAW RESPONSE RECEIVED (Length: ${result.text.length})`, '#6366f1');
 
-        // 1. Clean response (Markdown, noise, etc.)
         const cleanedText = cleanResponse(result.text);
 
-        // 2. Parse result lines by EXACT Line Tag ([#ID])
-        const regex = /\[#(\d+)\]\s*([\s\S]*?)(?=\s*\[#\d+\]|$)/g;
-        const parsedMap = {};
-        let validLinesCount = 0;
+        // Parse result lines by Timestamp [HH:MM:SS]
+        // We use a Map of queues to handle multiple entries per second
+        const regex = /\[(\d{1,2}:\d{2}:\d{2})\]\s*([\s\S]*?)(?=\s*\[\d{1,2}:\d{2}:\d{2}\]|$)/g;
+        const parsedQueues = {}; // timestamp -> [content1, content2, ...]
+        let totalParsed = 0;
 
         let match;
         while ((match = regex.exec(cleanedText)) !== null) {
-          const numStr = match[1];
+          const timestamp = match[1];
           const content = match[2].trim();
-          const parsedId = parseInt(numStr, 10);
-          const idx = parsedId - startIndex - 1; // Map absolute ID → batch relative index (0-indexed)
 
-          if (idx >= 0 && idx < lines.length && parsedMap[idx] === undefined) {
-            parsedMap[idx] = content;
-            validLinesCount++;
-          }
+          if (!parsedQueues[timestamp]) parsedQueues[timestamp] = [];
+          parsedQueues[timestamp].push(content);
+          totalParsed++;
         }
 
-        // Threshold: at least 50% must be parsed correctly to consider this a "success".
-        // If it's the last API key, accept whatever we got instead of throwing it all away.
-        const threshold = Math.max(1, Math.floor(lines.length * 0.5));
+        // Build result array by matching segments to parsedQueues
+        let validLinesCount = 0;
+        const resultLines = segments.map(s => {
+          const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, ''); // Extract HH:MM:SS
+          if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
+            validLinesCount++;
+            return parsedQueues[ts].shift(); // Pull in order
+          }
+          return s.text; // Fallback
+        });
+
+        const threshold = Math.max(1, Math.floor(segments.length * 0.5));
 
         if (validLinesCount >= threshold || k === apiKeys.length - 1) {
-          // Accept the result. Pad missing or empty lines with the original text
-          let resultLines = lines.map((originalText, idx) => {
-            return parsedMap[idx] !== undefined && parsedMap[idx].trim() !== "" ? parsedMap[idx] : originalText;
-          });
+          let hadFallback = validLinesCount < segments.length;
 
-          let hadFallback = false;
-          if (validLinesCount < lines.length) {
-            hadFallback = true;
-            Logger.warn('Translator', `Partial translation from ${key.provider}: ${validLinesCount}/${lines.length} lines. Missing filled with original text.`);
-            sendDebugLog(tabId, `Partial: ${validLinesCount}/${lines.length} lines. Missing padded with original.`, '#f59e0b');
+          if (hadFallback) {
+            Logger.warn('Translator', `Partial match: ${validLinesCount}/${segments.length}. Missing filled with original.`);
+            sendDebugLog(tabId, `Parsed ${validLinesCount}/${segments.length} timestamps. Mismatches kept as original.`, '#f59e0b');
+          } else {
+            sendDebugLog(tabId, `Perfect match! All ${segments.length} timestamps synchronized.`, '#22c55e');
           }
 
           await HealthManager.report(key.provider, key.apiKey, true, duration);
           return { translated: resultLines, hadFallback };
         } else {
-          Logger.warn('Translator', `Severe line mismatch with ${key.provider}. Got ${validLinesCount}/${lines.length}. Failing over.`);
-          sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${lines.length}, got ${validLinesCount}.`, '#f59e0b');
+          Logger.warn('Translator', `Severe mismatch with ${key.provider}. Got ${validLinesCount}/${segments.length}. Failing over.`);
+          sendDebugLog(tabId, `Mismatch with ${key.provider}: Expected ${segments.length}, got ${validLinesCount}.`, '#f59e0b');
           await HealthManager.report(key.provider, key.apiKey, false, duration);
         }
       } else {
         Logger.warn('Translator', `Provider ${key.provider} failed: ${result.message}`);
         await HealthManager.report(key.provider, key.apiKey, false, duration);
-
-        const criticalErrors = ['API key', 'Rate limit', 'Quota', 'Model not found', 'Insufficient balance', 'permissions/credits'];
-        if (criticalErrors.some(err => result.message && result.message.toLowerCase().includes(err.toLowerCase()))) {
-          await APIManager.markKeyFailed(key.provider, key.apiKey, result.message);
-        }
         failures.push({ provider: key.provider, model: key.model, message: result.message });
       }
     } catch (err) {
@@ -190,11 +200,9 @@ RULES:
       await HealthManager.report(key.provider, key.apiKey, false, duration);
       failures.push({ provider: key.provider, model: key.model, message: err.message });
     }
-
-    Logger.info('Translator', `Failover: Trying next available key if any...`);
   }
 
-  return { translated: lines, hadFallback: true, failures };
+  return { translated: segments.map(s => s.text), hadFallback: true, failures };
 }
 
 /**

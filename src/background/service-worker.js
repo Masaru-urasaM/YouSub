@@ -26,9 +26,13 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   try {
     // 1. YOUSUB_TRANSLATE_REQUEST — Translate subtitle segments
     if (request.type === 'YOUSUB_TRANSLATE_REQUEST') {
-      const { texts, videoId, sourceLang, targetLang } = request;
+      const { segments, videoId, sourceLang, targetLang } = request;
       const tabId = sender.tab ? sender.tab.id : null;
 
+      // Extract texts for cache lookup (if we want to keep cache structure same)
+      // or just use segments. 
+      // Current cache logic uses texts.length/content to verify? No, it just uses videoId.
+      
       // Check Cache first
       Cache.get(videoId, sourceLang || 'auto', targetLang).then(cached => {
         if (cached) {
@@ -39,7 +43,7 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
 
         // Cache MISS — Call translator
         Logger.info('ServiceWorker', `Cache MISS for ${videoId}. Calling translator...`);
-        translate(texts, sourceLang, targetLang, tabId)
+        translate(segments, sourceLang, targetLang, tabId)
           .then(result => {
             // Only cache if fully successful (no fallback originals)
             if (result.success && !result.hadFallback) {

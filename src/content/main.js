@@ -16,7 +16,10 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
   return new Promise(function (resolve) {
     try {
       console.log('[YouSub] Main: requestTranslation called for', parsedEntries.length, 'entries');
-      const texts = parsedEntries.map(function (e) { return e.text; });
+      // Enriched data with timestamps
+      const segments = parsedEntries.map(function (e) { 
+        return { text: e.text, startMs: e.startMs }; 
+      });
       const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
 
       console.log('[YouSub] Main: Sending to background →', targetLang);
@@ -25,7 +28,7 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
         {
           type: 'YOUSUB_TRANSLATE_REQUEST',
           videoId: videoId,
-          texts: texts,
+          segments: segments, // Changed from 'texts' to 'segments'
           sourceLang: sourceLang || 'auto',
           targetLang: targetLang
         },
