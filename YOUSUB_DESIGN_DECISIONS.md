@@ -51,7 +51,40 @@ Include specific technical details and rationale.
 **References**: Related files, sections, or external resources
 -->
 
-*No decisions recorded yet.*
+### Decision 1 — Background Anti-Deadlock Architecture
+
+**Date**: 2026-04-09
+**Status**: RESOLVED
+
+**Problem**: The Service Worker (Background Script) was frequently hanging or crashing, causing "Extension context invalidated" errors and infinite loading states. Identified two causes: 1. Background tasks continuing after timeout (Zombie Requests). 2. Heavy storage I/O for logging during intensive translation tasks.
+
+**Options considered**:
+1. **Implicit cleanup** — Relying on browser garbage collection. Pros: No code change. Cons: Doesn't work for in-flight fetches.
+2. **AbortController + I/O Suppression** — Explicitly killing fetches on timeout and disabling persistent logging during active translation. Pros: Total control over background state. Cons: Loses persistent logs during translation window.
+
+**Resolution**: Option 2 was chosen. 
+- Integrated `AbortController` to kill every in-flight fetch when the 55s safety guard triggers.
+- `Logger` was modified to skip storage persistence during translation. This eliminated the I/O bottleneck that was deadlocking the Service Worker.
+
+**References**: [logger.js](file:///d:/Xinh/XinhTools/YouSub/src/shared/logger.js), [translator.js](file:///d:/Xinh/XinhTools/YouSub/src/background/translator.js)
+
+### Decision 2 — Payload Management & Recursive Failover
+
+**Date**: 2026-04-09
+**Status**: RESOLVED
+
+**Problem**: Multiple API providers (especially Groq) were returning 413 (Payload Too Large) even for small line counts. Additionally, parallel recursive splitting for 413 errors was causing an "API Request Explosion," triggering 429 (Rate Limit) errors and exhausting the key pool.
+
+**Options considered**:
+1. **Parallel Splitting** — Split and run sub-batches simultaneously. Pros: Faster. Cons: Destroys Rate Limits.
+2. **Sequential Splitting & Context Capping** — Split and run sub-batches one after another. Cap `systemPrompt` context. Pros: Stable, predictable traffic. Cons: Slightly slower for failed batches.
+
+**Resolution**: Option 2 was chosen. 
+- Batch splitting for 413 errors is now strictly **sequential** (`await part1; await part2;`).
+- Implemented **Pre-flight Payload Estimation**: Bundles are split *before* sending if they exceed 95KB.
+- **Context Capping**: Video summary is hard-capped at 500 characters to ensure the `systemPrompt` doesn't consume the entire payload budget.
+
+**References**: [translator.js](file:///d:/Xinh/XinhTools/YouSub/src/background/translator.js)
 
 ---
 

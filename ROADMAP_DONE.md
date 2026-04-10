@@ -292,3 +292,20 @@
 ### Phase 35.10 — Dual Subtitles & Cache Transparency
 **Status**: DONE (2026-04-07)
 **Summary**: Fully resolved the Dual Subtitles toggle issue by implementing real-time message handling in `main.js`. Introduced "Cache Transparency" to eliminate user confusion regarding "ghost translations"; the UI now explicitly indicates when a translation is being served from the local cache ("Loaded from cache").
+
+### Phases 36–41: Diagnostic & Permission Patch
+**Status**: DONE (2026-04-08)
+**Summary**: Hardened the extension against Chrome's Mv3 security restrictions. Implemented Trusted Types for YouTube's CSP, perfected zero-width character sanitization for API keys, and optimized batch sizing. Resolved the fatal "wait is not defined" crash and stabilized the popup UI dashboard.
+
+### Phases 42–46: Deep Pipeline Stabilization
+**Status**: DONE (2026-04-08)
+**Summary**: Refactored `service-worker.js` and `api-manager.js` for robust error routing. Implemented request heartbeats to ensure the loading overlay always clears. Added exponential backoff for 429 errors and a 10s safety timeout for context summary generation.
+
+### Phases 47–48: Anti-Deadlock & Stability Overhaul
+**Status**: DONE (2026-04-09)
+**Summary**: Conducted a massive performance overhaul to eliminate background service worker deadlocks and infinite log spam.
+- **Abort Protocol**: Integrated `AbortController` to kill zombie fetch requests upon safety timeout.
+- **I/O Optimization**: Eliminated storage-based logging during translations to stop SW hangs.
+- **Sequential Splitting**: Replaced parallel batch splitting with sequential execution to prevent API rate-limit "explosions".
+- **Payload Management**: Added pre-flight byte estimation and hard context capping (500 chars) to prevent 413 errors.
+- **Success Fix**: Corrected success flag propagation across recursive calls, restoring Vietnamese subtitle display.

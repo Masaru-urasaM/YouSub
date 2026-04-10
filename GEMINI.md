@@ -185,6 +185,10 @@ The purpose of this is to keep `ROADMAP.md` clean and only contain tasks that ar
 Before starting any task and after completing a task, you MUST always check the two files `ROADMAP.md` and `ROADMAP_DONE.md` first. 
 This check is mandatory for you to understand the project context, grasp what has been done and what is about to be done next.
 
+## Rule 12: MAX_LINES_PER_BATCH is not the problem. STOP MENTIONING IT, STOP CHANGING IT, STOP TALKING ABOUT IT. STOP THINKING ABOUT IT.
+
+MAX_LINES_PER_BATCH is a variable in the `src/background/translator.js` file that is used to determine the maximum number of lines that can be processed in a single batch. 
+
 ---
 
 ## Documentation Architecture

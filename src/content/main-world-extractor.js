@@ -205,23 +205,37 @@
       var timestampText = '';
       var textContent = '';
 
-      var innerText = seg.innerText ? seg.innerText.trim() : '';
-      if (innerText && innerText.indexOf('\n') !== -1) {
-         var parts = innerText.split('\n');
-         timestampText = parts[0].trim();
-         textContent = parts.slice(1).join(' ').trim();
-      } else {
-         // Fallback for older youtube versions
-         var timestampEl = seg.querySelector('.segment-timestamp, [class*="timestamp"], div.segment-start-offset');
-         var textEl = seg.querySelector('.segment-text, yt-formatted-string.segment-text, [class*="segment-text"]');
-         
-         if (!timestampEl && !textEl && seg.children.length >= 2) {
-           timestampEl = seg.children[0];
-           textEl = seg.children[1];
-         }
-         
-         if (timestampEl) timestampText = timestampEl.innerText || timestampEl.textContent;
-         if (textEl) textContent = textEl.innerText || textEl.textContent;
+      // Strategy A: Dedicated selectors for transcript-segment-view-model (2024/2025 layout)
+      if (seg.tagName.toLowerCase() === 'transcript-segment-view-model' || seg.querySelector('transcript-segment-view-model')) {
+        var host = seg.tagName.toLowerCase() === 'transcript-segment-view-model' ? seg : seg.querySelector('transcript-segment-view-model');
+        // The new layout often uses specific classes for timestamp and formatted string
+        var tsEl = host.querySelector('.segment-timestamp, [class*="timestamp"]');
+        var txtEl = host.querySelector('.segment-text, [class*="segment-text"], yt-formatted-string');
+        
+        if (tsEl) timestampText = tsEl.innerText || tsEl.textContent;
+        if (txtEl) textContent = txtEl.innerText || txtEl.textContent;
+      }
+
+      // Strategy B: Fallback to innerText parsing if above failed
+      if (!timestampText || !textContent) {
+        var innerText = seg.innerText ? seg.innerText.trim() : '';
+        if (innerText && innerText.indexOf('\n') !== -1) {
+          var parts = innerText.split('\n');
+          timestampText = parts[0].trim();
+          textContent = parts.slice(1).join(' ').trim();
+        } else {
+          // Fallback for older youtube versions
+          var timestampEl = seg.querySelector('.segment-timestamp, [class*="timestamp"], div.segment-start-offset');
+          var textEl = seg.querySelector('.segment-text, yt-formatted-string.segment-text, [class*="segment-text"]');
+          
+          if (!timestampEl && !textEl && seg.children.length >= 2) {
+            timestampEl = seg.children[0];
+            textEl = seg.children[1];
+          }
+          
+          if (timestampEl) timestampText = timestampEl.innerText || timestampEl.textContent;
+          if (textEl) textContent = textEl.innerText || textEl.textContent;
+        }
       }
       
       // Force strip any hidden prepended accessibility text
@@ -344,44 +358,46 @@
         return;
       }
 
-      // Step 1: Find the transcript button
-      var btn = findTranscriptButton();
+      // Step 1: Pre-check if transcript is already open
+      var segments = await waitForSegments(100);
+      if (segments && segments.length > 0) {
+        console.log('[YouSub] MainWorldExtractor: Transcript already open. Using existing segments.');
+      } else {
+        // Step 1b: Find the transcript button
+        var btn = findTranscriptButton();
 
-      if (!btn) {
-        // Expand description to reveal button
-        expandDescription();
-        await wait(800);
-        btn = findTranscriptButton();
+        if (!btn) {
+          // Expand description to reveal button
+          expandDescription();
+          await wait(800);
+          btn = findTranscriptButton();
+        }
+
+        if (btn) {
+          console.log('[YouSub] MainWorldExtractor: Clicking transcript button...');
+          btn.click();
+
+          // Step 2: Wait for segments to render
+          segments = await waitForSegments(10000);
+        } else {
+          console.warn('[YouSub] MainWorldExtractor: Transcript button not found.');
+        }
       }
 
-      if (btn) {
-        console.log('[YouSub] MainWorldExtractor: Clicking transcript button...');
-        btn.click();
+      if (segments && segments.length > 0) {
+        // Step 3: Parse segments
+        var entries = parseTranscriptSegments(segments);
+        console.log('[YouSub] MainWorldExtractor: Parsed', entries.length, 'entries from transcript DOM.');
 
-        // Step 2: Wait for segments to render
-        var segments = await waitForSegments(10000);
-
-        if (segments && segments.length > 0) {
-          // Step 3: Parse segments
-          var entries = parseTranscriptSegments(segments);
-          console.log('[YouSub] MainWorldExtractor: Parsed', entries.length, 'entries from transcript DOM.');
-
-          if (entries.length > 0) {
-            console.log('[YouSub] MainWorldExtractor: Sample [0]:', JSON.stringify(entries[0]));
-            console.log('[YouSub] MainWorldExtractor: Sample [last]:', JSON.stringify(entries[entries.length - 1]));
-          }
-
-          // Step 4: Close the panel
-          await wait(100);
-          closeTranscriptPanel();
-
-          // Send result
-          sendResult(metadata.tracks, entries, null);
-          console.log('[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:', entries.length);
-          return;
+        if (entries.length > 0) {
+          console.log('[YouSub] MainWorldExtractor: Sample [0]:', JSON.stringify(entries[0]));
+          console.log('[YouSub] MainWorldExtractor: Sample [last]:', JSON.stringify(entries[entries.length - 1]));
         }
-      } else {
-        console.warn('[YouSub] MainWorldExtractor: Transcript button not found.');
+
+        // Send result
+        sendResult(metadata.tracks, entries, null);
+        console.log('[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:', entries.length);
+        return;
       }
  
       // ================================================================

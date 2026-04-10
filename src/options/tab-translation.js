@@ -7,6 +7,14 @@ let modelRotation = false;
 let customModelsRegistry = {};
 let hiddenModelsRegistry = {};
 
+/**
+ * Helper to remove non-printable and zero-width characters (Shared logic)
+ */
+const sanitizeKey = (key) => {
+  if (!key) return '';
+  return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+};
+
 // DOM Elements
 let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, noKeysAlert, targetLangSelect, clearCacheBtn;
 let triggerSaveCallback = null;
@@ -168,7 +176,8 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   resetBtn.addEventListener('click', () => {
     browser.storage.local.get(['yousub_health_stats']).then(res => {
       const stats = res.yousub_health_stats || {};
-      const keyHash = `${keyData.provider}_${(keyData.apiKey || '').slice(-6)}`;
+      const cleanKey = sanitizeKey(keyData.apiKey);
+      const keyHash = `${keyData.provider}_${cleanKey.slice(-6)}`;
 
       if (stats[keyHash]) {
         delete stats[keyHash];
@@ -201,7 +210,8 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   }
 
   // Health Stats Logic
-  const keyHash = `${keyData.provider}_${(keyData.apiKey || '').slice(-6)}`;
+  const cleanKeyForRow = sanitizeKey(keyData.apiKey);
+  const keyHash = `${keyData.provider}_${cleanKeyForRow.slice(-6)}`;
   const stats = healthStats[keyHash];
   if (stats && (stats.successCount + stats.failCount) > 0) {
     healthIndicator.classList.remove('hidden');
@@ -473,10 +483,19 @@ function updateRealtimeStatuses() {
       // Update Health Indicator
       const healthIndicator = row.querySelector('.health-indicator');
       const healthStatsText = row.querySelector('.health-stats');
+      const cleanKeyForUpdate = sanitizeKey(keyData.apiKey);
+      const keyHash = `${keyData.provider}_${cleanKeyForUpdate.slice(-6)}`;
+      const stats = healthStats[keyHash];
+      
+      // Phase 41: Special Sync - If stats show healthy, override 'failed' status in UI
+      if (stats && stats.successCount > 0 && Date.now() > (stats.circuitBreakerUntil || 0)) {
+        if (keyData.status === 'failed') {
+          keyData.status = 'ok';
+          keyData.statusMessage = 'Recovered';
+        }
+      }
+
       if (healthIndicator) {
-        const keyHash = `${keyData.provider}_${(keyData.apiKey || '').slice(-6)}`;
-        const stats = healthStats[keyHash];
-        
         if (stats && (stats.successCount + stats.failCount) > 0) {
           healthIndicator.classList.remove('hidden');
           const total = stats.successCount + stats.failCount;

@@ -3,6 +3,7 @@ import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 document.addEventListener('DOMContentLoaded', function () {
   const getSubBtn = document.getElementById('get-sub-btn');
   const clearPageCacheBtn = document.getElementById('clear-page-cache-btn');
+  const openDebugBtn = document.getElementById('open-debug-btn');
   const openSettingsBtn = document.getElementById('open-settings-btn');
   const loadingDiv = document.getElementById('loading');
   const loadingText = document.getElementById('loading-text');
@@ -44,18 +45,26 @@ document.addEventListener('DOMContentLoaded', function () {
       const videoId = await getCurrentVideoId();
       if (videoId) {
         clearPageCacheBtn.classList.remove('hidden');
+        loadExecutionStats(videoId);
 
-        if (res.yousub_translation_enabled) {
-          const check = await browser.runtime.sendMessage({
-            type: 'YOUSUB_CHECK_CACHE',
-            videoId,
-            targetLang: res.targetLang || 'vi'
-          });
-
-          if (check && check.exists) {
-            getSubBtn.classList.add('active');
+        // Phase 35.16: Query real-time state from content script
+        browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+          if (tabs[0]) {
+            browser.tabs.sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
+              .then(res => {
+                if (res) {
+                  console.log('[YouSub] Popup: State received from Tab:', res);
+                  if (res.isTranslationActive) getSubBtn.classList.add('active');
+                  else getSubBtn.classList.remove('active');
+                  
+                  dualModeToggle.checked = !!res.isDualMode;
+                }
+              })
+              .catch(err => {
+                console.warn('[YouSub] Popup: Could not get state from Tab (likely script not loaded).', err);
+              });
           }
-        }
+        });
       }
     } catch (e) {
       console.warn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
@@ -95,32 +104,64 @@ document.addEventListener('DOMContentLoaded', function () {
   function checkHealth(keys) {
     const hasKeys = keys.length > 0;
     const activeKeys = keys.filter(k => k.apiKey && k.apiKey.trim() !== '' && !k.disabled);
-    const onlineKeys = activeKeys.filter(k => k.status === 'success' || !k.status); 
     const allDisabled = hasKeys && activeKeys.length === 0;
 
     healthStatus.classList.remove('hidden');
-    
+
     if (!hasKeys) {
       healthStatus.className = 'health-indicator health-error';
       healthText.textContent = 'API Not Configured';
-    } else if (allDisabled) {
+      return;
+    }
+
+    if (allDisabled) {
       healthStatus.className = 'health-indicator health-error';
       healthText.textContent = 'All API Keys Disabled';
-    } else if (onlineKeys.length > 0) {
-      healthStatus.className = 'health-indicator';
-
-      // Build list of online models
-      const modelNames = onlineKeys.map(k => {
-        const provider = YOUSUB_PROVIDERS.getProvider(k.provider);
-        const model = provider ? (provider.models.find(m => m.id === k.model) || { name: k.model }) : { name: k.model };
-        return `${model.name} (Online)`;
-      });
-
-      healthText.innerHTML = modelNames.join('<br>');
-    } else {
-      healthStatus.className = 'health-indicator health-warning';
-      healthText.textContent = 'Checking APIs...';
+      return;
     }
+
+    // Default state: Checking
+    healthStatus.className = 'health-indicator health-warning';
+    healthText.textContent = 'Checking APIs...';
+
+    // Fetch real-time health from background
+    browser.runtime.sendMessage({ type: 'YOUSUB_GET_HEALTH_SUMMARY' })
+      .then(res => {
+        if (res && res.success && res.summary) {
+          const summary = res.summary;
+          const healthy = summary.filter(s => s.status === 'healthy');
+          const broken = summary.filter(s => s.status === 'broken');
+          const poor = summary.filter(s => s.status === 'poor');
+
+          if (healthy.length > 0) {
+            healthStatus.className = 'health-indicator';
+            const names = healthy.map(s => {
+              const p = YOUSUB_PROVIDERS.getProvider(s.provider);
+              const m = p ? (p.models.find(m => m.id === s.model) || { name: s.model }) : { name: s.model };
+              return `${m.name} (Online)`;
+            });
+            healthText.innerHTML = names.join('<br>');
+          } else if (poor.length > 0) {
+            healthStatus.className = 'health-indicator health-warning';
+            healthText.textContent = 'Service Degradation (Poor Latency)';
+          } else if (broken.length > 0) {
+            healthStatus.className = 'health-indicator health-error';
+            healthText.textContent = 'API Error (Circuit Open)';
+          } else {
+            healthStatus.className = 'health-indicator health-warning';
+            healthText.textContent = 'Checking APIs...';
+          }
+        }
+      })
+      .catch(err => {
+        console.error('[YouSub] Popup: Health check error', err);
+        // Fallback to basic storage-only check
+        const onlineKeys = activeKeys.filter(k => k.status === 'success' || !k.status);
+        if (onlineKeys.length > 0) {
+          healthStatus.className = 'health-indicator';
+          healthText.textContent = 'Service Ready (Cache Mode)';
+        }
+      });
   }
 
   dualModeToggle.addEventListener('change', function () {
@@ -135,6 +176,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   openSettingsBtn.addEventListener('click', function () {
     browser.runtime.openOptionsPage();
+  });
+
+  openDebugBtn.addEventListener('click', function () {
+    browser.tabs.create({ url: browser.runtime.getURL('src/debug/debug.html') });
   });
 
   clearPageCacheBtn.addEventListener('click', async function () {
@@ -154,6 +199,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }).then(res => {
           if (res.success) {
             clearPageCacheBtn.textContent = 'Cache Cleared!';
+            
+            // Hide stats when cache is cleared
+            const statsContainer = document.getElementById('execution-stats');
+            if (statsContainer) statsContainer.classList.add('hidden');
+            browser.storage.local.remove(`yousub_stats_${videoId}`);
+
             setTimeout(() => {
               clearPageCacheBtn.disabled = false;
               clearPageCacheBtn.textContent = 'Clear Page Cache';
@@ -248,5 +299,68 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     confirmModal.classList.remove('hidden');
+  }
+
+  /**
+   * Phase 35.13: Load and display translation metrics
+   */
+  async function loadExecutionStats(videoId) {
+    const statsContainer = document.getElementById('execution-stats');
+    const statsTitle = document.getElementById('stats-title-text');
+    const sourceBadge = document.getElementById('stats-source-badge');
+    const modelName = document.getElementById('stats-model-name');
+    const requestsVal = document.getElementById('stats-requests');
+    const durationVal = document.getElementById('stats-duration');
+    const inputTokensVal = document.getElementById('stats-input-tokens');
+    const outputTokensVal = document.getElementById('stats-output-tokens');
+
+    if (!statsContainer) return;
+
+    // Get tab title for context (Phase 35.14)
+    let videoTitle = 'Last Execution';
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0] && tabs[0].title) {
+        const rawTitle = tabs[0].title;
+        videoTitle = `Last Execution: ${rawTitle.replace(/\s*-\s*YouTube$/, '')}`;
+      }
+    } catch (e) {
+      console.warn('[YouSub] Popup: Could not fetch tab title.', e);
+    }
+    statsTitle.textContent = videoTitle;
+    statsTitle.title = videoTitle; // Tooltip for full title
+
+    const key = `yousub_stats_${videoId}`;
+    browser.storage.local.get([key]).then(res => {
+      const stats = res[key];
+      if (!stats) {
+        statsContainer.classList.add('hidden');
+        return;
+      }
+
+      statsContainer.classList.remove('hidden');
+      
+      if (stats.source === 'cache') {
+        sourceBadge.textContent = 'Cache';
+        sourceBadge.className = 'stats-badge cache';
+        modelName.textContent = 'Loaded from memory';
+        requestsVal.textContent = '--';
+        durationVal.textContent = '--';
+        inputTokensVal.textContent = '--';
+        outputTokensVal.textContent = '--';
+      } else {
+        sourceBadge.textContent = 'API';
+        sourceBadge.className = 'stats-badge';
+        modelName.textContent = stats.model || 'Unknown model';
+        
+        requestsVal.textContent = stats.batchCount || '0';
+        
+        const seconds = (stats.durationMs / 1000).toFixed(1);
+        durationVal.textContent = `${seconds}s`;
+        
+        inputTokensVal.textContent = (stats.promptTokens || 0).toLocaleString();
+        outputTokensVal.textContent = (stats.completionTokens || 0).toLocaleString();
+      }
+    });
   }
 });

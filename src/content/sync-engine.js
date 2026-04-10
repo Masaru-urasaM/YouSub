@@ -157,6 +157,14 @@ export const SyncEngine = {
     if (isRunning && onTimeUpdateBound) {
       onTimeUpdateBound();
     }
+  },
+
+  isActive: function () {
+    return isRunning;
+  },
+
+  isDualModeActive: function () {
+    return isDualMode;
   }
 };
 

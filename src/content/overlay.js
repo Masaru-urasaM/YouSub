@@ -102,7 +102,13 @@ export const Overlay = {
 
     const msgEl = document.createElement('div');
     msgEl.className = 'yousub-status-msg yousub-status-' + (type || 'info');
-    msgEl.innerHTML = message; // Use innerHTML to allow links/buttons
+    
+    // Phase 36: Use TrustedTypes for security compliance on YouTube
+    if (typeof window !== 'undefined' && window.YouSub && window.YouSub.TrustedTypes) {
+      msgEl.innerHTML = window.YouSub.TrustedTypes.toSafeHTML(message);
+    } else {
+      msgEl.innerHTML = message;
+    }
 
     // Enable click handling for specialized actions (e.g. Open Settings)
     const actionLink = msgEl.querySelector('[data-action="open-settings"]');

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouSub - Batch Debugger</title>
+  <link rel="stylesheet" href="debug.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Batch Debugger</h1>
+      <div class="header-actions">
+        <button id="clear-debug-btn" class="danger-btn">Clear Logs</button>
+        <button id="refresh-debug-btn">Refresh</button>
+      </div>
+    </header>
+
+    <div id="debug-list" class="debug-list">
+      <div class="empty-state">No batches recorded yet. Start a translation to see data here.</div>
+    </div>
+  </div>
+
+  <script src="../shared/libs/browser-polyfill.js"></script>
+  <script src="debug.js"></script>
+</body>
+</html>

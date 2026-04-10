@@ -13,6 +13,7 @@ import { translate } from './translator.js';
 import { Logger } from '../shared/logger.js';
 import { Providers } from './providers.js';
 import { Cache } from './cache.js';
+import { HealthManager } from './health.js';
 
 Logger.info('ServiceWorker', 'Background Service Worker loaded.');
 
@@ -21,111 +22,116 @@ Logger.info('ServiceWorker', 'Background Service Worker loaded.');
 // ---------------------------------------------------------------------------
 
 browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  // Logger.info('ServiceWorker', `Received message: ${request.type}`);
+  Logger.debug('ServiceWorker', `Received message: ${request.type}`);
 
+  // Route to specific handlers
+  handleRequest(request, sender)
+    .then(response => {
+      sendResponse(response);
+    })
+    .catch(err => {
+      Logger.error('ServiceWorker', `Router Error: ${err.message}`);
+      sendResponse({ success: false, failureReason: 'BACKGROUND_CRASH', error: err.message });
+    });
+
+  return true; // Keep channel open for async response
+});
+
+/**
+ * Central handler for all requests to ensure async consistency
+ */
+async function handleRequest(request, sender) {
   try {
-    // 1. YOUSUB_TRANSLATE_REQUEST — Translate subtitle segments
+    // 1. YOUSUB_TRANSLATE_REQUEST
     if (request.type === 'YOUSUB_TRANSLATE_REQUEST') {
       const { segments, videoId, sourceLang, targetLang } = request;
       const tabId = sender.tab ? sender.tab.id : null;
 
-      // Extract texts for cache lookup (if we want to keep cache structure same)
-      // or just use segments. 
-      // Current cache logic uses texts.length/content to verify? No, it just uses videoId.
-      
-      // Check Cache first
-      Cache.get(videoId, sourceLang || 'auto', targetLang).then(cached => {
-        if (cached) {
-          Logger.info('ServiceWorker', `Cache HIT for ${videoId}. Skipping API.`);
-          sendResponse({ success: true, translated: cached, fromCache: true });
-          return;
-        }
+      Logger.info('ServiceWorker', `Incoming translation request for ${videoId} (${segments.length} segments)`);
 
-        // Cache MISS — Call translator
-        Logger.info('ServiceWorker', `Cache MISS for ${videoId}. Calling translator...`);
-        translate(segments, sourceLang, targetLang, tabId)
-          .then(result => {
-            // Only cache if fully successful (no fallback originals)
-            if (result.success && !result.hadFallback) {
-              Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
-            }
-            sendResponse(result);
-          })
-          .catch(err => {
-            Logger.error('ServiceWorker', `Translation CRASH: ${err.message}`);
-            sendResponse({ success: false, failureReason: 'INTERNAL_ERROR', error: err.message });
-          });
-      }).catch(err => {
-        sendResponse({ success: false, failureReason: 'CACHE_ERROR', error: err.message });
-      });
+      const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
+      if (cached) {
+        Logger.info('ServiceWorker', `Cache HIT for ${videoId}`);
+        const cacheStats = { source: 'cache', timestamp: Date.now() };
+        await browser.storage.local.set({ [`yousub_stats_${videoId}`]: cacheStats });
+        return { success: true, translated: cached, fromCache: true };
+      }
 
-      return true; // Keep channel open
+      Logger.info('ServiceWorker', `Cache MISS for ${videoId}. Starting translation pipeline...`);
+      await browser.storage.local.remove([`yousub_stats_${videoId}`]);
+
+      const result = await translate(segments, sourceLang, targetLang, tabId);
+      if (result.success && !result.hadFallback) {
+        await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+      }
+
+      if (result.success) {
+        const stats = {
+          source: 'api',
+          model: result.stats?.model || 'unknown',
+          totalTokens: result.stats?.totalTokens || 0,
+          promptTokens: result.stats?.promptTokens || 0,
+          completionTokens: result.stats?.completionTokens || 0,
+          durationMs: result.stats?.durationMs || 0,
+          batchCount: result.stats?.batchCount || 0,
+          timestamp: Date.now()
+        };
+        await browser.storage.local.set({ [`yousub_stats_${videoId}`]: stats });
+      }
+      return result;
     }
 
-    // 2. YOUSUB_FETCH_TEXT — Proxy fetch to bypass CSP/CORS
+    // 2. YOUSUB_FETCH_TEXT
     if (request.type === 'YOUSUB_FETCH_TEXT') {
-      fetch(request.url, { credentials: 'include' })
-        .then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.text();
-        })
-        .then(text => sendResponse({ success: true, text }))
-        .catch(err => sendResponse({ success: false, error: err.message }));
-      return true;
+      const res = await fetch(request.url, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return { success: true, text };
     }
 
-    // 3. YOUSUB_CHECK_CACHE — Fast check if translation exists
+    // 3. YOUSUB_CHECK_CACHE
     if (request.type === 'YOUSUB_CHECK_CACHE') {
-      Cache.get(request.videoId, request.sourceLang || 'auto', request.targetLang)
-        .then(cached => sendResponse({ exists: !!cached }))
-        .catch(() => sendResponse({ exists: false }));
-      return true;
+      const cached = await Cache.get(request.videoId, request.sourceLang || 'auto', request.targetLang);
+      return { exists: !!cached };
     }
 
-    // 4. YOUSUB_CLEAR_VIDEO_CACHE — Reset cache for one video
+    // 4. YOUSUB_CLEAR_VIDEO_CACHE
     if (request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
-      Cache.removeByVideoId(request.videoId)
-        .then(() => {
-          broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED', videoId: request.videoId });
-          sendResponse({ success: true });
-        })
-        .catch(err => sendResponse({ success: false, error: err.message }));
-      return true;
+      await Cache.removeByVideoId(request.videoId);
+      broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED', videoId: request.videoId });
+      return { success: true };
     }
 
-    // 5. YOUSUB_CLEAR_CACHE — Reset ALL cache
+    // 5. YOUSUB_CLEAR_CACHE
     if (request.type === 'YOUSUB_CLEAR_CACHE') {
-      Cache.clearAll()
-        .then(count => {
-          broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED' });
-          sendResponse({ success: true, count });
-        })
-        .catch(err => sendResponse({ success: false, error: err.message }));
-      return true;
+      const count = await Cache.clearAll();
+      broadcastToTabs({ type: 'YOUSUB_CACHE_CLEARED' });
+      return { success: true, count };
     }
 
-    // 6. YOUSUB_TEST_API_KEY — Test key in settings
+    // 6. YOUSUB_TEST_API_KEY
     if (request.type === 'YOUSUB_TEST_API_KEY') {
-      Providers.testApiKey(request.provider, request.model, request.apiKey)
-        .then(res => sendResponse(res))
-        .catch(err => sendResponse({ success: false, message: err.message }));
-      return true;
+      return await Providers.testApiKey(request.provider, request.model, request.apiKey);
     }
 
     // 7. YOUSUB_OPEN_SETTINGS
     if (request.type === 'YOUSUB_OPEN_SETTINGS') {
       browser.runtime.openOptionsPage();
-      sendResponse({ success: true });
-      return true;
+      return { success: true };
     }
 
-  } catch (err) {
-    Logger.error('ServiceWorker', `Fatal Listener Error: ${err.message}`);
-    sendResponse({ success: false, failureReason: 'BACKGROUND_CRASH', error: err.message });
-  }
+    // 8. YOUSUB_GET_HEALTH_SUMMARY
+    if (request.type === 'YOUSUB_GET_HEALTH_SUMMARY') {
+      const resSet = await browser.storage.local.get(['yousub_api_keys']);
+      const summary = await HealthManager.getSummary(resSet.yousub_api_keys || []);
+      return { success: true, summary };
+    }
 
-  return false;
-});
+    return { success: false, failureReason: 'INVALID_REQUEST_TYPE' };
+  } catch (err) {
+    throw err; // Caught by the listener wrapper
+  }
+}
 
 /**
  * Helper: Send message to all tabs

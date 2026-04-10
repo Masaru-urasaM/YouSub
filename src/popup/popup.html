@@ -21,7 +21,10 @@
       </div>
 
       <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
-      <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Page Cache</button>
+      <div class="button-group">
+        <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Cache</button>
+        <button id="open-debug-btn" class="secondary-btn">DEBUG</button>
+      </div>
 
       <div id="loading" class="hidden">
         <div class="spinner"></div>
@@ -33,12 +36,41 @@
           <input type="checkbox" id="dual-mode-toggle">
           <span class="slider round"></span>
         </label>
-        <span class="toggle-label">Dual Subtitles</span>
+        <label for="dual-mode-toggle" class="toggle-label">Dual Subtitles</label>
       </div>
 
       <hr class="divider">
+      
+      <!-- Execution Stats Section (New Phase 35.13) -->
+      <div id="execution-stats" class="stats-container hidden">
+        <div class="stats-header">
+          <span id="stats-title-text" class="stats-title">Last Execution</span>
+          <span id="stats-source-badge" class="stats-badge">API</span>
+        </div>
+        <div class="stats-model-row">
+            <span id="stats-model-name">gemini-1.5-flash</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stats-item">
+            <span class="stats-label">Requests</span>
+            <span id="stats-requests" class="stats-value">--</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Duration</span>
+            <span id="stats-duration" class="stats-value">--</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Input</span>
+            <span id="stats-input-tokens" class="stats-value">--</span>
+          </div>
+          <div class="stats-item">
+            <span class="stats-label">Output</span>
+            <span id="stats-output-tokens" class="stats-value">--</span>
+          </div>
+        </div>
+      </div>
 
-      <button id="open-settings-btn" class="secondary-btn">Open Settings</button>
+      <button id="open-settings-btn" class="secondary-btn">Settings</button>
     </div>
   </div>
 

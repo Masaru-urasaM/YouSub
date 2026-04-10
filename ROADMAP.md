@@ -2,8 +2,8 @@
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 4.0
-> **Last updated**: 2026-04-06
-> **Total phases**: 31 (Phases 0-28 = archived, Phase 29+ = active/pending)
+> **Last updated**: 2026-04-09
+> **Total phases**: 36 (Phases 0-48 = archived, Phase 49+ = active/pending)
 
 ---
 
@@ -13,7 +13,7 @@
 
 This file is the **single source of truth** for all development work on YouSub. Before doing ANY work, you MUST:
 
-1. Read `CLAUDE.md` — contains hard rules for your behavior
+1. Read `GEMINI.md` — contains hard rules for your behavior
 2. Read this file (`ROADMAP.md`) — contains what to do next
 3. Read `ROADMAP_DONE.md` — contains what has already been completed
 4. Read `YOUSUB_DESIGN_DECISIONS.md` — contains past decisions (do NOT re-propose rejected approaches)
@@ -51,7 +51,7 @@ To start a phase, the developer will say something like:
 ```
 Execute Phase N: [Phase Title]
 ```
-When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choose -> Plan -> Code.
+When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choose -> Plan -> Code.
 
 ---
 
@@ -59,8 +59,8 @@ When you receive this, follow the CLAUDE.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-35.12 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, ESM Refactor, Error Notifications, Live API Sync, Dual Mode Fix, Cache Transparency, Timestamp Tracking, and Merge Propagation | DONE (2026-04-07) | M5 |
-| 36   | Production Bundling & Log Management   | TODO               | M4 |
+| 0-48 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, ESM Refactor, Error Notifications, Live API Sync, Dual Mode Fix, Cache Transparency, Timestamp Tracking, Merge Propagation, Dashboard Stability, Security (Trusted Types), Batch Optimization, Stability Patch (Wait Fix/Key Trimming), Diagnostic/Permission Patch, Deep Diagnostic/Sanitization, UI/Background Sync/State Hardening, and **Anti-Deadlock/Stability Overhaul** | DONE (2026-04-09) | M5 |
+| 49   | Production Bundling & Log Management   | TODO               | M5 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 

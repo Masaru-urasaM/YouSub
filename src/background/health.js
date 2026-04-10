@@ -5,6 +5,15 @@ import { Logger } from '../shared/logger.js';
  * health.js
  * Tracks success/failure and response times for each provider/key.
  */
+
+/**
+ * Helper to remove non-printable and zero-width characters (Shared logic)
+ */
+const sanitizeKey = (key) => {
+  if (!key) return '';
+  return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+};
+
 export const HealthManager = {
   COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (Relaxed from 5m)
 
@@ -12,7 +21,8 @@ export const HealthManager = {
    * Generates a hash for identifying a unique provider-key combination.
    */
   getHash(providerId, apiKey) {
-    const suffix = (apiKey || '').slice(-6);
+    const cleanKey = sanitizeKey(apiKey);
+    const suffix = cleanKey.slice(-6);
     return `${providerId}_${suffix}`;
   },
 
@@ -23,7 +33,7 @@ export const HealthManager = {
    * @param {boolean} success
    * @param {number} duration - ms
    */
-  async report(providerId, apiKey, success, duration = 0) {
+  async report(providerId, apiKey, success, duration = 0, options = {}) {
     const hash = this.getHash(providerId, apiKey);
 
     return new Promise((resolve) => {
@@ -50,13 +60,19 @@ export const HealthManager = {
           }
         } else {
           entry.failCount++;
-          entry.consecutiveFails++;
           entry.lastFailureTime = Date.now();
 
-          // Open circuit breaker if 5 consecutive fails (Relaxed from 3)
-          if (entry.consecutiveFails >= 5) {
-            entry.circuitBreakerUntil = Date.now() + this.COOLDOWN_MS;
-            Logger.warn('Health', `Circuit breaker OPEN for ${providerId} until ${new Date(entry.circuitBreakerUntil).toLocaleTimeString()}`);
+          if (options.isTransient) {
+            // Transient errors (e.g., 429 rate limit) — track but don't escalate circuit breaker
+            Logger.debug('Health', `Transient failure for ${providerId} (not counting toward circuit breaker)`);
+          } else {
+            entry.consecutiveFails++;
+
+            // Open circuit breaker if 10 consecutive fails (Relaxed from 5)
+            if (entry.consecutiveFails >= 10) {
+              entry.circuitBreakerUntil = Date.now() + this.COOLDOWN_MS;
+              Logger.warn('Health', `Circuit breaker OPEN for ${providerId} until ${new Date(entry.circuitBreakerUntil).toLocaleTimeString()}`);
+            }
           }
         }
 
@@ -68,22 +84,23 @@ export const HealthManager = {
 
   /**
    * Checks if the circuit is currently open (cooling down).
-   * Fast-path: Returns false instantly if no stats exist.
+   * @param {string} providerId
+   * @param {string} apiKey
+   * @param {Object} [preFetchedStats] - Optional pre-fetched stats to avoid storage I/O
    */
-  async isCircuitOpen(providerId, apiKey) {
+  async isCircuitOpen(providerId, apiKey, preFetchedStats = null) {
     const hash = this.getHash(providerId, apiKey);
     try {
-      const res = await browser.storage.local.get(['yousub_health_stats']);
-      const stats = res.yousub_health_stats || {};
+      const stats = preFetchedStats || (await browser.storage.local.get(['yousub_health_stats'])).yousub_health_stats || {};
       const entry = stats[hash];
-      
+
       if (!entry || !entry.circuitBreakerUntil) return false;
 
       const isOpen = Date.now() < entry.circuitBreakerUntil;
       return isOpen;
     } catch (e) {
       Logger.error('Health', `Check error: ${e.message}`);
-      return false; // Fail-safe: assume open by default? No, better to try and fail-fast.
+      return false;
     }
   },
 
@@ -113,5 +130,53 @@ export const HealthManager = {
         resolve(successRate * speedMult);
       });
     });
+  },
+
+  /**
+   * Returns a health summary for all keys.
+   */
+  async getSummary(keys = []) {
+    const res = await browser.storage.local.get(['yousub_health_stats']);
+    const stats = res.yousub_health_stats || {};
+
+    return keys.map(k => {
+      const hash = this.getHash(k.provider, k.apiKey);
+      const entry = stats[hash];
+      const isOpen = entry ? Date.now() < entry.circuitBreakerUntil : false;
+      const total = entry ? (entry.successCount + entry.failCount) : 0;
+      const rate = total > 0 ? (entry.successCount / total) : 1;
+
+      return {
+        provider: k.provider,
+        model: k.model,
+        isOpen: isOpen,
+        successRate: rate,
+        consecutiveFails: entry ? entry.consecutiveFails : 0,
+        status: isOpen ? 'broken' : (rate < 0.5 ? 'poor' : 'healthy')
+      };
+    });
+  },
+
+  /**
+   * Resets health stats for a specific provider/key combination.
+   * Called when a manual API test succeeds, to clear stale failure history.
+   */
+  async resetStats(providerId, apiKey) {
+    const hash = this.getHash(providerId, apiKey);
+    const res = await browser.storage.local.get(['yousub_health_stats']);
+    const stats = res.yousub_health_stats || {};
+
+    if (stats[hash]) {
+      stats[hash] = {
+        successCount: 1,
+        failCount: 0,
+        consecutiveFails: 0,
+        avgTime: stats[hash].avgTime || 0,
+        lastFailureTime: 0,
+        circuitBreakerUntil: 0
+      };
+      await browser.storage.local.set({ yousub_health_stats: stats });
+      Logger.info('Health', `Stats reset for ${providerId} after successful test`);
+    }
   }
 };
