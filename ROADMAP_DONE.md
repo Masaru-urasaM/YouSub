@@ -309,3 +309,22 @@
 - **Sequential Splitting**: Replaced parallel batch splitting with sequential execution to prevent API rate-limit "explosions".
 - **Payload Management**: Added pre-flight byte estimation and hard context capping (500 chars) to prevent 413 errors.
 - **Success Fix**: Corrected success flag propagation across recursive calls, restoring Vietnamese subtitle display.
+### Phase 50.1 — YouTube Shorts Support & UI Adaptation
+**Status**: DONE (2026-04-10)
+**Summary**: Implemented "Active Reel" detection (`ytd-reel-video-renderer[is-active]`) and specialized vertical overlay layout for YouTube Shorts. Added automated CSS repositioning to avoid UI overlap.
+
+### Phase 50.2 — Streaming Translation (SSE)
+**Status**: DONE (2026-04-10)
+**Summary**: Overhauled the translation pipeline to support real-time word-by-word display. Switched to Port-based communication and implemented SSE (Server-Sent Events) parsers for OpenAI, Anthropic, and Gemini.
+
+### Phase 50.3 — Local LLM Support (Ollama)
+**Status**: DONE (2026-04-10)
+**Summary**: Added support for locally hosted AI models via Ollama. Implemented optional permissions logic for localhost access and a model synchronization bridge to bypass CORS.
+
+### Phase 50.6 — Security Hardening (Trusted Types) & Crash Recovery
+**Status**: DONE (2026-04-10)
+**Summary**: Complied with YouTube's strict CSP by implementing Trusted Types policies for DOM updates. Wrapped the entire extraction and fetcher pipeline in global exception boundaries to prevent fatal script crashes.
+
+### Phase 50.7 — Shorts Stability & Video Binding
+**Status**: DONE (2026-04-10)
+**Summary**: Resolved the "stuck subtitle" issue by refining `VideoBinder` to target only visible, active video elements in the Shorts reel. Added synchronization safeguards to `SyncEngine` to stop updates when a video is swiped away.

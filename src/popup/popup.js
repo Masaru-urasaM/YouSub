@@ -254,7 +254,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function sendMessageToActiveTab(msg) {
     browser.tabs.query({ active: true, currentWindow: true }).then(function (tabs) {
-      if (tabs[0] && tabs[0].url.includes('youtube.com/watch')) {
+      if (!tabs[0] || !tabs[0].url) return;
+      const url = tabs[0].url;
+      
+      // Phase 50.1.4: Support both regular watch and shorts URLs
+      if (url.includes('youtube.com/watch') || url.includes('youtube.com/shorts/')) {
         browser.tabs.sendMessage(tabs[0].id, msg).catch(() => { });
       }
     });

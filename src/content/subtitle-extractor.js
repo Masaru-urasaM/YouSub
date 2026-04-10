@@ -4,10 +4,21 @@ let messageHandler = null;
  * Inject a script file into the MAIN world to bypass CSP 'unsafe-inline'.
  */
 function injectScriptFile(file) {
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL(file);
-  script.onload = function () { this.remove(); };
-  (document.head || document.documentElement).appendChild(script);
+  console.log('[YouSub] SubtitleExtractor: Injecting script file:', file);
+  try {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL(file);
+    script.onload = function () { 
+      console.log('[YouSub] SubtitleExtractor: Script loaded and removed from DOM:', file);
+      this.remove(); 
+    };
+    script.onerror = function (e) {
+      console.error('[YouSub] SubtitleExtractor: Script injection FAILED:', file, e);
+    };
+    (document.head || document.documentElement).appendChild(script);
+  } catch (err) {
+    console.error('[YouSub] SubtitleExtractor: Critical injection error:', err);
+  }
 }
 
 export const SubtitleExtractor = {

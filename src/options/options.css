@@ -442,6 +442,25 @@ select:focus, input:focus {
   color: var(--text-primary);
 }
 
+/* Phase 50.3: Ollama Styles */
+.connect-ollama-btn.ok {
+  background-color: var(--success) !important;
+  color: white !important;
+  border-color: var(--success) !important;
+  opacity: 0.9;
+}
+
+.fetch-ollama-models-btn {
+  font-size: 12px !important;
+  color: var(--accent) !important;
+  text-decoration: none !important;
+  padding: 4px 0 !important;
+}
+
+.fetch-ollama-models-btn:hover {
+  text-decoration: underline !important;
+}
+
 /* Health Indicators */
 .api-row-footer {
   display: flex;

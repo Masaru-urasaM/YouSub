@@ -11,61 +11,81 @@
 (function () {
   'use strict';
 
-  window.addEventListener('message', function (event) {
-    if (event.source !== window) return;
-    if (!event.data || event.data.type !== 'YOUSUB_FETCH_REQUEST') return;
+  try {
+    // Phase 50.6: Trusted Types Bypass
+    var policy = null;
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+      try {
+        policy = window.trustedTypes.createPolicy('yousub-fetcher-policy', {
+          createHTML: function(html) { return html; },
+          createScript: function(s) { return s; },
+          createScriptURL: function(u) { return u; }
+        });
+      } catch (e) {}
+    }
 
-    var requestId = event.data.requestId;
-    var url = event.data.url;
+    window.addEventListener('message', function (event) {
+      if (event.source !== window) return;
+      if (!event.data || event.data.type !== 'YOUSUB_FETCH_REQUEST') return;
 
-    console.log('[YouSub] MainWorldFetcher: Fetching URL:', url.substring(0, 120) + '...');
+      var requestId = event.data.requestId;
+      var url = event.data.url;
 
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.withCredentials = true;
-    xhr.timeout = 15000;
+      console.log('[YouSub] MainWorldFetcher: Fetching URL:', url.substring(0, 120) + '...');
 
-    xhr.onload = function () {
-      console.log('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        window.postMessage({
-          type: 'YOUSUB_FETCH_RESPONSE',
-          requestId: requestId,
-          success: true,
-          text: xhr.responseText
-        }, '*');
-      } else {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.withCredentials = true;
+      xhr.timeout = 15000;
+
+      // Phase 50.5/6: Add YouTube-specific headers
+      xhr.setRequestHeader('X-YouTube-Client-Name', '1');
+      xhr.setRequestHeader('X-YouTube-Client-Version', '2.20240321.01.00');
+
+      xhr.onload = function () {
+        console.log('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          window.postMessage({
+            type: 'YOUSUB_FETCH_RESPONSE',
+            requestId: requestId,
+            success: true,
+            text: xhr.responseText
+          }, '*');
+        } else {
+          window.postMessage({
+            type: 'YOUSUB_FETCH_RESPONSE',
+            requestId: requestId,
+            success: false,
+            error: 'HTTP ' + xhr.status + ' ' + xhr.statusText
+          }, '*');
+        }
+      };
+
+      xhr.onerror = function () {
+        console.error('[YouSub] MainWorldFetcher: XHR network error');
         window.postMessage({
           type: 'YOUSUB_FETCH_RESPONSE',
           requestId: requestId,
           success: false,
-          error: 'HTTP ' + xhr.status + ' ' + xhr.statusText
+          error: 'Network error'
         }, '*');
-      }
-    };
+      };
 
-    xhr.onerror = function () {
-      console.error('[YouSub] MainWorldFetcher: XHR network error');
-      window.postMessage({
-        type: 'YOUSUB_FETCH_RESPONSE',
-        requestId: requestId,
-        success: false,
-        error: 'Network error'
-      }, '*');
-    };
+      xhr.ontimeout = function () {
+        console.error('[YouSub] MainWorldFetcher: XHR timed out');
+        window.postMessage({
+          type: 'YOUSUB_FETCH_RESPONSE',
+          requestId: requestId,
+          success: false,
+          error: 'Request timed out'
+        }, '*');
+      };
 
-    xhr.ontimeout = function () {
-      console.error('[YouSub] MainWorldFetcher: XHR timed out');
-      window.postMessage({
-        type: 'YOUSUB_FETCH_RESPONSE',
-        requestId: requestId,
-        success: false,
-        error: 'Request timed out'
-      }, '*');
-    };
+      xhr.send();
+    });
 
-    xhr.send();
-  });
-
-  console.log('[YouSub] MainWorldFetcher: Ready (XHR mode).');
+    console.log('[YouSub] MainWorldFetcher: Ready (XHR mode).');
+  } catch (e) {
+    console.error('[YouSub] MainWorldFetcher Critical Crash:', e);
+  }
 })();

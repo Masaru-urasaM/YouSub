@@ -16,7 +16,7 @@ const sanitizeKey = (key) => {
 };
 
 // DOM Elements
-let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, noKeysAlert, targetLangSelect, clearCacheBtn;
+let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, streamingModeCheckbox, noKeysAlert, targetLangSelect, clearCacheBtn;
 let triggerSaveCallback = null;
 let saveTimeout = null;
 
@@ -36,6 +36,7 @@ export function initTranslationTab(saveIndicatorCallback) {
   deleteAllBtn = document.getElementById('delete-all-keys-btn');
   failoverCheckbox = document.getElementById('enable-failover');
   rotationCheckbox = document.getElementById('enable-rotation');
+  streamingModeCheckbox = document.getElementById('streaming-mode');
   noKeysAlert = document.getElementById('no-keys-alert');
   clearCacheBtn = document.getElementById('clear-cache-btn');
 
@@ -65,6 +66,7 @@ function loadSettings() {
     'yousub_api_keys',
     'yousub_failover_enabled',
     'yousub_model_rotation',
+    'yousub_streaming_mode',
     'yousub_custom_models',
     'yousub_hidden_models',
     'yousub_health_stats'
@@ -86,6 +88,9 @@ function loadSettings() {
 
     failoverCheckbox.checked = failoverEnabled;
     rotationCheckbox.checked = modelRotation;
+    if (streamingModeCheckbox) {
+      streamingModeCheckbox.checked = items.yousub_streaming_mode || false;
+    }
 
     const healthStats = items.yousub_health_stats || {};
     renderKeysUI(healthStats);
@@ -148,6 +153,8 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const healthIndicator = clone.querySelector('.health-indicator');
   const healthDot = clone.querySelector('.health-dot');
   const healthStatsText = clone.querySelector('.health-stats');
+  const connectOllamaBtn = clone.querySelector('.connect-ollama-btn');
+  const fetchOllamaBtn = clone.querySelector('.fetch-ollama-models-btn');
 
   const isPrimary = (index === 0);
   rowDev.setAttribute('data-index', index);
@@ -258,6 +265,20 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
       const hidden = hiddenModelsRegistry[provId] || [];
 
+      // Phase 50.3: Handle Ollama specifically
+      if (provId === 'ollama') {
+        const ollamaModels = keyData.ollamaModels || [];
+        if (ollamaModels.length > 0) {
+          ollamaModels.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.textContent = `${m.name} (Local)`;
+            datalist.appendChild(opt);
+          });
+          return; // Skip static defaults if we have real models
+        }
+      }
+
       models.forEach(m => {
         if (!hidden.includes(m.id)) {
           const opt = document.createElement('option');
@@ -289,12 +310,40 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     }
   };
 
+  const updateOllamaUI = () => {
+    const isOllama = providerSelect.value === 'ollama';
+    if (isOllama) {
+      apiKeyInput.closest('.api-key-input-group').classList.add('hidden');
+      connectOllamaBtn.classList.remove('hidden');
+      fetchOllamaBtn.classList.remove('hidden');
+
+      // Check permission state
+      chrome.permissions.contains({ origins: ['http://localhost/*'] }, (result) => {
+        if (result) {
+          connectOllamaBtn.textContent = 'Connected to Localhost';
+          connectOllamaBtn.disabled = true;
+          connectOllamaBtn.classList.add('ok');
+        } else {
+          connectOllamaBtn.textContent = 'Connect Ollama';
+          connectOllamaBtn.disabled = false;
+          connectOllamaBtn.classList.remove('ok');
+        }
+      });
+    } else {
+      apiKeyInput.closest('.api-key-input-group').classList.remove('hidden');
+      connectOllamaBtn.classList.add('hidden');
+      fetchOllamaBtn.classList.add('hidden');
+    }
+  };
+
+  updateOllamaUI();
   populateModels();
   modelInput.value = keyData.model || 'auto';
   checkCustomModelStatus();
 
   providerSelect.addEventListener('change', (e) => {
     keyData.provider = e.target.value;
+    updateOllamaUI();
     populateModels();
     keyData.model = 'auto';
     modelInput.value = 'auto';
@@ -306,6 +355,38 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     keyData.model = e.target.value;
     checkCustomModelStatus();
     debouncedSave();
+  });
+
+  connectOllamaBtn.addEventListener('click', () => {
+    chrome.permissions.request({
+      origins: ['http://localhost/*']
+    }, (granted) => {
+      if (granted) {
+        updateOllamaUI();
+        alert('Permission granted! YouSub can now connect to your local Ollama instance.');
+      }
+    });
+  });
+
+  fetchOllamaBtn.addEventListener('click', () => {
+    fetchOllamaBtn.textContent = 'Fetching...';
+    chrome.runtime.sendMessage({
+      type: 'YOUSUB_FETCH_OLLAMA_MODELS',
+      endpoint: 'http://localhost:11434/api/tags'
+    }).then(res => {
+      fetchOllamaBtn.textContent = 'Refresh Models';
+      if (res && res.success && res.models) {
+        keyData.ollamaModels = res.models;
+        populateModels();
+        debouncedSave();
+        alert(`Successfully found ${res.models.length} local models!`);
+      } else {
+        alert('Failed to reach Ollama. Make sure Ollama is running at http://localhost:11434');
+      }
+    }).catch(err => {
+      fetchOllamaBtn.textContent = 'Refresh Models';
+      alert('Error: ' + err.message);
+    });
   });
 
   deleteCustomBtn.addEventListener('click', () => {
@@ -559,6 +640,9 @@ function attachEventListeners() {
     modelRotation = rotationCheckbox.checked;
     debouncedSave();
   });
+  if (streamingModeCheckbox) {
+    streamingModeCheckbox.addEventListener('change', debouncedSave);
+  }
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', () => {
       showConfirmModal(
@@ -627,6 +711,7 @@ function performSave() {
     yousub_api_keys: apiKeys,
     yousub_failover_enabled: failoverEnabled,
     yousub_model_rotation: modelRotation,
+    yousub_streaming_mode: streamingModeCheckbox ? streamingModeCheckbox.checked : false,
     yousub_custom_models: customModelsRegistry,
     yousub_hidden_models: hiddenModelsRegistry
   };

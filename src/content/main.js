@@ -21,7 +21,103 @@ console.log('[YouSub] Main: Module loaded and executing...');
 // Translation helper
 // ---------------------------------------------------------------------------
 
+/**
+ * Streaming Translation Helper (Phase 50.2)
+ */
+function requestTranslationStreaming(parsedEntries, videoId, sourceLang, providedTargetLang, onUpdate) {
+  return new Promise(function (resolve) {
+    let hasResolved = false;
+    
+    // Guardian timeout
+    const timeout = setTimeout(() => {
+      if (!hasResolved) {
+        hasResolved = true;
+        console.error('[YouSub] Main: Streaming translation request timed out after 60s');
+        resolve({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
+      }
+    }, 60000);
+
+    try {
+      if (!chrome.runtime || !chrome.runtime.id) {
+        clearTimeout(timeout);
+        resolve({ success: false, failureReason: 'CONTEXT_INVALIDATED' });
+        return;
+      }
+
+      const port = chrome.runtime.connect({ name: 'yousub-stream' });
+      const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
+      
+      const segments = parsedEntries.map(e => ({ text: e.text, startMs: e.startMs }));
+
+      port.postMessage({
+        type: 'YOUSUB_TRANSLATE_STREAM',
+        videoId: videoId,
+        segments: segments,
+        sourceLang: sourceLang || 'auto',
+        targetLang: targetLang
+      });
+
+      port.onMessage.addListener((response) => {
+        if (hasResolved) return;
+
+        if (response.type === 'CHUNK') {
+          // Process partial batch update
+          const startIndex = response.startIndex;
+          const translatedBatch = response.translated.map((text, i) => {
+            const entry = parsedEntries[startIndex + i];
+            return {
+              startMs: entry.startMs,
+              endMs: entry.endMs,
+              original: entry.text,
+              text: text || entry.text
+            };
+          });
+          if (onUpdate) onUpdate(translatedBatch, startIndex);
+        }
+
+        if (response.type === 'COMPLETE') {
+          hasResolved = true;
+          clearTimeout(timeout);
+          const fullTranslated = parsedEntries.map((entry, i) => {
+            return {
+              startMs: entry.startMs,
+              endMs: entry.endMs,
+              original: entry.text,
+              text: response.translated[i] || entry.text
+            };
+          });
+          resolve({ success: true, translated: fullTranslated, fromCache: !!response.fromCache });
+          port.disconnect();
+        }
+
+        if (response.type === 'ERROR') {
+          hasResolved = true;
+          clearTimeout(timeout);
+          resolve({ success: false, failureReason: response.failureReason, error: response.error });
+          port.disconnect();
+        }
+      });
+
+      port.onDisconnect.addListener(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          clearTimeout(timeout);
+          resolve({ success: false, failureReason: 'PORT_DISCONNECTED' });
+        }
+      });
+
+    } catch (e) {
+      if (!hasResolved) {
+        hasResolved = true;
+        clearTimeout(timeout);
+        resolve({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
+      }
+    }
+  });
+}
+
 function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLang) {
+  // Keep standard request as fallback or for non-streaming mode
   return new Promise(function (resolve) {
     let hasResolved = false;
 
@@ -76,17 +172,25 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
 
           if (response && response.success && Array.isArray(response.translated)) {
             const translated = parsedEntries.map(function (entry, i) {
+              const translatedText = response.translated[i];
+              
+              // Diagnostic: Check if we are accidentally showing English
+              if (!translatedText || translatedText.trim() === entry.text.trim()) {
+                console.warn('[YouSub] Main: No translation for segment', i, 'using original text.');
+              }
+
               return {
                 startMs: entry.startMs,
                 endMs: entry.endMs,
                 original: entry.text,
-                text: response.translated[i] || entry.text
+                text: translatedText || entry.text
               };
             });
             resolve({
               success: true,
               translated: translated,
               hadFallback: !!response.hadFallback,
+              fromCache: !!response.fromCache,
               failureReason: response.failureReason,
               failures: response.failures
             });
@@ -136,7 +240,19 @@ async function processEntries(entries, videoId, targetLang) {
     });
 
     console.log('[YouSub] Main: Requesting translation from worker...');
-    let response = await requestTranslation(entries, videoId, 'auto', targetLang);
+    
+    // Phase 50.2: Check for streaming mode
+    const settings = await chrome.storage.local.get(['yousub_streaming_mode']);
+    const isStreaming = settings.yousub_streaming_mode === true;
+    
+    let response;
+    if (isStreaming) {
+      response = await requestTranslationStreaming(entries, videoId, 'auto', targetLang, (partialBatch, startIndex) => {
+        SyncEngine.updatePartial(partialBatch, startIndex);
+      });
+    } else {
+      response = await requestTranslation(entries, videoId, 'auto', targetLang);
+    }
 
     if (response.success === false) {
       console.warn('[YouSub] Main: Haling pipeline due to error');
@@ -145,11 +261,7 @@ async function processEntries(entries, videoId, targetLang) {
       const msg = `<strong>Translation failed:</strong> ${response.failureReason || 'Error'}<br><small>${response.error || ''}</small>`;
 
       // Phase 36: Use TrustedTypes for security compliance on YouTube
-      if (typeof window !== 'undefined' && window.YouSub && window.YouSub.TrustedTypes) {
-        Overlay.showStatus(window.YouSub.TrustedTypes.toSafeHTML(msg), 'error', 20000);
-      } else {
-        Overlay.showStatus(msg, 'error', 20000);
-      }
+      Overlay.showStatus(TrustedTypes.toSafeHTML(msg), 'error', 20000);
 
       Overlay.setLoading(false);
       return;
@@ -177,23 +289,57 @@ async function processEntries(entries, videoId, targetLang) {
 }
 
 async function startSubtitlePipeline(videoId, targetLang) {
-  console.log('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
-  Overlay.setLoading(true);
-  Overlay.show();
+  try {
+    console.log('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
+    Overlay.setLoading(true);
+    Overlay.show();
 
-  SubtitleExtractor.extract(async function (tracks, parsedEntries, error) {
-    console.log('[YouSub] Main: Extractor results received. Entries:', parsedEntries ? parsedEntries.length : 0, 'Error:', error);
+    SubtitleExtractor.extract(async function (tracks, parsedEntries, error) {
+      try {
+    console.log('[YouSub] Main: Extractor results received. Entries:', parsedEntries ? parsedEntries.length : 0, 'Tracks:', tracks ? tracks.length : 0, 'Error:', error);
 
     if (parsedEntries && parsedEntries.length > 0) {
       await processEntries(parsedEntries, videoId, targetLang);
       return;
     }
 
+    // Fallback: Use tracks directly (Phase 50.1.3)
+    if (tracks && tracks.length > 0) {
+      console.log('[YouSub] Main: Falling back to direct track fetch...');
+      Overlay.showStatus('Fetching transcript data...', 'info', 2000);
+
+      // Simple heuristic: Prefer English manual over English auto over first available
+      let selectedTrack = tracks.find(t => t.languageCode === 'en' && !t.isAutoGenerated);
+      if (!selectedTrack) selectedTrack = tracks.find(t => t.languageCode === 'en');
+      if (!selectedTrack) selectedTrack = tracks[0];
+
+      if (selectedTrack && selectedTrack.baseUrl) {
+        try {
+          const entries = await SubtitleParser.fetch(selectedTrack.baseUrl);
+          if (entries && entries.length > 0) {
+            console.log('[YouSub] Main: Fallback fetch SUCCESS. Entries:', entries.length);
+            await processEntries(entries, videoId, targetLang);
+            return;
+          }
+        } catch (fetchErr) {
+          console.error('[YouSub] Main: Fallback fetch FAILED:', fetchErr);
+        }
+      }
+    }
+
     if (!parsedEntries) {
       Overlay.showStatus('Could not find subtitles', 'warning', 4000);
+      Overlay.setLoading(false);
     }
+      } catch (innerErr) {
+        console.error('[YouSub] Main: startSubtitlePipeline callback error:', innerErr);
+        Overlay.setLoading(false);
+      }
+    });
+  } catch (outerErr) {
+    console.error('[YouSub] Main: startSubtitlePipeline critical error:', outerErr);
     Overlay.setLoading(false);
-  });
+  }
 }
 
 // Init PageDetector

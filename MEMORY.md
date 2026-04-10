@@ -1,9 +1,9 @@
 # Gemini Memory — YouSub Project
 
 ## Project Overview
-**Status**: Healthy — v0.4.8 (Anti-Deadlock & Stability Overhaul)
-**Current Milestone**: M5: Distribution
-**Main Objective**: Finalizing the core engine with robust anti-deadlock mechanisms and perfect Failover/Splitting logic.
+**Status**: Healthy — v0.5.0 (Shorts & Security Hardening)
+**Current Milestone**: M6: Expansion
+**Main Objective**: Stabilizing YouTube Shorts support and ensuring security compliance via Trusted Types.
 
 ## Implementation Log
 
@@ -22,7 +22,12 @@
 - **Phase 29-30 Progress**: 100% (Signature-based Cache, Smart Regex Parser).
 - **Phase 35.1-35.10 Progress**: 100% (Absolute ID Tracking, ESM Refactor, Cache Transparency).
 - **Phases 47-48 Progress**: 100% (**Anti-Deadlock Overhaul**. Integrated AbortController, fixed Logger I/O deadlock, and sequentialized 413 failsafe logic).
-- **Last Updated**: 2026-04-09
+- **Phase 50.1 Progress**: 100% (YouTube Shorts Support. Vertical UI adaptation & TrustedTypes security).
+- **Phase 50.2 Progress**: 100% (Streaming Translation. Port-based messaging & SSE support).
+- **Phase 50.3 Progress**: 100% (Local LLM Support - Ollama. Dynamic permissions & localhost proxy).
+- **Phase 50.6 Progress**: 100% (Security Hardening. Trusted Types policies & global crash recovery).
+- **Phase 50.7 Progress**: 100% (Shorts Stability. Active reel targeting & visibility checks).
+- **Last Updated**: 2026-04-10
 
 ### Implementation Log
 
@@ -37,6 +42,7 @@
 - **[2026-04-07] Phase 35.9-35.10**: **Stabilization & Transparency**.
 - **[2026-04-08] Phase 35.19**: **Stability & Dashboard UI**. Resolved "Checking APIs..." hang.
 - **[2026-04-09] Phases 47-48**: **Anti-Deadlock & Stability Overhaul**. Implemented `AbortController` for fetch cancellation, disabled storage I/O during translation (Logger deadlock fix), and sequentialized 413 recursive splitting. Fixed missing `success` flags.
+- **[2026-04-10] Phase 50.1-50.7**: **Expansion & Stability Patch**. Implemented Shorts support, Streaming (SSE), and Ollama. Hardened security with Trusted Types. Fixed "stuck" subtitles and global syntax errors.
 
 ### Milestone 5: Distribution (2026-04-04 →)
 - **Phase 23 [DONE]**: Visual polish + packaging.

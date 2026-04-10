@@ -59,8 +59,11 @@ When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choo
 
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
-| 0-48 | Core infrastructure, optimization, premium UI, smart extraction/caching/parsing, incremental translation, ESM Refactor, Error Notifications, Live API Sync, Dual Mode Fix, Cache Transparency, Timestamp Tracking, Merge Propagation, Dashboard Stability, Security (Trusted Types), Batch Optimization, Stability Patch (Wait Fix/Key Trimming), Diagnostic/Permission Patch, Deep Diagnostic/Sanitization, UI/Background Sync/State Hardening, and **Anti-Deadlock/Stability Overhaul** | DONE (2026-04-09) | M5 |
-| 49   | Production Bundling & Log Management   | TODO               | M5 |
+| Phase | Description | Status | Milestone |
+|-------|-------------|--------|-----------|
+| 0-50.7| Core infrastructure, premium UI, smart extraction, incremental translation, ESM Refactor, Streaming (SSE), Ollama Support, Security (Trusted Types), and **Shorts Stability Fixes** | DONE (2026-04-10) | M6 |
+| 49   | Production Bundling & Log Management   | IN_PROGRESS        | M5 |
+| 51.1 | Resolve Shorts Metadata/Transcript Extraction Failure | TODO | M6 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 
@@ -68,6 +71,21 @@ When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choo
 
 ## DETAILED PHASE SPECIFICATIONS
 
+### Phase 50.6 — Security Hardening (Trusted Types)
+- **Goal**: Full compliance with YouTube CSP and crash prevention.
+- **Tasks**: Inject policies, wrap extractor/fetcher in global try-catch.
+- **Status**: DONE (2026-04-10)
+
+### Phase 50.7 — Shorts Stability & Video Binding
+- **Goal**: Resolve "stuck" subtitles and binding to hidden video elements.
+- **Tasks**: Update VideoBinder with visibility check and active reel selectors.
+- **Status**: DONE (2026-04-10)
+
+### Phase 51.1 — Shorts Extraction Resilience
+- **Goal**: Fix "Could not find subtitles" on certain Shorts.
+- **Problem**: Some Shorts lack a transcript button and metadata extraction is failing to find the correct `baseUrl`.
+- **Status**: TODO (User Investigation Pending)
+
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · empty = not started
 >
-> **Milestone key**: M1 = MVP, M2 = Features, M3 = Robustness, M4 = Quality, M5 = Distribution
+> **Milestone key**: M1 = MVP, M2 = Features, M3 = Robustness, M4 = Quality, M5 = Distribution, M6 = Expansion

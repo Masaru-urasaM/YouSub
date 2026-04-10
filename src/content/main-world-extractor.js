@@ -15,13 +15,41 @@
 (function () {
   'use strict';
 
-  var videoId = new URLSearchParams(window.location.search).get('v');
-  if (!videoId) {
-    sendResult(null, null, 'No video ID found in URL');
-    return;
-  }
+  try {
+    // -------------------------------------------------------------------------
+    // Phase 50.6: Trusted Types Bypass & Safety
+    // -------------------------------------------------------------------------
+    var policy = null;
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+      try {
+        policy = window.trustedTypes.createPolicy('yousub-extractor-policy', {
+          createHTML: function(html) { return html; },
+          createScript: function(s) { return s; },
+          createScriptURL: function(u) { return u; }
+        });
+      } catch (e) {}
+    }
 
-  console.log('[YouSub] MainWorldExtractor: Video ID:', videoId);
+    function setSafeHTML(el, html) {
+      if (!el) return;
+      if (policy && policy.createHTML) {
+        el.innerHTML = policy.createHTML(html);
+      } else {
+        el.innerHTML = html;
+      }
+    }
+
+    var videoId = new URLSearchParams(window.location.search).get('v');
+    if (!videoId && window.location.pathname.startsWith('/shorts/')) {
+      videoId = window.location.pathname.split('/')[2];
+    }
+
+    if (!videoId) {
+      sendResult(null, null, 'No video ID found in URL/Path');
+      return;
+    }
+
+    console.log('[YouSub] MainWorldExtractor: Video ID:', videoId);
 
   // -------------------------------------------------------------------------
   // Utility: Send result back to content script
@@ -62,13 +90,17 @@
   // Step 1: Find the "Show transcript" button
   // -------------------------------------------------------------------------
   function findTranscriptButton() {
-    // Strategy A: Look for button in the description section
-    var descSection = document.querySelector('ytd-video-description-transcript-section-renderer');
-    if (descSection) {
-      var btn = descSection.querySelector('button');
-      if (btn) {
-        console.log('[YouSub] MainWorldExtractor: Found transcript button in description section.');
-        return btn;
+    var isShorts = window.location.pathname.startsWith('/shorts/');
+
+    // Strategy A: Look for button in the description section (Regular Video)
+    if (!isShorts) {
+      var descSection = document.querySelector('ytd-video-description-transcript-section-renderer');
+      if (descSection) {
+        var btn = descSection.querySelector('button');
+        if (btn) {
+          console.log('[YouSub] MainWorldExtractor: Found transcript button in description section.');
+          return btn;
+        }
       }
     }
 
@@ -79,8 +111,21 @@
       return ariaBtn;
     }
 
-    // Strategy C: Search all buttons/renderers for text content
-    var allButtons = document.querySelectorAll('ytd-button-renderer, tp-yt-paper-button, button');
+    // Strategy C: Shorts-specific search in Active Reel
+    if (isShorts) {
+      // On Shorts, the transcript button is often inside the Description overlay
+      var shortsDesc = document.querySelector('ytd-reel-video-renderer[is-active] ytd-structured-description-content-renderer');
+      if (shortsDesc) {
+        var shortsBtn = shortsDesc.querySelector('ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i]');
+        if (shortsBtn) {
+          console.log('[YouSub] MainWorldExtractor: Found transcript button in Shorts description.');
+          return shortsBtn;
+        }
+      }
+    }
+
+    // Strategy D: Search all buttons/renderers for text content
+    var allButtons = document.querySelectorAll('ytd-button-renderer, tp-yt-paper-button, button, ytd-menu-service-item-renderer');
     for (var i = 0; i < allButtons.length; i++) {
       var text = allButtons[i].textContent.trim().toLowerCase();
       if (text === 'show transcript' || text === 'transcript') {
@@ -93,9 +138,35 @@
   }
 
   // -------------------------------------------------------------------------
-  // Step 1b: Try to expand description to reveal transcript button
+  // Step 1b: Try to expand description/menu to reveal transcript button
   // -------------------------------------------------------------------------
-  function expandDescription() {
+  async function expandDescription() {
+    var isShorts = window.location.pathname.startsWith('/shorts/');
+
+    if (isShorts) {
+      // Step 1: Find and click "More actions" (...) button on the active short
+      var moreBtn = document.querySelector('ytd-reel-video-renderer[is-active] #menu.ytd-reel-video-renderer button');
+      if (moreBtn) {
+        console.log('[YouSub] MainWorldExtractor: Clicking Shorts "More actions" menu...');
+        moreBtn.click();
+        await wait(500);
+
+        // Step 2: Find "Description" in the menu
+        var menuItems = document.querySelectorAll('ytd-menu-service-item-renderer');
+        for (var i = 0; i < menuItems.length; i++) {
+          var text = menuItems[i].textContent.toLowerCase();
+          // Phase 50.6: Support Vietnamese localization
+          if (text.includes('description') || text.includes('mô tả')) {
+            console.log('[YouSub] MainWorldExtractor: Clicking "Description" in Shorts menu...');
+            menuItems[i].click();
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // Regular Video Logic
     // Click "...more" to expand description
     var moreBtn = document.querySelector('tp-yt-paper-button#expand');
     if (moreBtn) {
@@ -172,8 +243,7 @@
           // Also check for transcript renderer directly
           var transcriptRenderer = document.querySelector('ytd-transcript-renderer');
           if (transcriptRenderer) {
-            console.log('[YouSub] DIAGNOSTIC: ytd-transcript-renderer found! innerHTML length:', transcriptRenderer.innerHTML.length);
-            console.log('[YouSub] DIAGNOSTIC: First 500 chars:', transcriptRenderer.innerHTML.substring(0, 500));
+            console.log('[YouSub] DIAGNOSTIC: ytd-transcript-renderer found.');
           } else {
             console.log('[YouSub] DIAGNOSTIC: ytd-transcript-renderer NOT found in DOM.');
           }
@@ -307,12 +377,21 @@
       title: document.title
     };
 
-    var sources = [null, null];
+    var sources = [];
+    // 1. Try movie_player.getPlayerResponse()
     var player = document.getElementById('movie_player');
     if (player && typeof player.getPlayerResponse === 'function') {
-      try { sources[0] = player.getPlayerResponse(); } catch (e) {}
+      try { sources.push(player.getPlayerResponse()); } catch (e) {}
     }
-    sources[1] = window.ytInitialPlayerResponse;
+    // 2. Try window.ytInitialPlayerResponse
+    if (window.ytInitialPlayerResponse) sources.push(window.ytInitialPlayerResponse);
+    // 3. Try searching active reel data (Shorts specific)
+    try {
+      var reel = document.querySelector('ytd-reel-video-renderer[is-active]');
+      if (reel && reel.data && reel.data.playerResponse) {
+        sources.push(reel.data.playerResponse);
+      }
+    } catch(e) {}
 
     for (var s = 0; s < sources.length; s++) {
       var resp = sources[s];
@@ -331,7 +410,7 @@
             return {
               languageCode: t.languageCode || '',
               languageName: (t.name && t.name.simpleText) || t.languageCode || 'Unknown',
-              isAutoGenerated: t.kind === 'asr',
+              isAutoGenerated: (t.kind === 'asr' || !!t.isTranslatable),
               baseUrl: t.baseUrl || ''
             };
           });
@@ -415,5 +494,8 @@
     }
   }
 
-  run();
+    run();
+  } catch (globalErr) {
+    console.error('[YouSub] MainWorldExtractor Fatal Crash:', globalErr);
+  }
 })();

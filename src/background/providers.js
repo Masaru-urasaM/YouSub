@@ -71,6 +71,122 @@ export const Providers = {
   },
 
   /**
+   * Streaming version of chat
+   * @param {function(string)} onChunk - Callback for each text chunk
+   */
+  async chatStream(providerId, modelId, apiKey, prompt, options = {}, onChunk) {
+    const safeKey = sanitizeKey(apiKey);
+    let internalProviderId = providerId;
+    let internalModelId = modelId;
+
+    if (providerId === 'auto') {
+      const detectedId = YOUSUB_PROVIDERS.detectProviderFromKey(apiKey);
+      if (detectedId) {
+        internalProviderId = detectedId;
+        const providerInfo = YOUSUB_PROVIDERS.getProvider(detectedId);
+        internalModelId = modelId === 'auto' ? (providerInfo?.defaultModel || 'unknown') : modelId;
+      }
+    } else {
+      const providerInfo = YOUSUB_PROVIDERS.getProvider(providerId);
+      if (providerInfo && modelId === 'auto') internalModelId = providerInfo.defaultModel;
+    }
+
+    const providerObj = YOUSUB_PROVIDERS.getProvider(internalProviderId);
+    if (!providerObj) return { success: false, message: 'Provider not supported' };
+
+    const style = providerObj.apiStyle;
+    const endpoint = providerObj.endpoint;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
+
+    try {
+      let response;
+      const streamOptions = { ...options, stream: true };
+
+      if (style === 'openai') {
+        response = await this.callOpenAIStyle(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+      } else if (style === 'anthropic') {
+        response = await this.callAnthropic(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+      } else if (style === 'gemini') {
+        response = await this.callGemini(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        return { success: false, message: `HTTP ${response.status}: ${errBody}` };
+      }
+
+      return await this.handleStreamResponse(response, style, onChunk);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      return { success: false, message: err.name === 'AbortError' ? 'Timeout' : err.message };
+    }
+  },
+
+  async handleStreamResponse(response, style, onChunk) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep partial line
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+
+          let chunkText = '';
+          if (style === 'openai' && trimmed.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(trimmed.substring(6));
+              chunkText = json.choices?.[0]?.delta?.content || '';
+            } catch (e) {}
+          } else if (style === 'anthropic' && trimmed.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(trimmed.substring(6));
+              if (json.type === 'content_block_delta') {
+                chunkText = json.delta?.text || '';
+              }
+            } catch (e) {}
+          } else if (style === 'gemini') {
+            // Gemini stream is often a series of JSON objects in one chunk or SSE-like
+            // If it's a standard fetch stream of JSON array parts:
+            try {
+              const json = JSON.parse(trimmed);
+              chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            } catch (e) {
+              // Handle case where Gemini might prepend 'data: ' in some proxy setups
+              if (trimmed.startsWith('data: ')) {
+                try {
+                  const json = JSON.parse(trimmed.substring(6));
+                  chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                } catch (e2) {}
+              }
+            }
+          }
+
+          if (chunkText) {
+            fullText += chunkText;
+            if (onChunk) onChunk(chunkText);
+          }
+        }
+      }
+      return { success: true, text: fullText };
+    } catch (err) {
+      return { success: false, message: `Stream error: ${err.message}`, text: fullText };
+    }
+  },
+
+  /**
    * Generic chat/prompt method
    * @returns {Promise<{success: boolean, message: string, model: string, text: string}>}
    */
@@ -158,7 +274,7 @@ export const Providers = {
       ],
       max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3,
-      stream: false // Phase 39: Explicitly disable streaming for better compatibility
+      stream: !!options.stream // Enable streaming if requested
     };
 
     console.log(`%c[YouSub-Trace] Requesting ${model} at ${endpoint}`, 'color: #3b82f6; font-weight: bold;', {
@@ -169,19 +285,22 @@ export const Providers = {
       payload
     });
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     return fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers,
       body: JSON.stringify(payload),
       signal
     });
   },
 
   async callGemini(endpointPattern, apiKey, model, prompt, options, signal) {
-    const endpoint = endpointPattern.replace('{model}', model) + `?key=${apiKey}`;
+    const action = options.stream ? 'streamGenerateContent' : 'generateContent';
+    const endpoint = endpointPattern.replace('{model}', model).replace('generateContent', action) + `?key=${apiKey}`;
     const systemInstruction = options.systemPrompt ? { parts: [{ text: options.systemPrompt }] } : undefined;
     const payload = {
       systemInstruction: systemInstruction,
@@ -198,8 +317,8 @@ export const Providers = {
       ]
     };
 
-    console.log(`%c[YouSub-API] Gemini Request (${model}):`, 'color: #10b981; font-weight: bold;', {
-      endpoint: endpointPattern.replace('{model}', model),
+    console.log(`%c[YouSub-API] Gemini Request (${model}, stream=${!!options.stream}):`, 'color: #10b981; font-weight: bold;', {
+      endpoint: endpoint.split('?')[0],
       payload
     });
 
@@ -217,10 +336,11 @@ export const Providers = {
       system: options.systemPrompt || "",
       max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3,
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: prompt }],
+      stream: !!options.stream
     };
 
-    console.log(`%c[YouSub-API] Anthropic Request (${model}):`, 'color: #f59e0b; font-weight: bold;', {
+    console.log(`%c[YouSub-API] Anthropic Request (${model}, stream=${!!options.stream}):`, 'color: #f59e0b; font-weight: bold;', {
       endpoint,
       payload
     });

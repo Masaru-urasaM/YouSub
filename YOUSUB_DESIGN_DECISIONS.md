@@ -86,6 +86,17 @@ Include specific technical details and rationale.
 
 **References**: [translator.js](file:///d:/Xinh/XinhTools/YouSub/src/background/translator.js)
 
+### Decision 3 — Cancellation of Group B (Feature Scoping)
+
+**Date**: 2026-04-10
+**Status**: RESOLVED
+
+**Problem**: Group B features (Subtitle Uploads, General Website Translation) were under consideration to expand the extension's utility. However, these features add significant complexity to the UI and background processing.
+
+**Resolution**: Group B has been **Canceled**. The decision was made to keep YouSub focused strictly on providing a premium, high-performance experience for YouTube. Resources will be reallocated to Phase 49 (Production Readiness) to ensure a stable release on the Chrome Web Store.
+
+**References**: [ROADMAP.md](file:///d:/Xinh/XinhTools/YouSub/ROADMAP.md)
+
 ---
 
 ## Part 3: Architecture Summary

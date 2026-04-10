@@ -101,6 +101,19 @@ export const YOUSUB_PROVIDERS = {
         { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (Free)' }
       ],
       defaultModel: 'meta-llama/llama-3.3-70b-instruct'
+    },
+    {
+      id: 'ollama',
+      name: 'Ollama (Local)',
+      apiStyle: 'openai',
+      endpoint: 'http://localhost:11434/v1/chat/completions',
+      keyPatterns: [],
+      models: [
+        { id: 'llama3.1', name: 'Llama 3.1' },
+        { id: 'mistral', name: 'Mistral' },
+        { id: 'phi3', name: 'Phi-3' }
+      ],
+      defaultModel: 'llama3.1'
     }
   ],
 

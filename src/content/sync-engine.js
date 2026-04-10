@@ -30,12 +30,20 @@ function findSubtitleAt(subs, timeMs) {
 function onTimeUpdate() {
   if (!isRunning || !videoElement || !subtitles.length) return;
 
+  // Phase 50.7: Safety check - if video element became invisible or detached,
+  // we might be bound to a stale element (especially on Shorts swiping).
+  if (videoElement.offsetWidth === 0 && videoElement.offsetHeight === 0) {
+    // We don't stop, but we skip rendering to avoid sticking a UI element 
+    // to a hidden video's timestamp.
+    return;
+  }
+
   const timeMs = videoElement.currentTime * 1000;
   let foundIndex = -1;
 
   // Optimization: Temporal Locality
   // Check if we are still in the current subtitle
-  if (currentIndex !== -1) {
+  if (currentIndex !== -1 && currentIndex < subtitles.length) {
     const current = subtitles[currentIndex];
     if (timeMs >= current.startMs && timeMs < current.endMs) {
       foundIndex = currentIndex;
@@ -130,8 +138,16 @@ export const SyncEngine = {
    * Update the subtitle data for a full result (Phase 35).
    */
   updateSubtitles: function (newSubs) {
-    subtitles = newSubs || [];
+    if (!Array.isArray(newSubs)) return;
+    
+    // Safety: If the count changed, reset current index
+    if (newSubs.length !== subtitles.length) {
+      currentIndex = -1;
+    }
+    
+    subtitles = newSubs;
     console.log('[YouSub] SyncEngine: Full subtitles updated. Count: ' + subtitles.length);
+    
     if (isRunning && onTimeUpdateBound) {
       onTimeUpdateBound();
     }
@@ -143,13 +159,23 @@ export const SyncEngine = {
    * @param {number} startIndex Starting index in the master array
    */
   updatePartial: function (batch, startIndex) {
-    if (!subtitles.length || !Array.isArray(batch)) return;
+    if (!subtitles.length || !Array.isArray(batch)) {
+      console.warn('[YouSub] SyncEngine: updatePartial ignored (empty state or batch)');
+      return;
+    }
 
     for (let i = 0; i < batch.length; i++) {
-        const globalIndex = startIndex + i;
-        if (subtitles[globalIndex]) {
-            subtitles[globalIndex].text = batch[i];
+      const globalIndex = startIndex + i;
+      const newItem = batch[i];
+
+      if (subtitles[globalIndex]) {
+        // Handle both string array and object array input
+        if (typeof newItem === 'string') {
+          subtitles[globalIndex].text = newItem;
+        } else if (newItem && typeof newItem === 'object' && newItem.text) {
+          subtitles[globalIndex].text = newItem.text;
         }
+      }
     }
     
     console.log(`[YouSub] SyncEngine: Merged partial batch of ${batch.length} at index ${startIndex}`);

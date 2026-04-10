@@ -18,6 +18,57 @@ import { HealthManager } from './health.js';
 Logger.info('ServiceWorker', 'Background Service Worker loaded.');
 
 // ---------------------------------------------------------------------------
+// Port-based Streaming Router (Phase 50.2)
+// ---------------------------------------------------------------------------
+
+browser.runtime.onConnect.addListener(function (port) {
+  if (port.name === 'yousub-stream') {
+    port.onMessage.addListener(async function (request) {
+      if (request.type === 'YOUSUB_TRANSLATE_STREAM') {
+        const { segments, videoId, sourceLang, targetLang } = request;
+        const tabId = port.sender.tab ? port.sender.tab.id : null;
+
+        try {
+          // 1. Check Cache First
+          const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
+          if (cached) {
+            port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true });
+            return;
+          }
+
+          // 2. Start Streaming Pipeline
+          const result = await translate(segments, sourceLang, targetLang, tabId, (startIndex, batchTranslated, chunk) => {
+            // Send chunk or batch update
+            port.postMessage({ 
+              type: 'CHUNK', 
+              startIndex, 
+              translated: batchTranslated,
+              chunk: chunk 
+            });
+          });
+
+          if (result.success) {
+            if (!result.hadFallback) {
+              await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+            }
+            port.postMessage({ type: 'COMPLETE', ...result });
+          } else {
+            port.postMessage({ type: 'ERROR', ...result });
+          }
+        } catch (err) {
+          Logger.error('ServiceWorker', `Stream Port Error: ${err.message}`);
+          port.postMessage({ type: 'ERROR', error: err.message, failureReason: 'STREAM_CRASH' });
+        }
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      Logger.debug('ServiceWorker', 'Stream port disconnected.');
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Message Router
 // ---------------------------------------------------------------------------
 
@@ -125,6 +176,15 @@ async function handleRequest(request, sender) {
       const resSet = await browser.storage.local.get(['yousub_api_keys']);
       const summary = await HealthManager.getSummary(resSet.yousub_api_keys || []);
       return { success: true, summary };
+    }
+
+    // 9. YOUSUB_FETCH_OLLAMA_MODELS (Phase 50.3)
+    if (request.type === 'YOUSUB_FETCH_OLLAMA_MODELS') {
+      const { endpoint } = request; // e.g. http://localhost:11434/api/tags
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+      const data = await res.json();
+      return { success: true, models: data.models || [] };
     }
 
     return { success: false, failureReason: 'INVALID_REQUEST_TYPE' };

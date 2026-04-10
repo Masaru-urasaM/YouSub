@@ -1,3 +1,5 @@
+import { TrustedTypes } from '../shared/trusted-types.js';
+
 let container = null;
 let translatedElement = null;
 let originalElement = null;
@@ -7,17 +9,34 @@ let playerElement = null; // Cached reference to player
 
 let currentStyles = {}; // Track applied styles to avoid redundant updates
 
+// Ensure policy is initialized once the module loads
+TrustedTypes.init();
+
 function createOverlay() {
   if (container) return; // Already created
 
-  playerElement = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+  const isShorts = window.location.pathname.startsWith('/shorts/');
+  
+  if (isShorts) {
+    // Phase 50.5: Multiple selectors for Shorts active player
+    playerElement = document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
+                    document.querySelector('ytd-shorts .html5-video-player') ||
+                    document.querySelector('.ytd-reel-video-renderer[is-active] .html5-video-player');
+  } else {
+    playerElement = document.getElementById('movie_player') || 
+                    document.querySelector('.html5-video-player') ||
+                    document.querySelector('#ytd-player .html5-video-player');
+  }
+
   if (!playerElement) {
-    console.warn('[YouSub] Overlay: Player container not found.');
+    console.warn('[YouSub] Overlay: Player container not found. Retrying in 500ms...');
+    setTimeout(createOverlay, 500);
     return;
   }
 
   container = document.createElement('div');
   container.id = 'yousub-overlay';
+  if (isShorts) container.classList.add('yousub-shorts');
 
   // Status messages container (top of overlay)
   statusContainer = document.createElement('div');
@@ -104,11 +123,9 @@ export const Overlay = {
     msgEl.className = 'yousub-status-msg yousub-status-' + (type || 'info');
     
     // Phase 36: Use TrustedTypes for security compliance on YouTube
-    if (typeof window !== 'undefined' && window.YouSub && window.YouSub.TrustedTypes) {
-      msgEl.innerHTML = window.YouSub.TrustedTypes.toSafeHTML(message);
-    } else {
-      msgEl.innerHTML = message;
-    }
+    msgEl.innerHTML = TrustedTypes.toSafeHTML(message);
+
+    // Enable click handling for specialized actions (e.g. Open Settings)
 
     // Enable click handling for specialized actions (e.g. Open Settings)
     const actionLink = msgEl.querySelector('[data-action="open-settings"]');
@@ -139,6 +156,7 @@ export const Overlay = {
     createOverlay();
     if (!translatedElement || !originalElement) return;
 
+    // Use textContent for safety and performance (Phase 50.1.3)
     translatedElement.textContent = translated || '';
     
     if (isDualMode && original) {

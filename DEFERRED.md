@@ -2,19 +2,17 @@
 
 Items deferred for later implementation. Each entry includes context and estimated effort.
 
-<!-- Use this format for each deferred item:
+## Shorts Extraction Resilience
 
-## Item Title
+**Context**: Some YouTube Shorts (e.g., specific English-language Shorts) do not show the "Show transcript" button in their description menu, and the metadata extraction logic is currently failing to retrieve a valid `baseUrl` for these tracks on certain videos, resulting in "Could not find subtitles" errors.
 
-**Context**: Why this was considered and why it's being deferred.
+**What's needed**: 
+- Research why `ytd-reel-video-renderer[is-active]` metadata is incomplete for some videos.
+- Investigate if these videos use a different caption delivery mechanism (e.g., protobuf or streaming VTT) that isn't captured in the standard `playerResponse`.
+- Implement a more robust track selection logic that handles cases where only auto-generated tracks are available but hidden.
 
-**What's needed**: Specific work required to implement this item.
+**Effort**: Medium (Requires deep DOM/Network reverse engineering of specific Shorts).
 
-**Effort**: Estimated effort (Small / Medium / Large) or line count estimate.
+**Reference**: `src/content/main-world-extractor.js`, `src/content/subtitle-parser.js`.
 
-**Reference**: Related files, specs, design decisions, or external resources.
-
-**Priority**: When to revisit (e.g., post-MVP, after Phase N, when dependency X is met).
--->
-
-*No deferred items yet.*
+**Priority**: High (Revisit after stabilizing Phase 50 features).

@@ -18,6 +18,10 @@
     "https://api.mistral.ai/*",
     "https://openrouter.ai/*"
   ],
+  "optional_host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"

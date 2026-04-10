@@ -6,6 +6,78 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Shorts Stability & Video Binding — Phase 50.7 (2026-04-10)
+
+**Added**
+- Active Reel Targeting: Enhanced `video-binder.js` to prioritize `ytd-reel-video-renderer[is-active] video` for precise synchronization on YouTube Shorts.
+- Visibility Enforcement: Added an `isVisible` check to ensure the extension only binds to the video element currently in the viewport, ignoring hidden/cached reels.
+
+**Changed**
+- Synchronization Safety: Hardened `sync-engine.js` to skip processing when a video becomes invisible (e.g., during swiping), preventing "stuck" or "ghost" subtitles.
+
+**Fixed**
+- Global Syntax Error: Resolved a fatal `Missing catch or finally` error in `main-world-extractor.js` that blocked initialization on some layouts.
+- Stale Timestamp Tracking: Fixed issue where switching Shorts would leave the previous video's subtitles frozen on screen.
+
+### Security Hardening (Trusted Types) & Crash Recovery — Phase 50.6 (2026-04-10)
+
+**Added**
+- Global Exception Boundaries: Wrapped `MainWorldExtractor` and `MainWorldFetcher` in high-level `try-catch` blocks to prevent unhandled errors from crashing the main world context.
+- Trusted Types Policy Injection: Created `yousub-extractor-policy` and `yousub-fetcher-policy` to ensure DOM manipulation (HTML/Scripts) complies with YouTube's strict security policies.
+
+**Changed**
+- Sanitized DOM Updates: Replaced direct `innerHTML` assignments with a `setSafeHTML` helper function across all main-world scripts.
+- Multi-Language Support: Added Vietnamese localization support (`"mô tả"`) to the Shorts description menu crawler.
+
+**Fixed**
+- Security policy violations (TrustedHTML) that were preventing script injection on modern YouTube layouts.
+- Crash-on-error behavior where a single failure in the extraction pipeline would break the entire extension lifecycle until page reload.
+
+### Local LLM Support (Ollama) — Phase 50.3 (2026-04-10)
+
+**Added**
+- Ollama Integration: Support for locally hosted Ollama instances via the OpenAI-compatible v1 chat completions API.
+- Dynamic Permission Management: Implemented `optional_host_permissions` for `http://localhost/*` and `http://127.0.0.1/*`, allowing users to grant access only when needed.
+- Local Model Synchronization: Added a "Refresh Models" feature that dynamically fetches available Ollama models (Llama, Mistral, etc.) via a background proxy to bypass CORS.
+- Connection UI: Added a "Connect Ollama" button in the Translation settings for a seamless one-click setup.
+
+**Changed**
+- API Header Logic: Updated `providers.js` to omit the `Authorization` header when no API key is provided, ensuring compatibility with local endpoints.
+
+**Fixed**
+- Restricted CORS access issues when calling localhost from extension settings pages.
+
+### Streaming Translation (SSE) & Real-time Delivery — Phase 50.2 (2026-04-10)
+
+**Added**
+- Port-based Messaging Architecture: Switched to `chrome.runtime.connect` for translation requests to enable long-lived connections and incremental chunk delivery.
+- LLM Streaming Support: Implemented `chatStream` in `providers.js` with specialized SSE parsers for OpenAI (delta), Anthropic (content_block_delta), and Gemini (stream JSON).
+- Streaming Mode Toggle: Added a new setting in the Options UI to allow users to choose between standard batch delivery and real-time word-by-word streaming.
+
+**Changed**
+- Background Translator Orchestration: Updated `translator.js` to accept callbacks for stream chunks, forwarding raw AI output to the frontend as it arrives.
+- Content Script Responsiveness: Modified `main.js` to apply partial translation updates to the `SyncEngine` immediately upon chunk reception, significantly reducing perceived latency.
+
+**Fixed**
+- UI lag during long-form video translation by eliminating the need to wait for full batch completion (50+ lines) before rendering initial results.
+- Message bus bottlenecks by utilizing dedicated Port communication for heavy data streams.
+
+### YouTube Shorts Support & Security Hardening — Phase 50.1 (2026-04-10)
+
+**Added**
+- Specialized YouTube Shorts Support: Implementation of "Active Reel" detection and extraction logic. Targeted `ytd-reel-video-renderer[is-active]` to find the correct player on Shorts pages.
+- Shorts-specific UI Adaptation: Added `.yousub-shorts` CSS class and logic in `overlay.js` to automatically adjust width and bottom-offset specifically for the vertical Shorts player.
+
+**Changed**
+- TrustedHTML Security Enforcement: Switched from inline `innerHTML` assignments to mandatory `TrustedTypes.toSafeHTML()` usage across `overlay.js` and `main.js` to comply with YouTube's strict security policy.
+- MainWorldExtractor Robustness: Updated video ID extraction to handle path-based identifiers (`/shorts/VIDEO_ID`) when the `v` URL parameter is absent.
+- Module Import Resilience: Converted `Overlay` and `Main` to use explicit ESM imports for `TrustedTypes`, eliminating race conditions and ensuring policy initialization.
+
+**Fixed**
+- "TrustedHTML assignment" crash that blocked the overlay from appearing on modern YouTube layouts.
+- Subtitle extraction failure on Shorts caused by incorrect selector targeting and missing video ID handling.
+- Overlay overlap with Shorts action buttons and metadata by increasing default bottom offset for vertical views.
+
 ### Anti-Deadlock & Stability Overhaul — Phases 47–48 (2026-04-09)
 
 **Added**

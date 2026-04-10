@@ -300,22 +300,44 @@ CRITICAL RULES:
     Logger.error('Translator', `[CHECKPOINT 5.1] Trying key ${k + 1}/${apiKeys.length}: ${key.provider} (${key.model})`);
 
     try {
+      // Phase 50.2: Check for streaming mode
+      const settings = await browser.storage.local.get(['yousub_streaming_mode']);
+      const isStreaming = settings.yousub_streaming_mode === true;
+
       // Phase 47: Calculate reasonable maxTokens based on actual content size.
-      // Each translated line ≈ 50-100 tokens. Cap at 8192 to stay within Groq limits.
       const estimatedOutputTokens = Math.min(segments.length * 100, 8192);
 
-      const result = await Providers.chat(
-        key.provider,
-        key.model,
-        key.apiKey,
-        userPrompt,
-        {
-          systemPrompt,
-          temperature: 0.1,
-          maxTokens: estimatedOutputTokens,
-          signal // Phase 47: Pass abort signal to provider
-        }
-      );
+      let result;
+      if (isStreaming) {
+        result = await Providers.chatStream(
+          key.provider,
+          key.model,
+          key.apiKey,
+          userPrompt,
+          {
+            systemPrompt,
+            temperature: 0.1,
+            maxTokens: estimatedOutputTokens,
+            signal
+          },
+          (chunk) => {
+            if (options.onChunk) options.onChunk(chunk);
+          }
+        );
+      } else {
+        result = await Providers.chat(
+          key.provider,
+          key.model,
+          key.apiKey,
+          userPrompt,
+          {
+            systemPrompt,
+            temperature: 0.1,
+            maxTokens: estimatedOutputTokens,
+            signal
+          }
+        );
+      }
 
       const duration = performance.now() - startTime;
 
@@ -382,10 +404,12 @@ CRITICAL RULES:
         const threshold = Math.max(1, Math.floor(segments.length * 0.1)); // 10% threshold
 
         if (validLinesCount === 0) {
-          Logger.warn('Translator', `Parser failure with ${key.provider}.`);
+          Logger.warn('Translator', `Parser failure with ${key.provider}. (Matched 0/${segments.length})`);
           HealthManager.report(key.provider, key.apiKey, false, duration);
           continue;
         }
+
+        Logger.debug('Translator', `Parser outcome: ${validLinesCount}/${segments.length} segments matched using ${key.provider}.`);
 
         if (validLinesCount >= threshold || k === apiKeys.length - 1) {
           HealthManager.report(key.provider, key.apiKey, true, duration);

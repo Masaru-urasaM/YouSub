@@ -153,8 +153,23 @@
   100% { transform: rotate(360deg); }
 }
 
-/* Dynamic Positioning for YouTube Controls */
-/* When controls are NOT autohidden (#movie_player doesn't have .ytp-autohide), push overlay up */
 #movie_player:not(.ytp-autohide) #yousub-overlay {
   --yousub-offset: 52px; /* Standard YouTube control bar height ~48-52px */
+}
+
+/* YouTube Shorts Adaptation */
+#yousub-overlay.yousub-shorts {
+  max-width: 90vw;           /* Take more width relative to the narrow player */
+  width: 90vw;
+  min-width: 0;
+  bottom: calc(var(--yousub-pos-bottom) + var(--yousub-offset) + 120px); /* Lift higher on Shorts to avoid meta/actions */
+  padding: 8px 12px;
+}
+
+#yousub-overlay.yousub-shorts .yousub-text-line {
+  font-size: 1.1em !important; /* Smaller text for vertical view */
+}
+
+#yousub-overlay.yousub-shorts #yousub-text-original {
+  font-size: 0.9em !important;
 }

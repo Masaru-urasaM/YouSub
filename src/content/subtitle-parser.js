@@ -15,9 +15,15 @@ function sortTracks(tracks) {
  * Decode basic HTML entities that might appear in older XML/JSON responses.
  */
 function decodeHtml(html) {
-  const txt = document.createElement('textarea');
-  txt.innerHTML = html;
-  return txt.value;
+  if (!html) return '';
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    return doc.documentElement.textContent || '';
+  } catch (e) {
+    console.warn('[YouSub] SubtitleParser: decodeHtml failed', e);
+    return html;
+  }
 }
 
 /**

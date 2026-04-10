@@ -5,10 +5,19 @@ let boundCallback = null;
 
 const TIMEOUT_MS = 10000; // 10 seconds max wait
 const VIDEO_SELECTORS = [
-  'video.html5-main-video',
-  '#movie_player video',
-  'video'
+  'ytd-reel-video-renderer[is-active] video', // Shorts: Active reel video
+  'video.html5-main-video',                  // Regular: Main player video
+  '#movie_player video',                     // Fallback
+  'video'                                    // Generic
 ];
+
+/**
+ * Check if an element is visible in the viewport.
+ */
+function isVisible(el) {
+  if (!el) return false;
+  return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+}
 
 /**
  * Try to find the video element using a list of selectors.
@@ -17,10 +26,19 @@ const VIDEO_SELECTORS = [
 function findVideoElement() {
   for (let i = 0; i < VIDEO_SELECTORS.length; i++) {
     const el = document.querySelector(VIDEO_SELECTORS[i]);
-    if (el && el.tagName === 'VIDEO') {
+    if (el && el.tagName === 'VIDEO' && isVisible(el)) {
       return el;
     }
   }
+
+  // Final fallback: search all videos and find the first visible one
+  const allVideos = document.querySelectorAll('video');
+  for (let j = 0; j < allVideos.length; j++) {
+    if (isVisible(allVideos[j])) {
+      return allVideos[j];
+    }
+  }
+
   return null;
 }
 
