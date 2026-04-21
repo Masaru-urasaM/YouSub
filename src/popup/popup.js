@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const dualModeToggle = document.getElementById('dual-mode-toggle');
   const healthStatus = document.getElementById('health-status');
   const healthText = document.getElementById('health-text');
+  const langSelector = document.getElementById('lang-selector');
 
   // Modal Elements
   const confirmModal = document.getElementById('confirm-modal');
@@ -29,6 +30,23 @@ document.addEventListener('DOMContentLoaded', function () {
   }, 2000);
 
   let currentLang = 'vi';
+
+  // Phase 56: Populate language selector (exclude 'auto')
+  YOUSUB_PROVIDERS.languages
+    .filter(l => l.code !== 'auto')
+    .forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.code;
+      opt.textContent = l.name;
+      langSelector.appendChild(opt);
+    });
+
+  langSelector.addEventListener('change', function () {
+    const newLang = langSelector.value;
+    currentLang = newLang;
+    browser.storage.local.set({ targetLang: newLang });
+    updateLanguageUI(newLang);
+  });
 
   // Load and apply initial states
   browser.storage.local.get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled']).then(async function (res) {
@@ -80,7 +98,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function updateLanguageUI(newLang) {
     currentLang = newLang || 'vi';
-    // Update button text with full language name
+    // Phase 56: Sync dropdown selection
+    if (langSelector.value !== currentLang) {
+      langSelector.value = currentLang;
+    }
     const langObj = YOUSUB_PROVIDERS.languages.find(l => l.code === currentLang);
     const langName = langObj ? langObj.name.toUpperCase() : currentLang.toUpperCase();
     getSubBtn.textContent = `Translate to ${langName}`;

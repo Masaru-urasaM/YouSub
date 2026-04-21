@@ -75,14 +75,15 @@ export const Cache = {
       const res = await browser.storage.local.get([META_KEY]);
       let meta = res[META_KEY] || { keys: [] };
 
-      // Add or Update key in metadata for LRU
-      await this._updateMetadata(videoId, sl, tl, meta, key);
+      // Phase 52.2: Inline metadata update — no separate _updateMetadata call
+      meta.keys = meta.keys.filter(k => k.key !== key);
+      meta.keys.unshift({ key, videoId, sl, tl, lastUsed: now });
 
-      // Save data
-      await browser.storage.local.set({ [key]: entry });
+      // Phase 52.2: Atomic write — data + metadata in single storage.set()
+      await browser.storage.local.set({ [key]: entry, [META_KEY]: meta });
 
-      // Enforce limit
-      await this._evictIfNeeded();
+      // Phase 52.2: Evict using same metadata snapshot (no re-read)
+      await this._evictIfNeeded(meta);
 
       Logger.info('Cache', `Cache SET for ${videoId} (${sl}->${tl}) - ${translated.length} entries`);
     } catch (e) {
@@ -160,13 +161,12 @@ export const Cache = {
 
   /**
    * Remove oldest items if limit exceeded.
+   * Phase 52.2: Accept metadata snapshot to avoid stale re-read.
    */
-  async _evictIfNeeded() {
-    const res = await browser.storage.local.get([META_KEY]);
-    const meta = res[META_KEY];
+  async _evictIfNeeded(meta) {
     if (!meta || meta.keys.length <= MAX_ENTRIES) return;
 
-    const toRemove = meta.keys.slice(MAX_ENTRIES); // Oldest items
+    const toRemove = meta.keys.slice(MAX_ENTRIES);
     meta.keys = meta.keys.slice(0, MAX_ENTRIES);
 
     const keysToRemove = toRemove.map(k => k.key);

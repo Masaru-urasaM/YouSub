@@ -6,6 +6,7 @@ let originalElement = null;
 let statusContainer = null;
 let spinnerElement = null;
 let playerElement = null; // Cached reference to player
+let storageListener = null; // Phase 53.1: Track listener for cleanup
 
 let currentStyles = {}; // Track applied styles to avoid redundant updates
 
@@ -66,18 +67,28 @@ function createOverlay() {
   // Initial style application
   Overlay.refreshStyles();
 
-  // Listen for settings changes
-  chrome.storage.onChanged.addListener((changes, area) => {
+  // Phase 53.1: Store listener reference for cleanup in destroy()
+  storageListener = (changes, area) => {
     if (area === 'local' && changes.yousub_appearance) {
       Overlay.applyStyles(changes.yousub_appearance.newValue);
     }
-  });
+  };
+  chrome.storage.onChanged.addListener(storageListener);
 
   console.log('[YouSub] Overlay: Dynamic overlay created (ESM).');
 }
 
 export const Overlay = {
   show: function () {
+    // Phase 52.2: Verify playerElement is still valid before showing
+    if (container && playerElement) {
+      const isShorts = window.location.pathname.startsWith('/shorts/');
+      const isStale = !playerElement.isConnected ||
+        (isShorts && !playerElement.closest('ytd-reel-video-renderer[is-active]'));
+      if (isStale) {
+        this.destroy();
+      }
+    }
     createOverlay();
     if (container) {
       container.classList.add('yousub-visible');
@@ -120,7 +131,10 @@ export const Overlay = {
     this.show(); // Ensure overlay is visible if showing status
 
     const msgEl = document.createElement('div');
-    msgEl.className = 'yousub-status-msg yousub-status-' + (type || 'info');
+    // Phase 55: Whitelist valid status types
+    const validTypes = ['info', 'success', 'warning', 'error'];
+    const safeType = validTypes.includes(type) ? type : 'info';
+    msgEl.className = 'yousub-status-msg yousub-status-' + safeType;
     
     // Phase 36: Use TrustedTypes for security compliance on YouTube
     msgEl.innerHTML = TrustedTypes.toSafeHTML(message);
@@ -212,6 +226,11 @@ export const Overlay = {
   },
 
   destroy: function () {
+    // Phase 53.1: Remove storage listener to prevent accumulation
+    if (storageListener) {
+      chrome.storage.onChanged.removeListener(storageListener);
+      storageListener = null;
+    }
     if (container && container.parentNode) {
       container.parentNode.removeChild(container);
     }

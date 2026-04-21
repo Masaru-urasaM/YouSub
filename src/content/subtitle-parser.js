@@ -133,7 +133,10 @@ export const SubtitleParser = {
         console.log('[YouSub] SubtitleParser: Main-world JSON3 response length:', json3Text.length);
 
         if (json3Text && json3Text.trim().length > 0) {
-          const jsonData = JSON.parse(json3Text);
+          let jsonData;
+          try { jsonData = JSON.parse(json3Text); } catch (parseErr) {
+            throw new Error('JSON3 parse error: ' + parseErr.message);
+          }
           const json3Result = this.parseJson3(jsonData);
           if (json3Result.length > 0) {
             console.log('[YouSub] SubtitleParser: JSON3 success,', json3Result.length, 'entries.');
@@ -164,7 +167,10 @@ export const SubtitleParser = {
         console.log('[YouSub] SubtitleParser: Trying JSON3 via background fetch...');
         const bgText = await fetchFromBackground(json3Url);
         if (bgText && bgText.trim().length > 0) {
-          const bgData = JSON.parse(bgText);
+          let bgData;
+          try { bgData = JSON.parse(bgText); } catch (parseErr) {
+            throw new Error('Background JSON3 parse error: ' + parseErr.message);
+          }
           const bgResult = this.parseJson3(bgData);
           if (bgResult.length > 0) {
             console.log('[YouSub] SubtitleParser: Background JSON3 success,', bgResult.length, 'entries.');

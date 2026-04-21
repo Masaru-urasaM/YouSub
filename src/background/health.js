@@ -1,18 +1,11 @@
 import '../shared/libs/browser-polyfill.js';
 import { Logger } from '../shared/logger.js';
+import { sanitizeKey } from '../shared/utils.js';
 
 /**
  * health.js
  * Tracks success/failure and response times for each provider/key.
  */
-
-/**
- * Helper to remove non-printable and zero-width characters (Shared logic)
- */
-const sanitizeKey = (key) => {
-  if (!key) return '';
-  return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-};
 
 export const HealthManager = {
   COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (Relaxed from 5m)

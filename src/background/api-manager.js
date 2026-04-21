@@ -2,14 +2,8 @@ import '../shared/libs/browser-polyfill.js';
 import { Logger } from '../shared/logger.js';
 import { HealthManager } from './health.js';
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
+import { sanitizeKey } from '../shared/utils.js';
 
-/**
- * Helper to remove non-printable and zero-width characters (Shared logic)
- */
-const sanitizeKey = (key) => {
-  if (!key) return '';
-  return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-};
 
 /**
  * api-manager.js

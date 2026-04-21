@@ -89,6 +89,41 @@ h1 {
 .health-error .health-dot { background: #f44336; }
 .health-error #health-text { color: #f44336; }
 
+/* Phase 56: Language Selector */
+.lang-selector {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(22, 33, 62, 0.6);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: border-color 0.2s ease;
+}
+
+.lang-selector:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.lang-selector:focus {
+  outline: none;
+  border-color: #e94560;
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.2);
+}
+
+.lang-selector option {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 8px;
+}
+
 .primary-btn {
   background: #334155; /* Slate-700 (Inactive) */
   color: #94a3b8; /* Slate-400 */

@@ -63,10 +63,13 @@ export const SubtitleExtractor = {
         console.log('[YouSub] SubtitleExtractor: No subtitle data available.');
       }
 
+      // Phase 53.1: One-shot — remove listener after callback fires
+      this.destroy();
+
       if (callback) {
         callback(tracks, parsedEntries, error);
       }
-    };
+    }.bind(this);
 
     window.addEventListener('message', messageHandler);
     injectScriptFile('src/content/main-world-extractor.js');

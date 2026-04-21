@@ -42,7 +42,12 @@
       xhr.setRequestHeader('X-YouTube-Client-Name', '1');
       xhr.setRequestHeader('X-YouTube-Client-Version', '2.20240321.01.00');
 
+      // Phase 54.1: Track if any handler has responded
+      var responded = false;
+
       xhr.onload = function () {
+        if (responded) return;
+        responded = true;
         console.log('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
         if (xhr.status >= 200 && xhr.status < 300) {
           window.postMessage({
@@ -62,6 +67,8 @@
       };
 
       xhr.onerror = function () {
+        if (responded) return;
+        responded = true;
         console.error('[YouSub] MainWorldFetcher: XHR network error');
         window.postMessage({
           type: 'YOUSUB_FETCH_RESPONSE',
@@ -72,6 +79,8 @@
       };
 
       xhr.ontimeout = function () {
+        if (responded) return;
+        responded = true;
         console.error('[YouSub] MainWorldFetcher: XHR timed out');
         window.postMessage({
           type: 'YOUSUB_FETCH_RESPONSE',
@@ -82,6 +91,20 @@
       };
 
       xhr.send();
+
+      // Phase 54.1: Secondary safety timeout — fallback if xhr.timeout doesn't fire
+      setTimeout(function () {
+        if (responded) return;
+        responded = true;
+        console.error('[YouSub] MainWorldFetcher: Safety timeout (20s). Aborting XHR.');
+        try { xhr.abort(); } catch (e) {}
+        window.postMessage({
+          type: 'YOUSUB_FETCH_RESPONSE',
+          requestId: requestId,
+          success: false,
+          error: 'Safety timeout (20s)'
+        }, '*');
+      }, 20000);
     });
 
     console.log('[YouSub] MainWorldFetcher: Ready (XHR mode).');

@@ -1,15 +1,7 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { Logger } from '../shared/logger.js';
 import { HealthManager } from './health.js';
-
-/**
- * Helper to remove non-printable and zero-width characters
- */
-const sanitizeKey = (key) => {
-  if (!key) return '';
-  // Remove non-printable, zero-width, and other common garbage characters
-  return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
-};
+import { sanitizeKey } from '../shared/utils.js';
 
 /**
  * Handle API interactions dynamically based on provider apiStyle.
@@ -98,6 +90,15 @@ export const Providers = {
     const endpoint = providerObj.endpoint;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
+
+    // Phase 52.1: Wire external abort signal to internal controller
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
 
     try {
       let response;

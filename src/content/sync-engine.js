@@ -164,12 +164,18 @@ export const SyncEngine = {
       return;
     }
 
+    // Phase 54.2: Validate startIndex bounds
+    if (typeof startIndex !== 'number' || startIndex < 0 || startIndex >= subtitles.length) {
+      console.warn('[YouSub] SyncEngine: updatePartial ignored (invalid startIndex:', startIndex, ')');
+      return;
+    }
+
     for (let i = 0; i < batch.length; i++) {
       const globalIndex = startIndex + i;
+      if (globalIndex >= subtitles.length) break;
       const newItem = batch[i];
 
       if (subtitles[globalIndex]) {
-        // Handle both string array and object array input
         if (typeof newItem === 'string') {
           subtitles[globalIndex].text = newItem;
         } else if (newItem && typeof newItem === 'object' && newItem.text) {

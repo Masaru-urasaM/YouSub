@@ -278,12 +278,14 @@
       // Strategy A: Dedicated selectors for transcript-segment-view-model (2024/2025 layout)
       if (seg.tagName.toLowerCase() === 'transcript-segment-view-model' || seg.querySelector('transcript-segment-view-model')) {
         var host = seg.tagName.toLowerCase() === 'transcript-segment-view-model' ? seg : seg.querySelector('transcript-segment-view-model');
-        // The new layout often uses specific classes for timestamp and formatted string
-        var tsEl = host.querySelector('.segment-timestamp, [class*="timestamp"]');
-        var txtEl = host.querySelector('.segment-text, [class*="segment-text"], yt-formatted-string');
-        
-        if (tsEl) timestampText = tsEl.innerText || tsEl.textContent;
-        if (txtEl) textContent = txtEl.innerText || txtEl.textContent;
+        // Phase 53.2: Null guard — DOM may change between check and assignment
+        if (host) {
+          var tsEl = host.querySelector('.segment-timestamp, [class*="timestamp"]');
+          var txtEl = host.querySelector('.segment-text, [class*="segment-text"], yt-formatted-string');
+
+          if (tsEl) timestampText = tsEl.innerText || tsEl.textContent;
+          if (txtEl) textContent = txtEl.innerText || txtEl.textContent;
+        }
       }
 
       // Strategy B: Fallback to innerText parsing if above failed

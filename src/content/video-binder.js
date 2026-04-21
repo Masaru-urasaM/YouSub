@@ -2,6 +2,7 @@ let videoElement = null;
 let observer = null;
 let timeoutId = null;
 let boundCallback = null;
+let callbackFired = false; // Phase 53.2: Prevent double invocation
 
 const TIMEOUT_MS = 10000; // 10 seconds max wait
 const VIDEO_SELECTORS = [
@@ -48,6 +49,10 @@ function findVideoElement() {
  * @param {HTMLVideoElement} video
  */
 function onVideoFound(video) {
+  // Phase 53.2: Prevent double invocation from initial check + observer race
+  if (callbackFired) return;
+  callbackFired = true;
+
   if (observer) {
     observer.disconnect();
     observer = null;
@@ -74,9 +79,15 @@ function startObserver() {
   }
 
   observer = new MutationObserver(function () {
-    const video = findVideoElement();
-    if (video) {
-      onVideoFound(video);
+    try {
+      const video = findVideoElement();
+      if (video) {
+        onVideoFound(video);
+      }
+    } catch (e) {
+      console.error('[YouSub] VideoBinder: Observer callback error:', e);
+      if (observer) { observer.disconnect(); observer = null; }
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
     }
   });
 
@@ -129,6 +140,7 @@ export const VideoBinder = {
     }
     videoElement = null;
     boundCallback = null;
+    callbackFired = false;
     console.log('[YouSub] VideoBinder: Unbound.');
   },
 

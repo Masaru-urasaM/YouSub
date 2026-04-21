@@ -6,6 +6,83 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Feature: Popup Language Selector — Phase 56 (2026-04-21)
+
+**Added**
+- Language selector dropdown in Popup UI — allows users to change target translation language (15 languages) directly without opening Settings.
+- Dropdown populated dynamically from `YOUSUB_PROVIDERS.languages` (excluding `auto`).
+- Bidirectional sync with Options page via `storage.onChanged` listener.
+- Dark glassmorphism styling with custom SVG dropdown arrow, matching existing Popup theme.
+
+**Changed**
+- `updateLanguageUI()` now syncs both the Translate button text and the dropdown selection.
+
+### Code Quality Polish — Phase 55 (2026-04-21)
+
+**Added**
+- `src/shared/utils.js` — centralized `sanitizeKey()` function, eliminating 3 duplicate copies across `api-manager.js`, `providers.js`, `health.js`.
+- Periodic cleanup for `keyCooldowns` Map in translator (every 60s) to prevent unbounded growth.
+- Segment validation before translation — filters out entries missing `text` or `startMs`.
+
+**Changed**
+- Overlay `showStatus()` now whitelists CSS class type parameter (`info`, `success`, `warning`, `error`), preventing injection of arbitrary class names.
+- `manifest.json` updated with `src/shared/utils.js` in `web_accessible_resources`.
+
+### Request Dedup & Port/Stream Cleanup — Phase 54.2 (2026-04-21)
+
+**Added**
+- Request deduplication in translator: concurrent `translate()` calls for the same tab+language return the existing in-flight Promise instead of spawning duplicate API requests.
+- Active port tracking in service worker via `activePorts` Map with connection timestamps and tab IDs for debugging.
+- `failures` array now populated with provider name, model, HTTP status, and retry-after duration for diagnostic display.
+
+**Fixed**
+- `SyncEngine.updatePartial()` now validates `startIndex` type and bounds before merging, and stops at array boundary to prevent out-of-bounds writes.
+
+### Retry Logic & Timeout Hardening — Phase 54.1 (2026-04-21)
+
+**Added**
+- Automatic retry with exponential backoff (1s, 3s) for transient API failures (timeouts, 5xx errors). 4xx errors (429, 413) continue to use existing cooldown/split mechanisms without retry.
+- Secondary 20s safety timeout on XHR fetcher as fallback if `xhr.timeout` (15s) doesn't fire. Aborts XHR and sends error response.
+
+**Changed**
+- `RETRY_ATTEMPTS` restored from 0 to 2 (was disabled in Phase 47 anti-deadlock work).
+- `JSON.parse()` calls in subtitle parser now produce specific error messages distinguishing parse failures from fetch failures.
+
+### Null Safety & Callback Guards — Phase 53.2 (2026-04-21)
+
+**Fixed**
+- Null dereference crash in `main-world-extractor.js` transcript parser when `host` element disappears between DOM check and assignment (race condition on YouTube SPA navigation).
+- Double callback invocation in `video-binder.js` prevented with `callbackFired` flag — guards against simultaneous initial-check and MutationObserver both finding the video element.
+
+### Event Listener & Observer Cleanup — Phase 53.1 (2026-04-21)
+
+**Fixed**
+- Memory leak: `chrome.storage.onChanged` listeners now stored and removed in `overlay.js` `destroy()`, preventing accumulation across overlay recreations.
+- Duplicate `chrome.runtime.onMessage` listener registration in `main.js` guarded with flag.
+- `subtitle-extractor.js` now uses one-shot pattern — message listener removed immediately after callback fires.
+- `video-binder.js` MutationObserver callback wrapped in try/catch with automatic cleanup on exception.
+
+### Cache Atomicity & DOM Freshness — Phase 52.2 (2026-04-21)
+
+**Changed**
+- `Cache.set()` now writes data and metadata in a single atomic `storage.local.set()` call, preventing race conditions between concurrent translation requests.
+- `_evictIfNeeded()` operates on the same metadata snapshot used by `Cache.set()` instead of re-reading from storage.
+
+**Fixed**
+- Stale overlay attachment after SPA navigation: `Overlay.show()` now verifies `playerElement` is still connected to DOM and is the active player (Shorts reel check) before rendering. Destroys and recreates overlay if stale.
+
+### Service Worker Lifecycle & Message Safety — Phase 52.1 (2026-04-21)
+
+**Added**
+- Keepalive heartbeat (PING/PONG every 25s) for streaming port connections to prevent MV3 Service Worker termination during long translations.
+- Per-port AbortController in service worker that cancels in-flight API requests when the content script disconnects.
+- External abort signal parameter in `translate()` for port-level cancellation cascade.
+- Timeout guard (10s) for cache-check `sendMessage` to prevent silent stalls on extension reload.
+
+**Fixed**
+- `chatStream()` now properly wires external abort signals, matching the existing pattern in `chat()`. Previously, abort signals from the translator's global timeout were silently ignored during streaming translations.
+- All `port.postMessage()` calls in service worker are now wrapped in try/catch to prevent unhandled exceptions after port disconnect.
+
 ### Shorts Stability & Video Binding — Phase 50.7 (2026-04-10)
 
 **Added**

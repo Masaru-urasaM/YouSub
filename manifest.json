@@ -68,6 +68,7 @@
         "src/shared/logger.js",
         "src/shared/trusted-types.js",
         "src/shared/providers-registry.js",
+        "src/shared/utils.js",
         "src/content/page-detector.js",
         "src/content/video-binder.js",
         "src/content/subtitle-extractor.js",

@@ -21,9 +21,26 @@ Logger.info('ServiceWorker', 'Background Service Worker loaded.');
 // Port-based Streaming Router (Phase 50.2)
 // ---------------------------------------------------------------------------
 
+// Phase 54.2: Track active ports for debugging and cleanup
+const activePorts = new Map();
+let portIdCounter = 0;
+
 browser.runtime.onConnect.addListener(function (port) {
   if (port.name === 'yousub-stream') {
+    // Phase 52.1: Per-port abort controller for cleanup on disconnect
+    const portAbort = new AbortController();
+    const portId = ++portIdCounter;
+    const tabId = port.sender && port.sender.tab ? port.sender.tab.id : 'unknown';
+    activePorts.set(portId, { tabId, connectedAt: Date.now() });
+    Logger.debug('ServiceWorker', `Port #${portId} connected (tab ${tabId}). Active ports: ${activePorts.size}`);
+
     port.onMessage.addListener(async function (request) {
+      // Phase 52.1: Keepalive — respond to PING with PONG
+      if (request.type === 'PING') {
+        try { port.postMessage({ type: 'PONG' }); } catch (e) { /* port disconnected */ }
+        return;
+      }
+
       if (request.type === 'YOUSUB_TRANSLATE_STREAM') {
         const { segments, videoId, sourceLang, targetLang } = request;
         const tabId = port.sender.tab ? port.sender.tab.id : null;
@@ -32,38 +49,43 @@ browser.runtime.onConnect.addListener(function (port) {
           // 1. Check Cache First
           const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
           if (cached) {
-            port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true });
+            try { port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true }); } catch (e) { /* disconnected */ }
             return;
           }
 
-          // 2. Start Streaming Pipeline
+          // 2. Start Streaming Pipeline — pass portAbort.signal for disconnect cancellation
           const result = await translate(segments, sourceLang, targetLang, tabId, (startIndex, batchTranslated, chunk) => {
-            // Send chunk or batch update
-            port.postMessage({ 
-              type: 'CHUNK', 
-              startIndex, 
-              translated: batchTranslated,
-              chunk: chunk 
-            });
-          });
+            try {
+              port.postMessage({
+                type: 'CHUNK',
+                startIndex,
+                translated: batchTranslated,
+                chunk: chunk
+              });
+            } catch (e) {
+              Logger.debug('ServiceWorker', 'Port disconnected, chunk dropped.');
+            }
+          }, portAbort.signal);
 
           if (result.success) {
             if (!result.hadFallback) {
               await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
             }
-            port.postMessage({ type: 'COMPLETE', ...result });
+            try { port.postMessage({ type: 'COMPLETE', ...result }); } catch (e) { /* disconnected */ }
           } else {
-            port.postMessage({ type: 'ERROR', ...result });
+            try { port.postMessage({ type: 'ERROR', ...result }); } catch (e) { /* disconnected */ }
           }
         } catch (err) {
           Logger.error('ServiceWorker', `Stream Port Error: ${err.message}`);
-          port.postMessage({ type: 'ERROR', error: err.message, failureReason: 'STREAM_CRASH' });
+          try { port.postMessage({ type: 'ERROR', error: err.message, failureReason: 'STREAM_CRASH' }); } catch (e) { /* disconnected */ }
         }
       }
     });
 
     port.onDisconnect.addListener(() => {
-      Logger.debug('ServiceWorker', 'Stream port disconnected.');
+      activePorts.delete(portId);
+      Logger.debug('ServiceWorker', `Port #${portId} disconnected. Aborting in-flight translation. Active ports: ${activePorts.size}`);
+      portAbort.abort();
     });
   }
 });

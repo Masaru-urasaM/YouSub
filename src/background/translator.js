@@ -18,7 +18,9 @@ import '../shared/libs/browser-polyfill.js';
 // Critical: MAX_LINES_PER_BATCH is not the problem. STOP MENTIONING IT, STOP CHANGING IT, STOP TALKING ABOUT IT. STOP THINKING ABOUT IT.
 
 const MAX_LINES_PER_BATCH = 50;
-const RETRY_ATTEMPTS = 0;
+// Phase 54.1: Re-enable retry for transient failures (timeouts, 5xx)
+const RETRY_ATTEMPTS = 2;
+const RETRY_DELAYS_MS = [1000, 3000];
 const RATE_LIMIT_MAX_RETRIES = 0;
 const RATE_LIMIT_BASE_DELAY_MS = 0;
 const INITIAL_BATCH_DELAY_MS = 50;
@@ -30,6 +32,17 @@ const MAX_RECURSION_DEPTH = 3;        // Stop infinite 413 splits
 const KEY_COOLDOWN_MS = 10000;        // 10s per-key cooldown after 429
 const keyCooldowns = new Map();       // apiKey -> cooldown expiry timestamp
 const MAX_PAYLOAD_BYTES = 95000;      // ~95KB safe limit for Groq (most restrictive provider)
+
+// Phase 54.2: Request deduplication — track in-flight translations by videoId+lang
+const inFlightRequests = new Map();
+
+// Phase 55: Periodic cleanup for keyCooldowns to prevent unbounded growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, expiry] of keyCooldowns) {
+    if (now >= expiry) keyCooldowns.delete(key);
+  }
+}, 60000);
 
 /**
  * Helper: Sleep for ms
@@ -73,17 +86,47 @@ function normalizeTs(tsString) {
  * Main translation entry point.
  * @param {Array} segments - Array of { text, startMs }
  */
-export async function translate(segments, sourceLang, targetLang, tabId = null, onBatchComplete = null) {
+export async function translate(segments, sourceLang, targetLang, tabId = null, onBatchComplete = null, externalSignal = null) {
   if (!segments || segments.length === 0) return { translated: [], hadFallback: false };
+
+  // Phase 55: Filter out invalid segments before translation
+  segments = segments.filter(s => s && s.text && typeof s.startMs === 'number');
+  if (segments.length === 0) return { translated: [], hadFallback: false };
 
   const src = sourceLang || 'auto';
   const tgt = targetLang || 'vi';
 
+  // Phase 54.2: Dedup — return existing Promise if same video+lang is already translating
+  const dedupKey = `${tabId}_${src}_${tgt}`;
+  if (inFlightRequests.has(dedupKey)) {
+    Logger.info('Translator', `[DEDUP] Returning existing in-flight request for ${dedupKey}`);
+    return inFlightRequests.get(dedupKey);
+  }
+
+  const translatePromise = _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal);
+  inFlightRequests.set(dedupKey, translatePromise);
+  try {
+    return await translatePromise;
+  } finally {
+    inFlightRequests.delete(dedupKey);
+  }
+}
+
+async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal) {
   Logger.error('Translator', `[CHECKPOINT 1] Starting translation: ${segments.length} segments`);
   sendDebugLog(tabId, `Initializing translation pipeline (${segments.length} lines)...`, '#2dd4bf', true);
 
   // Phase 47: Global abort controller — kills ALL in-flight fetches on timeout
   const globalAbort = new AbortController();
+
+  // Phase 52.1: Wire external abort signal (port disconnect) to globalAbort
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      globalAbort.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => globalAbort.abort(), { once: true });
+    }
+  }
 
   // Internal 55s safety timeout to prevent hanging the whole background
   return await Promise.race([
@@ -307,39 +350,58 @@ CRITICAL RULES:
       // Phase 47: Calculate reasonable maxTokens based on actual content size.
       const estimatedOutputTokens = Math.min(segments.length * 100, 8192);
 
+      // Phase 54.1: Retry loop for transient failures (timeouts, 5xx)
       let result;
-      if (isStreaming) {
-        result = await Providers.chatStream(
-          key.provider,
-          key.model,
-          key.apiKey,
-          userPrompt,
-          {
-            systemPrompt,
-            temperature: 0.1,
-            maxTokens: estimatedOutputTokens,
-            signal
-          },
-          (chunk) => {
-            if (options.onChunk) options.onChunk(chunk);
-          }
-        );
-      } else {
-        result = await Providers.chat(
-          key.provider,
-          key.model,
-          key.apiKey,
-          userPrompt,
-          {
-            systemPrompt,
-            temperature: 0.1,
-            maxTokens: estimatedOutputTokens,
-            signal
-          }
-        );
-      }
+      let duration;
+      for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
+        if (signal && signal.aborted) break;
 
-      const duration = performance.now() - startTime;
+        if (attempt > 0) {
+          const delay = RETRY_DELAYS_MS[attempt - 1] || 3000;
+          Logger.warn('Translator', `Retry ${attempt}/${RETRY_ATTEMPTS} for ${key.provider} after ${delay}ms...`);
+          await wait(delay);
+        }
+
+        const attemptStart = performance.now();
+        if (isStreaming) {
+          result = await Providers.chatStream(
+            key.provider,
+            key.model,
+            key.apiKey,
+            userPrompt,
+            {
+              systemPrompt,
+              temperature: 0.1,
+              maxTokens: estimatedOutputTokens,
+              signal
+            },
+            (chunk) => {
+              if (options.onChunk) options.onChunk(chunk);
+            }
+          );
+        } else {
+          result = await Providers.chat(
+            key.provider,
+            key.model,
+            key.apiKey,
+            userPrompt,
+            {
+              systemPrompt,
+              temperature: 0.1,
+              maxTokens: estimatedOutputTokens,
+              signal
+            }
+          );
+        }
+        duration = performance.now() - attemptStart;
+
+        // Only retry transient failures: timeouts and 5xx
+        const isTransient = !result.success && (
+          (result.message && result.message.includes('Timeout')) ||
+          (result.statusCode && result.statusCode >= 500)
+        );
+        if (!isTransient || attempt === RETRY_ATTEMPTS) break;
+      }
 
       if (result.success && result.text) {
         const cleanedText = cleanResponse(result.text);
@@ -426,21 +488,21 @@ CRITICAL RULES:
           continue;
         }
       } else if (result.statusCode === 413) {
-        // Phase 47: On 413, DON'T split immediately — try other keys first.
-        // Different providers have different payload limits (Gemini >> Groq).
         Logger.warn('Translator', `413 from ${key.provider} (depth=${depth}, segs=${segments.length}). Trying next key...`);
+        failures.push({ provider: key.provider, model: key.model, status: 413, message: 'Payload too large' });
         had413 = true;
         continue;
       } else if (result.statusCode === 429) {
-        // Phase 47: Set cooldown using Retry-After header if available
         hadRateLimit = true;
         const cooldown = Math.max(KEY_COOLDOWN_MS, result.retryAfterMs || 0);
         keyCooldowns.set(key.apiKey, Date.now() + cooldown);
         Logger.warn('Translator', `Rate limited (429) by ${key.provider}. Cooldown ${cooldown}ms.`);
+        failures.push({ provider: key.provider, model: key.model, status: 429, retryAfterMs: cooldown });
         HealthManager.report(key.provider, key.apiKey, false, duration, { isTransient: true });
         continue;
       } else {
         Logger.warn('Translator', `${key.provider} returned error: ${result.message}`);
+        failures.push({ provider: key.provider, model: key.model, message: result.message || 'Unknown error' });
         HealthManager.report(key.provider, key.apiKey, false, duration);
         continue;
       }

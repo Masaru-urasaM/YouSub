@@ -28,10 +28,13 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
   return new Promise(function (resolve) {
     let hasResolved = false;
     
+    let keepaliveInterval = null;
+
     // Guardian timeout
     const timeout = setTimeout(() => {
       if (!hasResolved) {
         hasResolved = true;
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
         console.error('[YouSub] Main: Streaming translation request timed out after 60s');
         resolve({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
       }
@@ -45,6 +48,12 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
       }
 
       const port = chrome.runtime.connect({ name: 'yousub-stream' });
+
+      // Phase 52.1: Keepalive — ping every 25s to prevent SW termination
+      keepaliveInterval = setInterval(() => {
+        try { port.postMessage({ type: 'PING' }); } catch (e) { clearInterval(keepaliveInterval); }
+      }, 25000);
+
       const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
       
       const segments = parsedEntries.map(e => ({ text: e.text, startMs: e.startMs }));
@@ -78,6 +87,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
         if (response.type === 'COMPLETE') {
           hasResolved = true;
           clearTimeout(timeout);
+          clearInterval(keepaliveInterval);
           const fullTranslated = parsedEntries.map((entry, i) => {
             return {
               startMs: entry.startMs,
@@ -93,6 +103,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
         if (response.type === 'ERROR') {
           hasResolved = true;
           clearTimeout(timeout);
+          clearInterval(keepaliveInterval);
           resolve({ success: false, failureReason: response.failureReason, error: response.error });
           port.disconnect();
         }
@@ -102,6 +113,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
         if (!hasResolved) {
           hasResolved = true;
           clearTimeout(timeout);
+          clearInterval(keepaliveInterval);
           resolve({ success: false, failureReason: 'PORT_DISCONNECTED' });
         }
       });
@@ -110,6 +122,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
       if (!hasResolved) {
         hasResolved = true;
         clearTimeout(timeout);
+        if (keepaliveInterval) clearInterval(keepaliveInterval);
         resolve({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
       }
     }
@@ -365,22 +378,43 @@ PageDetector.init(
 
         if (enabled) {
           console.log('[YouSub] Main: Auto-translation is ENABLED. Checking cache...');
-          chrome.runtime.sendMessage({
-            type: 'YOUSUB_CHECK_CACHE',
-            videoId: videoId,
-            targetLang: targetLang
-          }, function (checkRes) {
-            if (chrome.runtime.lastError) {
-              console.error('[YouSub] Main: Cache check message error:', chrome.runtime.lastError);
-              return;
+          // Phase 52.1: Guard cache check with timeout
+          let cacheCheckDone = false;
+          const cacheTimeout = setTimeout(() => {
+            if (!cacheCheckDone) {
+              cacheCheckDone = true;
+              console.warn('[YouSub] Main: Cache check timed out after 10s. Skipping auto-start.');
             }
-            if (checkRes && checkRes.exists) {
-              console.log('[YouSub] Main: Cache hit. Auto-starting pipeline.');
-              startSubtitlePipeline(videoId, targetLang);
-            } else {
-              console.log('[YouSub] Main: Cache miss or no cache found.');
+          }, 10000);
+
+          try {
+            chrome.runtime.sendMessage({
+              type: 'YOUSUB_CHECK_CACHE',
+              videoId: videoId,
+              targetLang: targetLang
+            }, function (checkRes) {
+              if (cacheCheckDone) return;
+              cacheCheckDone = true;
+              clearTimeout(cacheTimeout);
+
+              if (chrome.runtime.lastError) {
+                console.error('[YouSub] Main: Cache check message error:', chrome.runtime.lastError);
+                return;
+              }
+              if (checkRes && checkRes.exists) {
+                console.log('[YouSub] Main: Cache hit. Auto-starting pipeline.');
+                startSubtitlePipeline(videoId, targetLang);
+              } else {
+                console.log('[YouSub] Main: Cache miss or no cache found.');
+              }
+            });
+          } catch (e) {
+            if (!cacheCheckDone) {
+              cacheCheckDone = true;
+              clearTimeout(cacheTimeout);
+              console.error('[YouSub] Main: Cache check sendMessage threw:', e);
             }
-          });
+          }
         } else {
           console.log('[YouSub] Main: Auto-translation is DISABLED.');
         }
@@ -394,7 +428,10 @@ PageDetector.init(
   }
 );
 
-// Listen for translation trigger from popup
+// Phase 53.1: Guard against duplicate listener registration on content script reload
+let _messageListenerRegistered = false;
+if (!_messageListenerRegistered) {
+_messageListenerRegistered = true;
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   const currentVideoId = PageDetector.getCurrentVideoId();
 
@@ -440,3 +477,4 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   // Return true if we want to send a response asynchronously (though not needed here)
   return false;
 });
+} // Phase 53.1: end duplicate listener guard
