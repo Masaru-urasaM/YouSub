@@ -1,9 +1,9 @@
 # YouSub — Development Roadmap
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
-> **Version**: 5.0
+> **Version**: 6.0
 > **Last updated**: 2026-04-21
-> **Total phases**: 44 (Phases 0-50.7 = archived, Phase 49+ = active/pending)
+> **Total phases**: 52 (Phases 0-56 = archived/done, Phase 49 = in progress, Phase 51.1 = pending)
 
 ---
 

@@ -328,3 +328,35 @@
 ### Phase 50.7 — Shorts Stability & Video Binding
 **Status**: DONE (2026-04-10)
 **Summary**: Resolved the "stuck subtitle" issue by refining `VideoBinder` to target only visible, active video elements in the Shorts reel. Added synchronization safeguards to `SyncEngine` to stop updates when a video is swiped away.
+
+### Phase 52.1 — Critical: Service Worker Lifecycle & Message Safety
+**Status**: DONE (2026-04-21)
+**Summary**: Added keepalive PING/PONG (25s) for streaming port connections, per-port AbortController with disconnect→abort cascade through translator→providers→fetch, chatStream external signal wiring, cache-check 10s timeout guard.
+
+### Phase 52.2 — Critical: Cache Atomicity & DOM Freshness
+**Status**: DONE (2026-04-21)
+**Summary**: Atomic cache write (data + metadata in single `storage.set()`), `_evictIfNeeded()` uses same metadata snapshot, overlay `show()` verifies `playerElement.isConnected` + active reel check for Shorts.
+
+### Phase 53.1 — High: Event Listener & Observer Cleanup
+**Status**: DONE (2026-04-21)
+**Summary**: Storage listener tracked and removed in overlay `destroy()`, message listener guarded against duplicates, subtitle extractor uses one-shot pattern, MutationObserver callback wrapped in try/catch with cleanup.
+
+### Phase 53.2 — High: Null Safety & Callback Guards
+**Status**: DONE (2026-04-21)
+**Summary**: Null guard for `host` in transcript segment parser (DOM race between check and assignment), `callbackFired` flag in `onVideoFound` with reset in `unbind()`.
+
+### Phase 54.1 — Medium: Retry Logic & Timeout Hardening
+**Status**: DONE (2026-04-21)
+**Summary**: `RETRY_ATTEMPTS = 2` with exponential backoff (1s, 3s) for transient failures only (timeouts, 5xx). 20s safety timeout on XHR fetcher. Specific JSON.parse error messages for debugging.
+
+### Phase 54.2 — Medium: Request Dedup & Port/Stream Cleanup
+**Status**: DONE (2026-04-21)
+**Summary**: `inFlightRequests` Map deduplicates concurrent translations for same tab+lang. `activePorts` Map tracks port lifecycle. `updatePartial()` validates startIndex bounds. `failures` array populated with provider/model/status detail.
+
+### Phase 55 — Low: Code Quality Polish
+**Status**: DONE (2026-04-21)
+**Summary**: `sanitizeKey()` centralized in `src/shared/utils.js`, 3 background files updated to import. `keyCooldowns` periodic cleanup (60s). Segment validation before translation. Overlay status type whitelist.
+
+### Phase 56 — Feature: Popup Language Selector
+**Status**: DONE (2026-04-21)
+**Summary**: `<select>` dropdown populated from `YOUSUB_PROVIDERS.languages` (15 langs, no auto). Saves to `targetLang` in storage on change. Syncs bidirectionally with Options page via `storage.onChanged`. Dark glassmorphism styling with custom arrow.
