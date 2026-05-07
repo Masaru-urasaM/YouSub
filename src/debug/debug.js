@@ -50,6 +50,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     `).join('');
   }
 
+  // Copy All button
+  const copyAllBtn = document.getElementById('copy-all-btn');
+  copyAllBtn.addEventListener('click', async () => {
+    const data = await browser.storage.local.get('yousub_debug_history');
+    const logs = data.yousub_debug_history || [];
+    if (logs.length === 0) return;
+
+    const text = formatAllLogs(logs);
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = copyAllBtn.textContent;
+      copyAllBtn.textContent = 'Copied!';
+      copyAllBtn.style.backgroundColor = '#10b981';
+      setTimeout(() => {
+        copyAllBtn.textContent = orig;
+        copyAllBtn.style.backgroundColor = '';
+      }, 2000);
+    });
+  });
+
   // Event Delegation for Copy Buttons
   debugList.addEventListener('click', (e) => {
     if (e.target.classList.contains('copy-btn')) {
@@ -81,6 +100,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial load
   loadLogs();
 });
+
+function formatAllLogs(logs) {
+  const lines = [
+    '=== YouSub Batch Debug Log ===',
+    `Exported: ${new Date().toISOString()}`,
+    `Total entries: ${logs.length}`,
+    ''
+  ];
+
+  logs.forEach((log, i) => {
+    lines.push(`--- Entry ${i + 1}/${logs.length} ---`);
+    lines.push(`Timestamp: ${log.timestamp}`);
+    lines.push(`Provider: ${log.provider} | Model: ${log.model}`);
+    lines.push(`Status: ${log.success ? 'SUCCESS' : 'FAILED'} | Duration: ${log.duration || 'N/A'}`);
+    lines.push('');
+    lines.push('[INPUT]');
+    lines.push(log.input || '');
+    lines.push('');
+    lines.push('[OUTPUT]');
+    lines.push(log.output || '');
+    lines.push('');
+    lines.push('[SYSTEM PROMPT]');
+    lines.push(log.systemPrompt || '');
+    lines.push('');
+  });
+
+  return lines.join('\n');
+}
 
 function escapeHtml(text) {
   if (!text) return "";

@@ -12,13 +12,15 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'gemini',
       endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
       keyPatterns: ['AIza'],
+      supportsJsonMode: true,
       models: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
         { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
         { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
         { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
         { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
       ],
-      defaultModel: 'gemini-2.0-flash'
+      defaultModel: 'gemini-2.5-flash'
     },
     {
       id: 'openai',
@@ -26,6 +28,7 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'openai',
       endpoint: 'https://api.openai.com/v1/chat/completions',
       keyPatterns: ['sk-'],
+      supportsJsonMode: true,
       models: [
         { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
         { id: 'gpt-4o', name: 'GPT-4o' }
@@ -38,6 +41,7 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'anthropic',
       endpoint: 'https://api.anthropic.com/v1/messages',
       keyPatterns: ['sk-ant-'],
+      supportsJsonMode: false,
       models: [
         { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
         { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' }
@@ -49,7 +53,9 @@ export const YOUSUB_PROVIDERS = {
       name: 'DeepSeek',
       apiStyle: 'openai',
       endpoint: 'https://api.deepseek.com/v1/chat/completions',
+      quotaEndpoint: 'https://api.deepseek.com/user/balance',
       keyPatterns: ['sk-'],
+      supportsJsonMode: true,
       models: [
         { id: 'deepseek-chat', name: 'DeepSeek Chat (V3)' },
         { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1)' }
@@ -62,8 +68,13 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'openai',
       endpoint: 'https://api.groq.com/openai/v1/chat/completions',
       keyPatterns: ['gsk_'],
+      supportsJsonMode: true,
       models: [
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
         { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
+        { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' },
+        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' },
+        { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B' },
         { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' }
       ],
       defaultModel: 'llama-3.3-70b-versatile'
@@ -74,6 +85,7 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'openai',
       endpoint: 'https://api.x.ai/v1/chat/completions',
       keyPatterns: ['xai-'],
+      supportsJsonMode: true,
       models: [
         { id: 'grok-2-latest', name: 'Grok 2 Latest' }
       ],
@@ -85,6 +97,7 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'openai',
       endpoint: 'https://api.mistral.ai/v1/chat/completions',
       keyPatterns: [],
+      supportsJsonMode: true,
       models: [
         { id: 'mistral-small-latest', name: 'Mistral Small' },
         { id: 'mistral-large-latest', name: 'Mistral Large' }
@@ -96,7 +109,9 @@ export const YOUSUB_PROVIDERS = {
       name: 'OpenRouter',
       apiStyle: 'openai',
       endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+      quotaEndpoint: 'https://openrouter.ai/api/v1/auth/key',
       keyPatterns: ['sk-or-v1-'],
+      supportsJsonMode: false,
       models: [
         { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (Free)' }
       ],
@@ -108,6 +123,7 @@ export const YOUSUB_PROVIDERS = {
       apiStyle: 'openai',
       endpoint: 'http://localhost:11434/v1/chat/completions',
       keyPatterns: [],
+      supportsJsonMode: false,
       models: [
         { id: 'llama3.1', name: 'Llama 3.1' },
         { id: 'mistral', name: 'Mistral' },

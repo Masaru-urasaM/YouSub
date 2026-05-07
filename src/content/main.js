@@ -104,7 +104,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
           hasResolved = true;
           clearTimeout(timeout);
           clearInterval(keepaliveInterval);
-          resolve({ success: false, failureReason: response.failureReason, error: response.error });
+          resolve({ success: false, failureReason: response.failureReason, error: response.error, failures: response.failures });
           port.disconnect();
         }
       });
@@ -253,29 +253,45 @@ async function processEntries(entries, videoId, targetLang) {
     });
 
     console.log('[YouSub] Main: Requesting translation from worker...');
-    
-    // Phase 50.2: Check for streaming mode
-    const settings = await chrome.storage.local.get(['yousub_streaming_mode']);
-    const isStreaming = settings.yousub_streaming_mode === true;
-    
+
     let response;
-    if (isStreaming) {
-      response = await requestTranslationStreaming(entries, videoId, 'auto', targetLang, (partialBatch, startIndex) => {
-        SyncEngine.updatePartial(partialBatch, startIndex);
-      });
-    } else {
-      response = await requestTranslation(entries, videoId, 'auto', targetLang);
-    }
+    response = await requestTranslationStreaming(entries, videoId, 'auto', targetLang, (partialBatch, startIndex) => {
+      SyncEngine.updatePartial(partialBatch, startIndex);
+    });
 
     if (response.success === false) {
       console.warn('[YouSub] Main: Haling pipeline due to error');
       SyncEngine.stop();
       Overlay.destroy();
-      const msg = `<strong>Translation failed:</strong> ${response.failureReason || 'Error'}<br><small>${response.error || ''}</small>`;
 
-      // Phase 36: Use TrustedTypes for security compliance on YouTube
+      let msg = `<strong>Translation failed:</strong> ${response.failureReason || 'Error'}`;
+      if (response.failures && response.failures.length > 0) {
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const unique = [];
+        const seen = new Set();
+        for (const f of response.failures) {
+          const key = `${f.provider}_${f.model}_${f.status}`;
+          if (!seen.has(key)) { seen.add(key); unique.push(f); }
+        }
+        const lines = unique.slice(0, 5).map(f => {
+          let detail = '';
+          if (f.message) {
+            const retryMatch = f.message.match(/try again in\s+([^\s.]+(?:\.\d+s?)?)/i);
+            const limitMatch = f.message.match(/Limit\s+(\d+),\s*Used\s+(\d+)/);
+            if (limitMatch) detail = `${limitMatch[2]}/${limitMatch[1]} used`;
+            if (retryMatch) detail += (detail ? ', ' : '') + `retry ${retryMatch[1]}`;
+            if (!detail) detail = esc(f.message.substring(0, 80));
+          }
+          const status = f.status ? ` [${f.status}]` : '';
+          return `${esc(f.provider)}/${esc(f.model)}${status}${detail ? ': ' + detail : ''}`;
+        });
+        msg += '<br><small>' + lines.join('<br>') + '</small>';
+        if (unique.length > 5) msg += `<br><small>+ ${unique.length - 5} more</small>`;
+      } else if (response.error) {
+        msg += `<br><small>${response.error}</small>`;
+      }
+
       Overlay.showStatus(TrustedTypes.toSafeHTML(msg), 'error', 20000);
-
       Overlay.setLoading(false);
       return;
     }

@@ -1,9 +1,9 @@
 # Gemini Memory — YouSub Project
 
 ## Project Overview
-**Status**: Healthy — v0.5.0 (Shorts & Security Hardening)
-**Current Milestone**: M6: Expansion
-**Main Objective**: Stabilizing YouTube Shorts support and ensuring security compliance via Trusted Types.
+**Status**: Healthy — v0.6.0 (Pipeline Error Visibility & Quota Diagnostics)
+**Current Milestone**: M3: Robustness
+**Main Objective**: Translation pipeline error transparency — detailed quota/rate-limit diagnostics, context summary cooldown fix, test button quota display.
 
 ## Implementation Log
 
@@ -43,6 +43,10 @@
 - **[2026-04-08] Phase 35.19**: **Stability & Dashboard UI**. Resolved "Checking APIs..." hang.
 - **[2026-04-09] Phases 47-48**: **Anti-Deadlock & Stability Overhaul**. Implemented `AbortController` for fetch cancellation, disabled storage I/O during translation (Logger deadlock fix), and sequentialized 413 recursive splitting. Fixed missing `success` flags.
 - **[2026-04-10] Phase 50.1-50.7**: **Expansion & Stability Patch**. Implemented Shorts support, Streaming (SSE), and Ollama. Hardened security with Trusted Types. Fixed "stuck" subtitles and global syntax errors.
+- **[2026-04-24] Phase 59**: **MergeFixer Bug Fixes + Unit Tests**. Fixed critical false positive merge detection (`absorbed=0→1`), added `MIN_WORDS_FOR_RATIO_CHECK=4` guard for short segments, CJK-aware `wordCount()`, and partial anchor recovery. Added 37 unit tests.
+- **[2026-04-24] Phase 59.1**: **Google Translate Verification + Best-Fit**. Added same-language verification (Google VI vs LLM VI) to confirm merges before fixing. Best-fit algorithm determines exact absorbed count by accumulating Google translations. 46 total tests.
+- **[2026-04-24] Phase 59.2**: **Shift-Aware MergeFixer + LLM Re-translation**. Tail anomaly detection gates shift-candidate scanning with lower threshold (>=1.8). Realignment inserts empty slots at merge positions. `retranslateShiftedLines()` in translator.js re-translates pending lines via same LLM provider. 65 total tests.
+- **[2026-04-25] Phase 60**: **Pipeline Error Visibility & Quota Diagnostics**. Fixed 4-link bug chain: pipeline always returned `success: true`, CHUNK sent original text on failure, SyncEngine marked untranslated entries as translated, context summary poisoned cooldowns. Added failure propagation through all translation paths (sequential, Groq waterfall, non-Groq fallback, recursive split). UI shows per-provider failure breakdown with quota numbers. Test button shows remaining tokens/requests with low-quota warning. Rate limit headers extracted from successful responses.
 
 ### Milestone 5: Distribution (2026-04-04 →)
 - **Phase 23 [DONE]**: Visual polish + packaging.

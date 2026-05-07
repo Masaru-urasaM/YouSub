@@ -360,3 +360,41 @@
 ### Phase 56 — Feature: Popup Language Selector
 **Status**: DONE (2026-04-21)
 **Summary**: `<select>` dropdown populated from `YOUSUB_PROVIDERS.languages` (15 langs, no auto). Saves to `targetLang` in storage on change. Syncs bidirectionally with Options page via `storage.onChanged`. Dark glassmorphism styling with custom arrow.
+
+### Phase 57 — Logger TRACE Level + Smart Groq Payload Distribution
+**Status**: DONE (2026-04-22)
+**Summary**: Added `Logger.trace()` level (always prints via `console.log`, not `console.error`). Converted 14 debug checkpoint logs from `error` to `trace`/`warn`. Extracted `buildSystemPrompt()`, `tryKeyForBatch()` helpers. New Groq-aware routing: `partitionKeysByProvider()`, `splitForGroqPayload()`, `processGroqWaterfall()` (sticky-until-fail), `fallbackToNonGroq()`. Context summary now truncates transcript for Groq providers.
+
+### Phase 58 — JSON Structured Output + Merge Detection & Auto-Fix
+**Status**: DONE (2026-04-22)
+**Summary**: Three-layer fix: (1) JSON Structured Output — `response_format: json_object` for OpenAI-style providers, `responseMimeType` + `responseSchema` with `minItems`/`maxItems` for Gemini; prompt returns `{"lines": [...]}` array instead of timestamped text. (2) Merge Detection — word-count ratio analysis (`>2.0` merged, `<0.5` displaced) to detect remaining merges post-JSON. (3) Auto-Fix — Google Translate rough translations provide anchor words for precise split-point detection in merged text; splice + trim realigns shifted lines. Added `supportsJsonMode` flag to all 9 providers, `gemini-2.5-flash` model, dual-mode `tryKeyForBatch` (JSON-first → text-fallback).
+
+### Phase 59 — MergeFixer Bug Fixes + Unit Tests
+**Status**: DONE (2026-04-24)
+**Summary**: Bug fixes and unit test suite for merge-fixer module.
+
+### Phase 59.1 — Google Translate Verification + Best-Fit Merge Count
+**Status**: DONE (2026-04-24)
+**Summary**: Added `verifyAndRefineMerge()` function using Google Translate rough translations to verify merge candidates and find best-fit absorbed count.
+
+### Phase 59.2 — Shift-Aware MergeFixer + LLM Re-translation
+**Status**: DONE (2026-04-24)
+**Summary**: Added shift detection pathway via `detectTailAnomalies()` + `findShiftCandidates()` + `buildRealignment()`. Re-translation of empty slots via `retranslateShiftedLines()` with `_skipMergeFix: true` flag to prevent infinite loops.
+
+### Phase 60 — Translation Pipeline Error Visibility & Quota Diagnostics
+**Status**: DONE (2026-04-25)
+**Summary**: Four-part fix: (1) Pipeline success tracking — `_translateInternal` returns `success: false` when all batches fail; `onBatchComplete` only fires on success; `SyncEngine` only marks entries translated when text differs from original. (2) Context summary cooldown fix — no longer sets `keyCooldowns` that block batch translation from trying same key with different models. (3) Full failure propagation — error messages flow from `providers.handleResponse` through `tryKeyForBatch` → `translateBatchWithFailover` → `_translateInternal` → service-worker → main.js with per-provider details (provider, model, status, quota used/limit, retry timing). UI overlay shows grouped failure breakdown. (4) Test button quota display — `providers.js` extracts `x-ratelimit-*` headers on success; test button shows remaining tokens/requests with low-quota warning (<10%).
+
+### Phase 60.1 — Enhanced Quota/Rate-Limit Display on API Key Test
+**Status**: DONE (2026-04-25)
+**Summary**: Fixed `row.querySelector('.quota-detail')` referencing undefined `row` variable. Added Anthropic rate-limit header extraction. Fixed DeepSeek balance of 0 displaying as nothing. Added `fetchQuota()` for OpenRouter and DeepSeek. Provider-aware quota formatting with color-coded warnings.
+
+### Phase 61 — Cascade Shift Detection + 3-Tier RoughTranslator
+**Status**: DONE (2026-05-07)
+**Summary**: Three sub-phases fixing MergeFixer blind spots:
+
+**Phase 61a — Patched Tail Detection**: Added `TAIL_MAX_GAPS = 2` gap tolerance — allows up to 2 consecutive normal lines before breaking backward scan. Added bidirectional overlap check (both `outputLines[i-1]` and `outputLines[i+1]`). 4 new tests.
+
+**Phase 61b — Offline Cascade Shift Detection**: Added 6 new helper functions for offline multi-signal cascade detection (zero API calls). Three weighted signals: token-anchor matching (weight 0.4), sentence boundary alignment (weight 0.3), per-line length ratio consistency (weight 0.3). Combined score ≥ 0.6 with two-signal minimum guardrail. Added `MERGE_RATIO_MEDIUM = 1.5` secondary threshold. 27 new tests.
+
+**Phase 61c — 3-Tier RoughTranslator**: Rewrote `rough-translator.js` with 3-tier fallback: Tier 1 Chrome Translator API (on-device, 3s timeout), Tier 2 Google Translate scraping (5s timeout), Tier 3 returns null. Availability and translator instances cached per language pair. Public API unchanged. 14 new tests.

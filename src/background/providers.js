@@ -54,11 +54,79 @@ export const Providers = {
         }
       }
 
+      if (res.success) {
+        const resolvedProvider = providerId === 'auto'
+          ? YOUSUB_PROVIDERS.detectProviderFromKey(safeKey) || providerId
+          : providerId;
+        try {
+          const quota = await this.fetchQuota(resolvedProvider, safeKey);
+          if (quota) res.quota = quota;
+        } catch (qe) {
+          Logger.warn('Providers', `Quota fetch failed for ${resolvedProvider}`, { error: qe.message });
+        }
+      }
+
       return res;
     } catch (e) {
       Logger.error('Providers', `Test failed for ${providerId}`, { error: e.message });
       await HealthManager.report(providerId, apiKey, false);
       return { success: false, message: e.message };
+    }
+  },
+
+  async fetchQuota(providerId, apiKey) {
+    const provider = YOUSUB_PROVIDERS.getProvider(providerId);
+    if (!provider?.quotaEndpoint) return null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch(provider.quotaEndpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) return null;
+      const data = await res.json();
+
+      if (providerId === 'openrouter') {
+        const d = data.data || data;
+        return {
+          credits: {
+            used: d.usage ?? null,
+            remaining: (d.limit != null && d.usage != null) ? d.limit - d.usage : null,
+            limit: d.limit ?? null
+          },
+          currency: 'USD',
+          raw: data
+        };
+      }
+
+      if (providerId === 'deepseek') {
+        const info = data.balance_infos?.[0];
+        if (!info) return null;
+        return {
+          credits: {
+            used: null,
+            remaining: isNaN(parseFloat(info.total_balance)) ? null : parseFloat(info.total_balance),
+            limit: null
+          },
+          currency: info.currency || 'CNY',
+          raw: data
+        };
+      }
+
+      return null;
+    } catch (e) {
+      clearTimeout(timer);
+      Logger.warn('Providers', `fetchQuota error for ${providerId}`, { error: e.message });
+      return null;
     }
   },
 
@@ -240,7 +308,7 @@ export const Providers = {
         }
       }
 
-      Logger.error('Providers', `[FETCH_START] ${internalProviderId} (${internalModelId}) - Timeout: ${timeoutMs}ms`);
+      Logger.trace('Providers', `[FETCH_START] ${internalProviderId} (${internalModelId}) - Timeout: ${timeoutMs}ms`);
 
       let response;
       if (style === 'openai') {
@@ -255,7 +323,7 @@ export const Providers = {
       }
 
       clearTimeout(timeoutId);
-      Logger.error('Providers', `[FETCH_END] ${internalProviderId} answered with status ${response.status}`);
+      Logger.trace('Providers', `[FETCH_END] ${internalProviderId} answered with status ${response.status}`);
       return this.handleResponse(response, internalModelId, style);
     } catch (err) {
       Logger.error('Providers', `Request failed for ${internalProviderId}`, { error: err.message });
@@ -277,6 +345,10 @@ export const Providers = {
       temperature: options.temperature ?? 0.3,
       stream: !!options.stream // Enable streaming if requested
     };
+
+    if (options.responseFormat) {
+      payload.response_format = options.responseFormat;
+    }
 
     console.log(`%c[YouSub-Trace] Requesting ${model} at ${endpoint}`, 'color: #3b82f6; font-weight: bold;', {
       headers: {
@@ -308,7 +380,11 @@ export const Providers = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         maxOutputTokens: options.maxTokens || 65000,
-        temperature: options.temperature ?? 0.3
+        temperature: options.temperature ?? 0.3,
+        ...(options.responseFormat ? {
+          responseMimeType: 'application/json',
+          responseSchema: options.responseSchema
+        } : {})
       },
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -392,7 +468,35 @@ export const Providers = {
         }
 
         if (text) {
-          return { success: true, message: 'Success', model: modelId, text: text.trim(), usage: usage };
+          const rateLimit = {};
+          for (const [header, field] of [
+            ['x-ratelimit-remaining-tokens', 'remainingTokens'],
+            ['x-ratelimit-remaining-requests', 'remainingRequests'],
+            ['x-ratelimit-limit-tokens', 'limitTokens'],
+            ['x-ratelimit-limit-requests', 'limitRequests'],
+          ]) {
+            const v = response.headers.get(header);
+            if (v !== null) rateLimit[field] = parseInt(v, 10) || 0;
+          }
+
+          if (style === 'anthropic') {
+            for (const [header, field] of [
+              ['anthropic-ratelimit-tokens-remaining', 'remainingTokens'],
+              ['anthropic-ratelimit-tokens-limit', 'limitTokens'],
+              ['anthropic-ratelimit-requests-remaining', 'remainingRequests'],
+              ['anthropic-ratelimit-requests-limit', 'limitRequests'],
+              ['anthropic-ratelimit-input-tokens-remaining', 'inputTokensRemaining'],
+              ['anthropic-ratelimit-input-tokens-limit', 'inputTokensLimit'],
+              ['anthropic-ratelimit-output-tokens-remaining', 'outputTokensRemaining'],
+              ['anthropic-ratelimit-output-tokens-limit', 'outputTokensLimit'],
+            ]) {
+              const v = response.headers.get(header);
+              if (v !== null && rateLimit[field] === undefined) {
+                rateLimit[field] = parseInt(v, 10) || 0;
+              }
+            }
+          }
+          return { success: true, message: 'Success', model: modelId, text: text.trim(), usage, rateLimit };
         } else {
           let errorMsg = 'Empty response text from provider';
           if (style === 'gemini' && data.candidates?.[0]?.finishReason) {
@@ -426,6 +530,7 @@ export const Providers = {
     }
 
     // Try to get detail
+    let quotaDetail = null;
     try {
       const rawBody = await response.text();
       console.log(`%c[YouSub-Trace] Raw Error Body:`, 'color: #ef4444; font-weight: bold;', rawBody);
@@ -433,10 +538,20 @@ export const Providers = {
       const data = JSON.parse(rawBody);
       const detail = data.error?.message || data.error || '';
       if (detail) errorMessage += `: ${detail}`;
+
+      if (response.status === 429 && typeof detail === 'string') {
+        const m = detail.match(/Limit\s+(\d+),\s*Used\s+(\d+),\s*Requested\s+(\d+)/);
+        if (m) quotaDetail = { limit: +m[1], used: +m[2], requested: +m[3] };
+        const r = detail.match(/try again in\s+([^\s.]+(?:\.\d+s?)?)/i);
+        if (r) {
+          if (!quotaDetail) quotaDetail = {};
+          quotaDetail.retryIn = r[1];
+        }
+      }
     } catch (e) {
       console.warn('[YouSub-Trace] Could not parse error body as JSON');
     }
 
-    return { success: false, message: errorMessage, model: modelId, statusCode: response.status, retryAfterMs };
+    return { success: false, message: errorMessage, model: modelId, statusCode: response.status, retryAfterMs, quotaDetail };
   }
 };

@@ -385,6 +385,16 @@ select:focus, input:focus {
 .status-text.ok { color: var(--success); font-weight: 500; }
 .status-text.failed { color: var(--error); font-weight: 500; }
 
+.quota-detail {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.quota-detail .quota-warn { color: var(--warning); }
+.quota-detail .quota-danger { color: var(--error); }
+
 .api-actions-row {
   display: flex;
   justify-content: space-between;

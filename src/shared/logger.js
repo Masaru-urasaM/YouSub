@@ -20,6 +20,8 @@ export const Logger = {
 
     if (level === 'ERROR') {
       console.error(output);
+    } else if (level === 'TRACE') {
+      console.log(output);
     } else if (!isProd) {
       if (level === 'WARN') {
         console.warn(output);
@@ -36,6 +38,7 @@ export const Logger = {
   warn(tag, msg, data) { this.log('WARN', tag, msg, data); },
   error(tag, msg, data) { this.log('ERROR', tag, msg, data); },
   debug(tag, msg, data) { this.log('DEBUG', tag, msg, data); },
+  trace(tag, msg, data) { this.log('TRACE', tag, msg, data); },
 
   async tail(n = 50) {
     const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
@@ -49,7 +52,7 @@ export const Logger = {
     sliced.forEach(l => {
       try {
         const p = JSON.parse(l);
-        const color = p.level === 'ERROR' ? '#ef4444' : (p.level === 'WARN' ? '#f59e0b' : '#3b82f6');
+        const color = p.level === 'ERROR' ? '#ef4444' : (p.level === 'WARN' ? '#f59e0b' : (p.level === 'TRACE' ? '#06b6d4' : '#3b82f6'));
         console.log(`%c[${p.level}] [${p.tag}] ${p.msg}`, `color: ${color}`, p);
       } catch (e) { console.log(l); }
     });

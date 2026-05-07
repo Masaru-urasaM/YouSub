@@ -9,6 +9,7 @@ let playerElement = null; // Cached reference to player
 let storageListener = null; // Phase 53.1: Track listener for cleanup
 
 let currentStyles = {}; // Track applied styles to avoid redundant updates
+let _translationInProgress = false;
 
 // Ensure policy is initialized once the module loads
 TrustedTypes.init();
@@ -104,6 +105,7 @@ export const Overlay = {
   setLoading: function (isLoading) {
     createOverlay();
     if (!container || !spinnerElement) return;
+    _translationInProgress = isLoading;
 
     if (isLoading) {
       container.classList.add('yousub-loading');
@@ -162,22 +164,33 @@ export const Overlay = {
   },
 
   /**
-   * @param {string} translated 
-   * @param {string} original 
-   * @param {boolean} isDualMode 
+   * @param {string} translated
+   * @param {string} original
+   * @param {boolean} isDualMode
+   * @param {boolean} [isTranslated] If true, show at full opacity even during loading
    */
-  renderSubtitles: function (translated, original, isDualMode) {
+  renderSubtitles: function (translated, original, isDualMode, isTranslated) {
     createOverlay();
     if (!translatedElement || !originalElement) return;
 
     // Use textContent for safety and performance (Phase 50.1.3)
     translatedElement.textContent = translated || '';
-    
+
     if (isDualMode && original) {
       originalElement.textContent = original;
       originalElement.classList.remove('hidden');
     } else {
       originalElement.classList.add('hidden');
+    }
+
+    if (isTranslated) {
+      translatedElement.classList.remove('yousub-dimmed');
+      originalElement.classList.remove('yousub-dimmed');
+      if (spinnerElement) spinnerElement.classList.add('hidden');
+    } else if (_translationInProgress) {
+      translatedElement.classList.add('yousub-dimmed');
+      originalElement.classList.add('yousub-dimmed');
+      if (spinnerElement) spinnerElement.classList.remove('hidden');
     }
   },
 
@@ -240,6 +253,7 @@ export const Overlay = {
     statusContainer = null;
     playerElement = null;
     currentStyles = {};
+    _translationInProgress = false;
     console.log('[YouSub] Overlay: Destroyed.');
   }
 };

@@ -47,6 +47,15 @@ button:hover {
   background-color: #475569;
 }
 
+.copy-all-btn {
+  background-color: #1d4ed8;
+  border-color: #2563eb;
+}
+
+.copy-all-btn:hover {
+  background-color: #2563eb;
+}
+
 .danger-btn {
   background-color: #7f1d1d;
   border-color: #991b1b;

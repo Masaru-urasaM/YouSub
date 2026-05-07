@@ -6,6 +6,7 @@ let currentIndex = -1;
 let onTimeUpdateBound = null;
 let isRunning = false;
 let isDualMode = false;
+let translatedIndices = new Set();
 
 // Binary search implementation to accurately and efficiently find matching subtitle
 function findSubtitleAt(subs, timeMs) {
@@ -66,7 +67,8 @@ function onTimeUpdate() {
     currentIndex = foundIndex;
     if (currentIndex !== -1) {
       const entry = subtitles[currentIndex];
-      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode);
+      const isTranslated = translatedIndices.has(currentIndex);
+      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode, isTranslated);
       Overlay.show();
     } else {
       Overlay.hide();
@@ -81,6 +83,7 @@ export const SyncEngine = {
     subtitles = subs || [];
     videoElement = video;
     currentIndex = -1;
+    translatedIndices = new Set();
 
     if (!subtitles.length || !videoElement) {
       console.warn('[YouSub] SyncEngine: Missing subtitles or video element.');
@@ -110,6 +113,7 @@ export const SyncEngine = {
     videoElement = null;
     currentIndex = -1;
     onTimeUpdateBound = null;
+    translatedIndices = new Set();
 
     Overlay.hide();
     console.log('[YouSub] SyncEngine: Stopped.');
@@ -119,7 +123,8 @@ export const SyncEngine = {
     isDualMode = enabled;
     if (isRunning && currentIndex !== -1) {
       const entry = subtitles[currentIndex];
-      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode);
+      const isTranslated = translatedIndices.has(currentIndex);
+      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode, isTranslated);
     }
   },
 
@@ -139,13 +144,18 @@ export const SyncEngine = {
    */
   updateSubtitles: function (newSubs) {
     if (!Array.isArray(newSubs)) return;
-    
+
     // Safety: If the count changed, reset current index
     if (newSubs.length !== subtitles.length) {
       currentIndex = -1;
     }
-    
+
     subtitles = newSubs;
+    for (let i = 0; i < newSubs.length; i++) {
+      if (newSubs[i].text !== newSubs[i].original) {
+        translatedIndices.add(i);
+      }
+    }
     console.log('[YouSub] SyncEngine: Full subtitles updated. Count: ' + subtitles.length);
     
     if (isRunning && onTimeUpdateBound) {
@@ -176,17 +186,28 @@ export const SyncEngine = {
       const newItem = batch[i];
 
       if (subtitles[globalIndex]) {
+        let newText;
         if (typeof newItem === 'string') {
-          subtitles[globalIndex].text = newItem;
+          newText = newItem;
         } else if (newItem && typeof newItem === 'object' && newItem.text) {
-          subtitles[globalIndex].text = newItem.text;
+          newText = newItem.text;
+        }
+        if (newText !== undefined) {
+          subtitles[globalIndex].text = newText;
+          if (newText !== subtitles[globalIndex].original) {
+            translatedIndices.add(globalIndex);
+          }
         }
       }
     }
     
     console.log(`[YouSub] SyncEngine: Merged partial batch of ${batch.length} at index ${startIndex}`);
-    
+
     if (isRunning && onTimeUpdateBound) {
+      const endIndex = startIndex + batch.length - 1;
+      if (currentIndex >= startIndex && currentIndex <= endIndex) {
+        currentIndex = -1;
+      }
       onTimeUpdateBound();
     }
   },

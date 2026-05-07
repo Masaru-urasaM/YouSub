@@ -5,6 +5,22 @@ import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { sanitizeKey } from '../shared/utils.js';
 
 
+function extractModelSizeB(modelId) {
+  const match = modelId.match(/(\d+)b/i);
+  return match ? parseInt(match[1]) : null;
+}
+
+function getGroqMaxLines(modelId, defaultMax) {
+  const sizeB = extractModelSizeB(modelId);
+  if (sizeB === null) return defaultMax;
+  if (sizeB >= 70) return Math.round(defaultMax * 2 / 3);
+  if (sizeB >= 32) return Math.round(defaultMax * 1 / 3);
+  if (sizeB >= 17) return Math.round(defaultMax * 0.5 / 3);
+  return Math.round(defaultMax * 0.25 / 3);
+}
+
+const DEFAULT_MAX_LINES = 50;
+
 /**
  * api-manager.js
  * Manages the lifecycle and healthy of configured API keys.
@@ -37,7 +53,7 @@ export const APIManager = {
 
       const keys = res.yousub_api_keys || [];
       const failoverEnabled = res.yousub_failover_enabled !== false;
-      const modelRotation = res.yousub_model_rotation || false;
+      const modelRotation = res.yousub_model_rotation !== false;
       const customs = res.yousub_custom_models || {};
       const hiddens = res.yousub_hidden_models || {};
 
@@ -121,24 +137,49 @@ export const APIManager = {
       if (modelRotation) {
          const expanded = [];
          for (const k of finalKeys) {
-           expanded.push(k);
            const prov = YOUSUB_PROVIDERS.getProvider(k.provider);
+
+           if (k.provider === 'groq') {
+             const resolvedModel = k.model === 'auto' ? (prov?.defaultModel || k.model) : k.model;
+             k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
+           }
+
+           expanded.push(k);
            if (!prov) continue;
-           
+
            const builtinIds = prov.models.map(m => m.id);
            const customIds = customs[k.provider] || [];
            const hiddenIds = hiddens[k.provider] || [];
-           
+
            const allModels = [...builtinIds, ...customIds].filter(m => !hiddenIds.includes(m));
            const currentModel = k.model === 'auto' ? prov.defaultModel : k.model;
-           
+
+           const clones = [];
            for (const m of allModels) {
               if (m !== currentModel) {
-                 expanded.push({ ...k, model: m, isRotationClone: true });
+                 const clone = { ...k, model: m, isRotationClone: true };
+                 if (k.provider === 'groq') {
+                   clone.maxLinesPerBatch = getGroqMaxLines(m, DEFAULT_MAX_LINES);
+                 }
+                 clones.push(clone);
               }
            }
+
+           if (k.provider === 'groq') {
+             clones.sort((a, b) => (b.maxLinesPerBatch || DEFAULT_MAX_LINES) - (a.maxLinesPerBatch || DEFAULT_MAX_LINES));
+           }
+           expanded.push(...clones);
          }
          finalKeys = expanded;
+      }
+
+      // Stamp maxLinesPerBatch on Groq keys even when rotation is off
+      for (const k of finalKeys) {
+        if (k.provider === 'groq' && !k.maxLinesPerBatch) {
+          const prov = YOUSUB_PROVIDERS.getProvider('groq');
+          const resolvedModel = k.model === 'auto' ? (prov?.defaultModel || k.model) : k.model;
+          k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
+        }
       }
 
       Logger.debug('APIManager', `Loaded ${finalKeys.length} keys in priority order.`);

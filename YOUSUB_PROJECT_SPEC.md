@@ -475,5 +475,6 @@ self.YouSub_Health && self.YouSub_Health.getStats()
 | 1.1 | 2026-04-03 | Added core goals, features, and context based on user specification |
 | 1.2 | 2026-04-04 | Updated with Cross-Browser support and Health Monitoring |
 | 1.3 | 2026-04-04 | Final v0.1.0 - Premium UI, Automated Packaging, Documentation COMPLETE |
+| 2.2 | 2026-04-25 | Version bump to v0.2.0 for Chrome Web Store update |
 | 2.0 | 2026-04-06 | Major restructure: absorbed architecture reference and appendices from ROADMAP.md. Added detailed system diagram, data flow, folder structure, YouTube platform reference, file dependency graph, and all appendices. Updated to v0.2.0 status. |
 | 2.1 | 2026-04-07 | Updated to v0.4.0. Implemented Global Absolute ID Tracking to eliminate alignment shifting. Added AI Raw Response streaming and interactive Logger utils (`tail`, `export`). |

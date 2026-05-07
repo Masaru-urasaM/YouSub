@@ -2,7 +2,7 @@ import '../shared/libs/browser-polyfill.js';
 
 export const Constants = {
   APP_NAME: 'YouSub',
-  VERSION: '0.1.0',
+  VERSION: '0.2.0',
   IS_PRODUCTION: false,        // Auto-switched to true during packaging
   DEFAULT_TARGET_LANG: 'vi',   // Default translation target language
   DEFAULT_SOURCE_LANG: 'auto'  // Auto-detect source language

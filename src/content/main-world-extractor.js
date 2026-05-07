@@ -251,7 +251,7 @@
 
         elapsed += interval;
         if (elapsed >= timeoutMs) {
-          console.warn('[YouSub] MainWorldExtractor: Timeout waiting for transcript segments after', timeoutMs, 'ms.');
+          console.log('[YouSub] MainWorldExtractor: Timeout waiting for transcript segments after', timeoutMs, 'ms.');
           resolve(null);
           return;
         }
@@ -440,7 +440,7 @@
       }
 
       // Step 1: Pre-check if transcript is already open
-      var segments = await waitForSegments(100);
+      var segments = await waitForSegments(500);
       if (segments && segments.length > 0) {
         console.log('[YouSub] MainWorldExtractor: Transcript already open. Using existing segments.');
       } else {

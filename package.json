@@ -1,6 +1,6 @@
 {
   "name": "yousub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "index.js",
   "directories": {
@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "package": "node scripts/package.js"
+    "package": "node scripts/package.js all",
+    "package:chrome": "node scripts/package.js chrome",
+    "package:firefox": "node scripts/package.js firefox"
   },
   "keywords": [],
   "author": "",

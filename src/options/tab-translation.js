@@ -7,6 +7,60 @@ let modelRotation = false;
 let customModelsRegistry = {};
 let hiddenModelsRegistry = {};
 
+function buildQuotaDisplay(response, providerId) {
+  const parts = [];
+
+  if (response.usage?.totalTokens) {
+    parts.push(`Test: ${response.usage.totalTokens} tok`);
+  }
+
+  const rl = response.rateLimit;
+  if (rl?.limitTokens) {
+    const rem = rl.remainingTokens ?? 0;
+    const lim = rl.limitTokens;
+    const pct = Math.round((rem / lim) * 100);
+    const cls = pct < 3 ? 'quota-danger' : pct < 10 ? 'quota-warn' : '';
+    const wrap = cls ? `<span class="${cls}">` : '<span>';
+    parts.push(`${wrap}Remaining: ${rem.toLocaleString()}/${lim.toLocaleString()} tok/min (${pct}%)</span>`);
+  }
+
+  if (rl?.limitRequests) {
+    const remR = rl.remainingRequests ?? 0;
+    parts.push(`Requests: ${remR.toLocaleString()}/${rl.limitRequests.toLocaleString()}/min`);
+  }
+
+  if (providerId === 'anthropic' && rl?.inputTokensLimit) {
+    const inRem = rl.inputTokensRemaining ?? 0;
+    const outRem = rl.outputTokensRemaining ?? 0;
+    parts.push(`In: ${inRem.toLocaleString()}/${rl.inputTokensLimit.toLocaleString()} · Out: ${outRem.toLocaleString()}/${rl.outputTokensLimit.toLocaleString()}`);
+  }
+
+  const q = response.quota;
+  if (q) {
+    const sym = q.currency === 'USD' ? '$' : q.currency === 'CNY' ? '¥' : `${q.currency} `;
+    if (q.credits.used != null && q.credits.limit != null) {
+      const pct = Math.round((q.credits.used / q.credits.limit) * 100);
+      const cls = pct > 90 ? 'quota-danger' : pct > 80 ? 'quota-warn' : '';
+      const wrap = cls ? `<span class="${cls}">` : '<span>';
+      parts.push(`${wrap}Credits: ${sym}${q.credits.used.toFixed(2)}/${sym}${q.credits.limit.toFixed(2)} used (${pct}%)</span>`);
+    } else if (q.credits.used != null && q.credits.limit == null) {
+      parts.push(`Used: ${sym}${q.credits.used.toFixed(2)} (free tier)`);
+    } else if (q.credits.remaining != null) {
+      const cls = q.credits.remaining <= 0 ? 'quota-danger' : '';
+      const wrap = cls ? `<span class="${cls}">` : '<span>';
+      parts.push(`${wrap}Balance: ${sym}${q.credits.remaining.toFixed(2)} remaining</span>`);
+    }
+  }
+
+  if (parts.length === 0) return '';
+
+  if (providerId === 'ollama' && parts.length === 1) {
+    parts.push('Local model');
+  }
+
+  return parts.join(' · ');
+}
+
 /**
  * Helper to remove non-printable and zero-width characters (Shared logic)
  */
@@ -82,7 +136,7 @@ function loadSettings() {
     }
 
     failoverEnabled = items.yousub_failover_enabled !== false; // default true
-    modelRotation = items.yousub_model_rotation || false;
+    modelRotation = items.yousub_model_rotation !== false;
     customModelsRegistry = items.yousub_custom_models || {};
     hiddenModelsRegistry = items.yousub_hidden_models || {};
 
@@ -476,6 +530,18 @@ function renderSingleRow(keyData, index, healthStats = {}) {
           statusText.textContent = `OK (tested ${dateStr})`;
           keyData.status = 'ok';
           keyData.statusMessage = `Tested ${dateStr}`;
+
+          // Show quota/usage details after test
+          let existingQuota = rowDev.querySelector('.quota-detail');
+          if (!existingQuota) {
+            existingQuota = document.createElement('span');
+            existingQuota.className = 'quota-detail';
+            statusText.parentNode.appendChild(existingQuota);
+          }
+          const resolvedProvider = keyData.provider === 'auto'
+            ? YOUSUB_PROVIDERS.detectProviderFromKey(keyData.apiKey) || 'unknown'
+            : keyData.provider;
+          existingQuota.innerHTML = buildQuotaDisplay(response, resolvedProvider);
 
           // If custom model tested successfully, save it!
           const provId = keyData.provider;

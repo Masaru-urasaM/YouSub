@@ -6,6 +6,186 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Patched Tail Detection — Phase 61a (2026-05-07)
+
+**Fixed**
+- `detectTailAnomalies()` broke immediately on first non-anomalous line scanning backward — hallucinated tail content sandwiched between normal lines was never detected, preventing shift detection path from activating
+- Overlap check only compared with next line (`outputLines[i+1]`) — lines with high overlap to previous line (`outputLines[i-1]`) were missed
+
+**Changed**
+- Added `TAIL_MAX_GAPS = 2` constant — gap counter allows up to 2 consecutive normal lines before breaking backward scan; gap lines are included in tail count when a subsequent anomaly is found
+- Overlap detection now checks both neighbors (i-1 and i+1) bidirectionally
+
+**Tests**: 65 → 69 (+4 new: gap bridging, bidirectional overlap, gap limit, multi-gap bridging)
+
+### Offline Cascade Shift Detection — Phase 61b (2026-05-07)
+
+**Added**
+- `extractPreservedTokens(text)` — extracts numbers and all-caps acronyms (2+ chars); returns empty for CJK input
+- `computeTokenAnchorScore()` — measures token misplacement between output line and its neighbors (score 0-1)
+- `computeBoundaryAlignmentScore()` — compares terminal punctuation (.?!) between input/output (0=match, 1=mismatch)
+- `computeLengthOutlierScore()` — per-line length ratio deviation from batch median (clamped 0-1)
+- `computeMedianRatio()` — computes median word-count ratio across batch
+- `detectCascadeShifts()` — main orchestrator combining 3 weighted signals with two-signal minimum guardrail
+- `_computeLineCascadeScore()` — shared per-line scoring used by both `detectCascadeShifts` and `detectMerges`
+- Constants: `CASCADE_SCORE_THRESHOLD=0.6`, `CASCADE_TOKEN_WEIGHT=0.4`, `CASCADE_BOUNDARY_WEIGHT=0.3`, `CASCADE_LENGTH_WEIGHT=0.3`, `CASCADE_MIN_BATCH_SIZE=5`, `MERGE_RATIO_MEDIUM=1.5`
+
+**Changed**
+- `detectMerges()` now has secondary threshold: when ratio is 1.5-2.0, runs cascade signals to confirm small merges that the 2.0 threshold would miss
+- `MergeFixer.fix()` runs `detectCascadeShifts()` after tail anomaly check, before merge detection loop; returns `pendingIndices` for re-translation
+- `_internals` export expanded with 6 new functions
+
+**Tests**: 69 → 96 (+27 new: extractPreservedTokens, computeTokenAnchorScore, computeBoundaryAlignmentScore, computeLengthOutlierScore, computeMedianRatio, detectCascadeShifts unit + integration)
+
+### 3-Tier RoughTranslator — Phase 61c (2026-05-07)
+
+**Added**
+- Tier 1: Chrome Translator API support — feature-detects `self.translation.canTranslate` / `self.ai.translator.capabilities`, creates on-device translator with 3s timeout, caches availability per language pair and translator instances per pair
+- Tier 2: Google Translate scraping — extracted existing logic to `_translateWithGoogle()`, unchanged behavior
+- Tier 3: returns null when both tiers fail (offline signals / proportional split in merge-fixer)
+- `_internals` export for test access to internal state/functions
+- New test file `tests/unit/rough-translator.test.js` with 14 tests
+
+**Changed**
+- `rough-translator.js` rewritten from 26 to 97 lines with 3-tier fallback chain
+- Public API (`translate`, `translateBatch`) signature unchanged — zero caller modifications needed
+
+**Tests**: 14 new tests (Chrome available, Chrome fallback, Google fallback, both fail, batch, caching)
+
+### Enhanced Quota/Rate-Limit Display on API Key Test — Phase 60.1 (2026-04-25)
+
+**Fixed**
+- [BUG] `row.querySelector('.quota-detail')` in `tab-translation.js:481` referenced undefined `row` variable (should be `rowDev`), causing quota display to silently crash on every test. Quota info was never visible despite being fetched.
+- [BUG] Anthropic rate-limit headers (`anthropic-ratelimit-*`) were never captured — code only checked `x-ratelimit-*` prefix. Anthropic quota info now extracted via provider-specific header mapping.
+- [BUG] DeepSeek balance of 0 (user out of credits) was displayed as nothing due to `parseFloat("0") || null` evaluating to `null`. Fixed with explicit `isNaN()` check.
+
+**Added**
+- `fetchQuota()` method in `providers.js` — dedicated quota API calls for OpenRouter (`/api/v1/auth/key`) and DeepSeek (`/user/balance`) with 5s timeout, non-blocking (never breaks test flow)
+- `quotaEndpoint` field in `providers-registry.js` for OpenRouter and DeepSeek
+- `buildQuotaDisplay()` helper in `tab-translation.js` — provider-aware quota formatting with color-coded warnings (`--warning` at <10%, `--error` at <3%)
+- Anthropic input/output token breakdown display (separate from aggregate tok/min)
+- OpenRouter free tier display (`Used: $X.XX (free tier)`)
+- DeepSeek balance display with zero-balance danger styling
+- `.quota-detail`, `.quota-warn`, `.quota-danger` CSS classes in `options.css`
+
+**Changed**
+- Quota display separator changed from ` | ` to ` · ` for consistency
+- Inline styles on `.quota-detail` replaced with CSS class
+- `existingQuota.textContent` replaced with `existingQuota.innerHTML` for span-based color coding
+
+### Translation Pipeline Error Visibility & Quota Diagnostics — Phase 60 (2026-04-25)
+
+**Fixed**
+- [CRITICAL] `_translateInternal()` always returned `success: true` even when ALL translation batches failed, causing UI to show "Translation complete!" with original (untranslated) text. Now tracks `anyBatchSucceeded` flag and returns `success: false` with `failureReason: 'ALL_BATCHES_FAILED'` when no batch succeeded.
+- [CRITICAL] `onBatchComplete` callback fired with original text when batches failed, sending CHUNK messages with untranslated text to SyncEngine. Now gated on `result.success`.
+- [HIGH] `SyncEngine.updatePartial()` and `updateSubtitles()` unconditionally marked all entries as "translated" via `translatedIndices.add()`. Now compares `text !== original` before marking.
+- [HIGH] Context summary `generateContextSummary()` set `keyCooldowns` on 429 from Groq, poisoning the batch translation phase — all Groq models using the same API key were blocked even though different models might work. Removed cooldown side-effect.
+- [MEDIUM] Error messages from provider API responses (quota details, retry timing) were lost in `tryKeyForBatch()` — returned `{ status: '429' }` without `message`. Now propagates `result.message` through entire chain.
+
+**Added**
+- Detailed failure overlay: when translation fails, UI shows per-provider breakdown with provider name, model, HTTP status, quota used/limit, and retry timing. Deduped, limited to 5 entries.
+- `failures` array propagation through all translation paths: sequential failover, Groq waterfall (`processGroqWaterfall`), non-Groq fallback (`fallbackToNonGroq`), and recursive 413 split. Each entry includes `{ provider, model, status, message }`.
+- Rate limit header extraction in `providers.js handleResponse()`: captures `x-ratelimit-remaining-tokens`, `x-ratelimit-remaining-requests`, `x-ratelimit-limit-tokens`, `x-ratelimit-limit-requests` from OpenAI-compatible provider responses on success.
+- Quota detail parsing from 429 error bodies: regex extraction of `Limit/Used/Requested` numbers and `retryIn` timing from Groq-style error messages. Stored as `quotaDetail` field.
+- Test button quota display in settings: after successful test, shows remaining tokens/requests per minute with percentage. Warning color (#f59e0b) when remaining < 10% of limit.
+- Failed batch diagnostic logging: `sendDebugLog` (red) + `saveDebugBatch` for failed batches — previously only successful batches were logged, leaving no trace when translation failed.
+
+**Changed**
+- `translateBatchWithFailover()` sequential path: failures array now includes `message` field for 429 and 413 entries.
+- `processGroqWaterfall()`: new `failures` array tracks per-key failures in switch cases; returned alongside existing fields.
+- `fallbackToNonGroq()`: new `failures` array tracks non-cooldown failures; included in return.
+- Groq waterfall return in `translateBatchWithFailover`: merges `groqFailures` + `fallbackFailures`.
+- Recursive 413 split return: merges `res1.failures` + `res2.failures`.
+- `main.js` ERROR handler: extracts `failures` from response and builds detailed HTML error message.
+
+### Shift-Aware MergeFixer + LLM Re-translation — Phase 59.2 (2026-04-24)
+
+**Added**
+- Shift pattern detection in `merge-fixer.js`: `detectTailAnomalies()` scans backward for garbage tail lines (short, repeated 4-grams, inter-line word overlap, exact duplicates). `findShiftCandidates()` uses lower threshold (`SHIFT_RATIO_MIN >= 1.8`) gated by tail anomaly detection to catch borderline merges missed by classic `> 2.0` check.
+- `buildRealignment()` — realigns shifted output lines by inserting empty slots at merge positions and truncating garbage tail. Returns `{ lines, pendingIndices }` for downstream re-translation.
+- `retranslateShiftedLines()` in `translator.js` — sends pending segments as mini-batch to same LLM provider with `_skipMergeFix: true` to prevent recursion. Falls back to original source text on failure.
+- Helper functions: `detectInternalRepetition()` (4-gram repetition), `computeWordOverlap()` (word-set Jaccard).
+- Constants: `SHIFT_RATIO_MIN=1.8`, `SHIFT_MAX_SCAN=4`, `TAIL_NGRAM_SIZE=4`, `TAIL_OVERLAP_THRESHOLD=0.5`, `MAX_SHIFT_CANDIDATES=6`, `RE_TRANSLATION_MAX_LINES=12`.
+- 19 new unit tests: detectTailAnomalies(4), detectInternalRepetition(2), computeWordOverlap(2), findShiftCandidates(3), buildRealignment(4), fix() shift-aware integration(4).
+
+**Changed**
+- `MergeFixer.fix()` return type: `string[]` → `{ lines: string[], pendingIndices: number[] }`. Shift path runs first (tail detection gates), classic path unchanged.
+- Both `MergeFixer.fix()` call sites in `translator.js` (JSON mode line 555, text parser line 637) updated to handle new return type and trigger re-translation when `pendingIndices.length > 0`.
+
+**Tests**: 65 total (46 previous + 19 new), all passing.
+
+### Google Translate Verification + Best-Fit Merge Count — Phase 59.1 (2026-04-24)
+
+**Added**
+- `verifyAndRefineMerge()` — same-language verification step before merge fixing. Compares Google Translate baseline (VI) vs LLM output (VI) to confirm merge is real (`verifyRatio >= 1.3`). Rejects false alarms where LLM was simply verbose.
+- Best-fit algorithm for merge count: accumulates Google translations of successive segments, picks j with `|accumulated/llmLen - 1.0|` closest to zero. Can adjust absorbed count UP or DOWN from initial heuristic detection.
+- Overlap-safe scan bound (`nextMergePos`) prevents best-fit from claiming segments belonging to adjacent merges.
+- 9 new unit tests: `verifyAndRefineMerge` direct tests (confirm, reject, best-fit correct/up/down, fallback, partial) + `fix()` integration tests (false alarm rejection, pipeline adjustment).
+- Constants: `VERIFY_THRESHOLD = 1.3`, `MAX_BEST_FIT_DIFF = 0.35`, `MAX_SCAN_EXTRA = 2`.
+
+**Changed**
+- `fix()` inner loop: replaced direct `translateBatch(absorbedTexts)` with `verifyAndRefineMerge()` call. Google translations are now batched for current + candidate segments in one call, reused for both verification and anchor extraction. Zero wasted API calls.
+
+**Tests**: 46 total (37 previous + 9 new), all passing.
+
+### MergeFixer Bug Fixes + Unit Tests — Phase 59 (2026-04-24)
+
+**Fixed**
+- [CRITICAL] `detectMerges()` false positive: removed forced `absorbed = 1` when no subsequent lines show merge evidence. Verbose but correct translations (e.g., "Yeah" → 3-word Vietnamese) no longer trigger merge detection and subsequent corruption via proportional split.
+- [MEDIUM] Short segment false positives: added `MIN_WORDS_FOR_RATIO_CHECK = 4` guard. Segments with fewer than 4 input words skip ratio-based merge detection entirely.
+- [MEDIUM] CJK word counting: `wordCount()` now detects CJK text (Japanese, Chinese, Korean) via Unicode ranges and uses character-based counting (chars / 2) instead of whitespace split. Prevents systematic false positives for CJK target languages.
+- [LOW] Partial anchor recovery in `fix()`: when some rough translations succeed and others fail, successful anchors are used for precise splitting while failed segments get proportional fallback within their range only.
+
+**Added**
+- `tests/unit/merge-fixer.test.js` — 37 unit tests covering `detectMerges()`, `fix()`, `wordCount()`, `proportionalSplit()`, `extractAnchorWords()`, `findAnchorInText()`, false positive regression tests for all 3 bug fixes.
+- `_internals` export in `merge-fixer.js` for direct unit testing of internal functions.
+
+**Tests**: 37 new tests, all passing. No regressions in existing test suites.
+
+### JSON Structured Output + Merge Detection & Auto-Fix — Phase 58 (2026-04-22)
+
+**Added**
+- `src/background/rough-translator.js` — Google Translate unofficial endpoint wrapper for free rough translations. `translate()` single text, `translateBatch()` concurrent. 5s timeout, graceful null on failure.
+- `src/background/merge-fixer.js` — post-processing module to detect and fix LLM line merges. `detectMerges()` scans word-count ratios (>2.0 merged, <0.5 displaced). `fix()` uses Google Translate anchors to find precise split points. Proportional fallback when anchors fail. Processes merges right-to-left to preserve indices.
+- `getProviderJsonConfig()` in translator.js — returns provider-specific JSON mode config. Gemini gets `responseSchema` with `minItems`/`maxItems` for constrained decoding. OpenAI-style gets `response_format: { type: "json_object" }`.
+- `buildJsonSystemPrompt()` — simplified prompt requesting JSON `{"lines": [...]}` array. No timestamp format rules. Preserves UNFILTERED & FAITHFUL rule.
+- `buildJsonUserPrompt()` — zero-indexed `[0] text` format, no timestamps.
+- `parseJsonResponse()` — JSON parser with regex fallback extraction, array length validation, original-text padding for missing elements.
+- `supportsJsonMode` flag on all 9 providers in `providers-registry.js` (true: google, openai, groq, deepseek, xai, mistral; false: anthropic, openrouter, ollama).
+- `gemini-2.5-flash` model added to Google provider (set as default).
+
+**Changed**
+- `tryKeyForBatch()` now operates in dual-mode: JSON-first with text-fallback. Detects provider JSON support, builds appropriate prompts, parses JSON array by index instead of timestamp regex. Streaming disabled for JSON mode.
+- `callOpenAIStyle()` in providers.js conditionally adds `response_format` to payload.
+- `callGemini()` conditionally adds `responseMimeType` + `responseSchema` to `generationConfig`.
+- All `tryKeyForBatch` callers (`processGroqWaterfall`, `fallbackToNonGroq`, `translateBatchWithFailover`) now pass `context/src/tgt` in options for JSON prompt building.
+- `splitForGroqPayload()` uses JSON prompt sizes for payload estimation when Groq supports JSON mode.
+- `manifest.json` — added `https://translate.googleapis.com/*` to host_permissions.
+- `maxTokens` estimate increased for JSON mode: `segments.length * 130` (vs `* 100`), cap `16384`.
+
+**Tests**: Manual — load extension, translate YouTube video, verify `[JSON_MODE]` and `[ANCHOR]`/`[FALLBACK]` logs in Service Worker console. Verify previously-shifted subtitles now align correctly.
+
+### Logger TRACE Level + Smart Groq Payload Distribution — Phase 57 (2026-04-22)
+
+**Added**
+- `Logger.trace()` — new log level that always prints via `console.log()` regardless of `IS_PRODUCTION`, replacing the hack of using `Logger.error()` for debug checkpoints. Chrome Extensions panel now shows 0 fake errors during normal translation.
+- `buildSystemPrompt()` — extracted system prompt template into reusable function for Groq waterfall and standard failover.
+- `tryKeyForBatch()` — extracted per-key translation attempt into standalone function returning structured status (`success`, `413`, `429`, `cooldown`, `parse_fail`, etc.).
+- `partitionKeysByProvider()` — splits API key array into `{ groqKeys, nonGroqKeys }` preserving health-score ordering.
+- `splitForGroqPayload()` — pre-calculates segment chunk boundaries to stay within Groq's 95KB payload limit using binary search.
+- `processGroqWaterfall()` — sticky-until-fail waterfall: distributes chunks across Groq keys, advancing cursor only on failure (429/error), maximizing each key's quota.
+- `fallbackToNonGroq()` — sends unprocessed chunks to non-Groq providers unsplit (Google/OpenAI handle much larger payloads).
+- Per-provider transcript truncation in `generateContextSummary()` — Groq keys receive truncated transcript fitting within payload limit; non-Groq keys receive full transcript.
+
+**Changed**
+- 10 checkpoint `Logger.error()` calls in `translator.js` converted to `Logger.trace()` (normal-flow diagnostics).
+- 4 failure-with-fallback `Logger.error()` calls converted to `Logger.warn()` (e.g., no API keys, batch failed, 413 split).
+- 2 fetch diagnostic `Logger.error()` calls in `providers.js` converted to `Logger.trace()`.
+- `translateBatchWithFailover()` now uses Groq-conditional pre-flight routing instead of provider-agnostic binary split. Non-Groq providers no longer trigger unnecessary 95KB payload splitting.
+- `tail()` color map updated: TRACE level shown in cyan (`#06b6d4`).
+
+**Tests**: Manual verification required — load unpacked extension, translate a long video, verify Chrome Extensions panel shows 0 errors on success; verify Groq waterfall distributes chunks across keys in Service Worker console.
+
 ### Feature: Popup Language Selector — Phase 56 (2026-04-21)
 
 **Added**
