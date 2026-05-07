@@ -11,11 +11,11 @@
         }
 
         const mainModuleUrl = chrome.runtime.getURL('src/content/main.js') + '?v=' + Date.now();
-        console.log('[YouSub] Loader: Loading main module (cache-busted)...', mainModuleUrl);
+        if (typeof YouSub === 'undefined' || !YouSub.Constants || !YouSub.Constants.IS_PRODUCTION) console.log('[YouSub] Loader: Loading main module (cache-busted)...', mainModuleUrl);
         
         await import(mainModuleUrl);
         
-        console.log('[YouSub] Loader: Main module loaded successfully.');
+        if (typeof YouSub === 'undefined' || !YouSub.Constants || !YouSub.Constants.IS_PRODUCTION) console.log('[YouSub] Loader: Main module loaded successfully.');
     } catch (err) {
         console.error('[YouSub] Loader: Failed to load modules.', err);
     }

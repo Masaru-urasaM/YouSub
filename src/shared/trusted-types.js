@@ -3,6 +3,8 @@
  * Handles bypass for YouTube's Trusted Types security policy.
  */
 
+import { devLog, devWarn } from './constants.js';
+
 let policy = null;
 
 export const TrustedTypes = {
@@ -19,9 +21,9 @@ export const TrustedTypes = {
           createScript: (script) => script,
           createScriptURL: (url) => url
         });
-        console.log('[YouSub] TrustedTypes: Policy created successfully.');
+        devLog('[YouSub] TrustedTypes: Policy created successfully.');
       } catch (e) {
-        console.warn('[YouSub] TrustedTypes: Failed to create policy', e.message);
+        devWarn('[YouSub] TrustedTypes: Failed to create policy', e.message);
       }
     }
   },

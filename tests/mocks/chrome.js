@@ -6,6 +6,40 @@ import { jest } from '@jest/globals';
 global.chrome = {
   // ... existing chrome mock ...
   storage: {
+    session: {
+      get: jest.fn((keys, callback) => {
+        const result = {};
+        if (typeof keys === 'string') {
+          result[keys] = global.chrome.storage.session.store[keys];
+        } else if (Array.isArray(keys)) {
+          keys.forEach(k => result[k] = global.chrome.storage.session.store[k]);
+        } else if (keys === null) {
+          Object.assign(result, global.chrome.storage.session.store);
+        }
+        if (callback) callback(result);
+        return Promise.resolve(result);
+      }),
+      set: jest.fn((items, callback) => {
+        Object.assign(global.chrome.storage.session.store, items);
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      remove: jest.fn((keys, callback) => {
+        if (typeof keys === 'string') {
+          delete global.chrome.storage.session.store[keys];
+        } else if (Array.isArray(keys)) {
+          keys.forEach(k => delete global.chrome.storage.session.store[k]);
+        }
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      clear: jest.fn((callback) => {
+        global.chrome.storage.session.store = {};
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      store: {}
+    },
     local: {
       get: jest.fn((keys, callback) => {
         const result = {};

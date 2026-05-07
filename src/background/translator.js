@@ -1102,7 +1102,7 @@ async function saveDebugBatch(entry) {
     }
     await browser.storage.local.set({ yousub_debug_history: history });
   } catch (e) {
-    console.error('[YouSub] Failed to save debug batch:', e);
+    Logger.error('Translator', 'Failed to save debug batch', { error: e.message });
   }
 }
 

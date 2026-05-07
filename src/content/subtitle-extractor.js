@@ -1,15 +1,17 @@
+import { devLog, devWarn } from '../shared/constants.js';
+
 let messageHandler = null;
 
 /**
  * Inject a script file into the MAIN world to bypass CSP 'unsafe-inline'.
  */
 function injectScriptFile(file) {
-  console.log('[YouSub] SubtitleExtractor: Injecting script file:', file);
+  devLog('[YouSub] SubtitleExtractor: Injecting script file:', file);
   try {
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL(file);
     script.onload = function () { 
-      console.log('[YouSub] SubtitleExtractor: Script loaded and removed from DOM:', file);
+      devLog('[YouSub] SubtitleExtractor: Script loaded and removed from DOM:', file);
       this.remove(); 
     };
     script.onerror = function (e) {
@@ -44,15 +46,15 @@ export const SubtitleExtractor = {
       const error = event.data.error;
 
       if (error) {
-        console.warn('[YouSub] SubtitleExtractor: Error —', error);
+        devWarn('[YouSub] SubtitleExtractor: Error —', error);
       }
 
       if (parsedEntries && parsedEntries.length > 0) {
-        console.log('[YouSub] SubtitleExtractor: Received', parsedEntries.length, 'parsed entries from transcript DOM.');
+        devLog('[YouSub] SubtitleExtractor: Received', parsedEntries.length, 'parsed entries from transcript DOM.');
       } else if (tracks && tracks.length > 0) {
-        console.log('[YouSub] SubtitleExtractor: Found', tracks.length, 'track(s) but no parsed entries.');
+        devLog('[YouSub] SubtitleExtractor: Found', tracks.length, 'track(s) but no parsed entries.');
         tracks.forEach(function (t, i) {
-          console.log(
+          devLog(
             '  [' + i + ']',
             t.languageCode,
             '(' + t.languageName + ')',
@@ -60,7 +62,7 @@ export const SubtitleExtractor = {
           );
         });
       } else {
-        console.log('[YouSub] SubtitleExtractor: No subtitle data available.');
+        devLog('[YouSub] SubtitleExtractor: No subtitle data available.');
       }
 
       // Phase 53.1: One-shot — remove listener after callback fires
@@ -73,7 +75,7 @@ export const SubtitleExtractor = {
 
     window.addEventListener('message', messageHandler);
     injectScriptFile('src/content/main-world-extractor.js');
-    console.log('[YouSub] SubtitleExtractor: Injected extraction script.');
+    devLog('[YouSub] SubtitleExtractor: Injected extraction script.');
   },
 
   /**

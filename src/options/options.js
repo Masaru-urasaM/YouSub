@@ -66,46 +66,21 @@ function attachGlobalEventListeners() {
   if (exportLogsBtn) {
     exportLogsBtn.addEventListener('click', exportLogs);
   }
-
-  if (exportLogsBtn) {
-    exportLogsBtn.addEventListener('click', exportLogs);
-  }
 }
 
 async function exportLogs() {
   saveStatus.textContent = "Exporting logs...";
-  
+
   try {
-    browser.storage.local.get(['yousub_logs']).then((res) => {
-      const logs = res.yousub_logs || [];
-      if (logs.length === 0) {
-        alert("No logs found in storage.");
-        saveStatus.textContent = "No logs to export.";
-        return;
-      }
-
-      const content = logs.join('\n');
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-      const filename = `yousub_logs_${timestamp}.jsonl`;
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        saveStatus.textContent = "Logs exported successfully!";
-        setTimeout(() => showSaveIndicator(), 2000);
-      }, 100);
-    });
+    const count = await Logger.export();
+    if (count === null) {
+      saveStatus.textContent = "No logs to export.";
+    } else {
+      saveStatus.textContent = `Exported ${count} log entries.`;
+      setTimeout(() => showSaveIndicator(), 2000);
+    }
   } catch (e) {
-    console.error('[Options] Export failed:', e);
+    Logger.error('Options', 'Export failed', { error: e.message });
     saveStatus.textContent = "Failed to export logs.";
   }
 }

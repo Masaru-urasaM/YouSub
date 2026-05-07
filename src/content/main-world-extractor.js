@@ -39,6 +39,10 @@
       }
     }
 
+    var _isProd = window.YouSub && window.YouSub.Constants && window.YouSub.Constants.IS_PRODUCTION;
+    function _devLog() { if (!_isProd) console.log.apply(console, arguments); }
+    function _devWarn() { if (!_isProd) console.warn.apply(console, arguments); }
+
     var videoId = new URLSearchParams(window.location.search).get('v');
     if (!videoId && window.location.pathname.startsWith('/shorts/')) {
       videoId = window.location.pathname.split('/')[2];
@@ -49,7 +53,7 @@
       return;
     }
 
-    console.log('[YouSub] MainWorldExtractor: Video ID:', videoId);
+    _devLog('[YouSub] MainWorldExtractor: Video ID:', videoId);
 
   // -------------------------------------------------------------------------
   // Utility: Send result back to content script
@@ -98,7 +102,7 @@
       if (descSection) {
         var btn = descSection.querySelector('button');
         if (btn) {
-          console.log('[YouSub] MainWorldExtractor: Found transcript button in description section.');
+          _devLog('[YouSub] MainWorldExtractor: Found transcript button in description section.');
           return btn;
         }
       }
@@ -107,7 +111,7 @@
     // Strategy B: Search by aria-label
     var ariaBtn = document.querySelector('button[aria-label="Show transcript"]');
     if (ariaBtn) {
-      console.log('[YouSub] MainWorldExtractor: Found transcript button by aria-label.');
+      _devLog('[YouSub] MainWorldExtractor: Found transcript button by aria-label.');
       return ariaBtn;
     }
 
@@ -118,7 +122,7 @@
       if (shortsDesc) {
         var shortsBtn = shortsDesc.querySelector('ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i]');
         if (shortsBtn) {
-          console.log('[YouSub] MainWorldExtractor: Found transcript button in Shorts description.');
+          _devLog('[YouSub] MainWorldExtractor: Found transcript button in Shorts description.');
           return shortsBtn;
         }
       }
@@ -129,7 +133,7 @@
     for (var i = 0; i < allButtons.length; i++) {
       var text = allButtons[i].textContent.trim().toLowerCase();
       if (text === 'show transcript' || text === 'transcript') {
-        console.log('[YouSub] MainWorldExtractor: Found transcript button by text search.');
+        _devLog('[YouSub] MainWorldExtractor: Found transcript button by text search.');
         return allButtons[i];
       }
     }
@@ -147,7 +151,7 @@
       // Step 1: Find and click "More actions" (...) button on the active short
       var moreBtn = document.querySelector('ytd-reel-video-renderer[is-active] #menu.ytd-reel-video-renderer button');
       if (moreBtn) {
-        console.log('[YouSub] MainWorldExtractor: Clicking Shorts "More actions" menu...');
+        _devLog('[YouSub] MainWorldExtractor: Clicking Shorts "More actions" menu...');
         moreBtn.click();
         await wait(500);
 
@@ -157,7 +161,7 @@
           var text = menuItems[i].textContent.toLowerCase();
           // Phase 50.6: Support Vietnamese localization
           if (text.includes('description') || text.includes('mô tả')) {
-            console.log('[YouSub] MainWorldExtractor: Clicking "Description" in Shorts menu...');
+            _devLog('[YouSub] MainWorldExtractor: Clicking "Description" in Shorts menu...');
             menuItems[i].click();
             return true;
           }
@@ -171,7 +175,7 @@
     var moreBtn = document.querySelector('tp-yt-paper-button#expand');
     if (moreBtn) {
       moreBtn.click();
-      console.log('[YouSub] MainWorldExtractor: Expanded description.');
+      _devLog('[YouSub] MainWorldExtractor: Expanded description.');
       return true;
     }
 
@@ -179,7 +183,7 @@
     var expandBtn = document.querySelector('#description-inline-expander tp-yt-paper-button');
     if (expandBtn) {
       expandBtn.click();
-      console.log('[YouSub] MainWorldExtractor: Expanded description (alt).');
+      _devLog('[YouSub] MainWorldExtractor: Expanded description (alt).');
       return true;
     }
 
@@ -210,7 +214,7 @@
         for (var s = 0; s < selectors.length; s++) {
           var segments = document.querySelectorAll(selectors[s]);
           if (segments.length > 0) {
-            console.log('[YouSub] MainWorldExtractor: Found', segments.length, 'segments with selector:', selectors[s]);
+            _devLog('[YouSub] MainWorldExtractor: Found', segments.length, 'segments with selector:', selectors[s]);
             resolve(segments);
             return;
           }
@@ -222,11 +226,11 @@
 
           // Check if engagement panel exists
           var panels = document.querySelectorAll('ytd-engagement-panel-section-list-renderer');
-          console.log('[YouSub] DIAGNOSTIC: Found', panels.length, 'engagement panels.');
+          _devLog('[YouSub] DIAGNOSTIC: Found', panels.length, 'engagement panels.');
           panels.forEach(function (p, i) {
             var targetId = p.getAttribute('target-id') || 'no-target-id';
             var visibility = p.getAttribute('visibility') || 'no-visibility';
-            console.log('[YouSub] DIAGNOSTIC: Panel[' + i + '] target-id=' + targetId + ' visibility=' + visibility);
+            _devLog('[YouSub] DIAGNOSTIC: Panel[' + i + '] target-id=' + targetId + ' visibility=' + visibility);
 
             // Log child tag names (first 2 levels)
             if (targetId.indexOf('transcript') !== -1 || visibility.indexOf('EXPANDED') !== -1) {
@@ -236,22 +240,22 @@
                 var tag = c.tagName.toLowerCase();
                 tags[tag] = (tags[tag] || 0) + 1;
               });
-              console.log('[YouSub] DIAGNOSTIC: Panel[' + i + '] child tags:', JSON.stringify(tags));
+              _devLog('[YouSub] DIAGNOSTIC: Panel[' + i + '] child tags:', JSON.stringify(tags));
             }
           });
 
           // Also check for transcript renderer directly
           var transcriptRenderer = document.querySelector('ytd-transcript-renderer');
           if (transcriptRenderer) {
-            console.log('[YouSub] DIAGNOSTIC: ytd-transcript-renderer found.');
+            _devLog('[YouSub] DIAGNOSTIC: ytd-transcript-renderer found.');
           } else {
-            console.log('[YouSub] DIAGNOSTIC: ytd-transcript-renderer NOT found in DOM.');
+            _devLog('[YouSub] DIAGNOSTIC: ytd-transcript-renderer NOT found in DOM.');
           }
         }
 
         elapsed += interval;
         if (elapsed >= timeoutMs) {
-          console.log('[YouSub] MainWorldExtractor: Timeout waiting for transcript segments after', timeoutMs, 'ms.');
+          _devLog('[YouSub] MainWorldExtractor: Timeout waiting for transcript segments after', timeoutMs, 'ms.');
           resolve(null);
           return;
         }
@@ -350,7 +354,7 @@
     );
     if (closeBtn) {
       closeBtn.click();
-      console.log('[YouSub] MainWorldExtractor: Closed transcript panel.');
+      _devLog('[YouSub] MainWorldExtractor: Closed transcript panel.');
       return;
     }
 
@@ -362,7 +366,7 @@
         var close = panel.querySelector('#visibility-button button, tp-yt-icon-button#visibility-button');
         if (close) {
           close.click();
-          console.log('[YouSub] MainWorldExtractor: Closed transcript panel (method 2).');
+          _devLog('[YouSub] MainWorldExtractor: Closed transcript panel (method 2).');
           return;
         }
       }
@@ -426,15 +430,131 @@
   }
 
   // -------------------------------------------------------------------------
+  // Fallback: Fetch caption tracks via YouTube Innertube API
+  // Only called when all 3 metadata sources fail to provide tracks.
+  // -------------------------------------------------------------------------
+  function fetchTracksViaInnertube(vid) {
+    return new Promise(function (resolve) {
+      try {
+        var apiKey = '';
+        var clientVersion = '2.20240321.01.00';
+
+        if (window.ytcfg && typeof window.ytcfg.get === 'function') {
+          apiKey = window.ytcfg.get('INNERTUBE_API_KEY') || '';
+          clientVersion = window.ytcfg.get('INNERTUBE_CONTEXT_CLIENT_VERSION') || clientVersion;
+        }
+
+        var url = 'https://www.youtube.com/youtubei/v1/player';
+        if (apiKey) url += '?key=' + encodeURIComponent(apiKey);
+
+        var body = JSON.stringify({
+          videoId: vid,
+          context: {
+            client: {
+              clientName: 'WEB',
+              clientVersion: clientVersion,
+              hl: (navigator.language || 'en').split('-')[0]
+            }
+          }
+        });
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.withCredentials = true;
+        xhr.timeout = 8000;
+
+        var responded = false;
+
+        xhr.onload = function () {
+          if (responded) return;
+          responded = true;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              var resp = JSON.parse(xhr.responseText);
+              var result = { tracks: null, isLive: false };
+
+              if (resp.videoDetails && resp.videoDetails.isLive) {
+                result.isLive = true;
+              }
+
+              if (resp.captions &&
+                  resp.captions.playerCaptionsTracklistRenderer &&
+                  resp.captions.playerCaptionsTracklistRenderer.captionTracks) {
+                result.tracks = resp.captions.playerCaptionsTracklistRenderer.captionTracks.map(function (t) {
+                  return {
+                    languageCode: t.languageCode || '',
+                    languageName: (t.name && t.name.simpleText) || t.languageCode || 'Unknown',
+                    isAutoGenerated: (t.kind === 'asr' || !!t.isTranslatable),
+                    baseUrl: t.baseUrl || ''
+                  };
+                });
+              }
+
+              resolve(result);
+            } catch (parseErr) {
+              _devWarn('[YouSub] Innertube: JSON parse error:', parseErr.message);
+              resolve({ tracks: null, isLive: false });
+            }
+          } else {
+            _devWarn('[YouSub] Innertube: HTTP', xhr.status);
+            resolve({ tracks: null, isLive: false });
+          }
+        };
+
+        xhr.onerror = function () {
+          if (responded) return;
+          responded = true;
+          _devWarn('[YouSub] Innertube: Network error');
+          resolve({ tracks: null, isLive: false });
+        };
+
+        xhr.ontimeout = function () {
+          if (responded) return;
+          responded = true;
+          _devWarn('[YouSub] Innertube: Timeout');
+          resolve({ tracks: null, isLive: false });
+        };
+
+        xhr.send(body);
+
+        setTimeout(function () {
+          if (responded) return;
+          responded = true;
+          _devWarn('[YouSub] Innertube: Safety timeout (12s)');
+          try { xhr.abort(); } catch (e) {}
+          resolve({ tracks: null, isLive: false });
+        }, 12000);
+
+      } catch (e) {
+        _devWarn('[YouSub] Innertube: Exception:', e.message);
+        resolve({ tracks: null, isLive: false });
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Main flow
   // -------------------------------------------------------------------------
   async function run() {
     try {
       var metadata = extractVideoMetadata();
-      console.log('[YouSub] MainWorldExtractor: Metadata:', metadata);
+      _devLog('[YouSub] MainWorldExtractor: Metadata:', metadata);
+
+      var hasUsableTracks = metadata.tracks && metadata.tracks.length > 0 &&
+        metadata.tracks.some(function (t) { return t.baseUrl; });
+      if (!hasUsableTracks) {
+        _devLog('[YouSub] MainWorldExtractor: No usable tracks from metadata. Trying Innertube API...');
+        var innertubeResult = await fetchTracksViaInnertube(videoId);
+        if (innertubeResult.tracks && innertubeResult.tracks.length > 0) {
+          metadata.tracks = innertubeResult.tracks;
+          _devLog('[YouSub] MainWorldExtractor: Innertube provided', metadata.tracks.length, 'tracks.');
+        }
+        if (innertubeResult.isLive) metadata.isLive = true;
+      }
 
       if (metadata.isLive) {
-        console.warn('[YouSub] MainWorldExtractor: Video is LIVE. Stopping.');
+        _devWarn('[YouSub] MainWorldExtractor: Video is LIVE. Stopping.');
         sendResult(metadata.tracks, null, 'LIVE_STREAM_DETECTED');
         return;
       }
@@ -442,7 +562,7 @@
       // Step 1: Pre-check if transcript is already open
       var segments = await waitForSegments(500);
       if (segments && segments.length > 0) {
-        console.log('[YouSub] MainWorldExtractor: Transcript already open. Using existing segments.');
+        _devLog('[YouSub] MainWorldExtractor: Transcript already open. Using existing segments.');
       } else {
         // Step 1b: Find the transcript button
         var btn = findTranscriptButton();
@@ -455,29 +575,29 @@
         }
 
         if (btn) {
-          console.log('[YouSub] MainWorldExtractor: Clicking transcript button...');
+          _devLog('[YouSub] MainWorldExtractor: Clicking transcript button...');
           btn.click();
 
           // Step 2: Wait for segments to render
           segments = await waitForSegments(10000);
         } else {
-          console.warn('[YouSub] MainWorldExtractor: Transcript button not found.');
+          _devWarn('[YouSub] MainWorldExtractor: Transcript button not found.');
         }
       }
 
       if (segments && segments.length > 0) {
         // Step 3: Parse segments
         var entries = parseTranscriptSegments(segments);
-        console.log('[YouSub] MainWorldExtractor: Parsed', entries.length, 'entries from transcript DOM.');
+        _devLog('[YouSub] MainWorldExtractor: Parsed', entries.length, 'entries from transcript DOM.');
 
         if (entries.length > 0) {
-          console.log('[YouSub] MainWorldExtractor: Sample [0]:', JSON.stringify(entries[0]));
-          console.log('[YouSub] MainWorldExtractor: Sample [last]:', JSON.stringify(entries[entries.length - 1]));
+          _devLog('[YouSub] MainWorldExtractor: Sample [0]:', JSON.stringify(entries[0]));
+          _devLog('[YouSub] MainWorldExtractor: Sample [last]:', JSON.stringify(entries[entries.length - 1]));
         }
 
         // Send result
         sendResult(metadata.tracks, entries, null);
-        console.log('[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:', entries.length);
+        _devLog('[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:', entries.length);
         return;
       }
  

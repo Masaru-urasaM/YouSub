@@ -4,8 +4,10 @@ export const Constants = {
   APP_NAME: 'YouSub',
   VERSION: '0.2.0',
   IS_PRODUCTION: false,        // Auto-switched to true during packaging
-  DEFAULT_TARGET_LANG: 'vi',   // Default translation target language
-  DEFAULT_SOURCE_LANG: 'auto'  // Auto-detect source language
+  BUILD_DATE: null,            // Injected during packaging
+  BUILD_HASH: null,            // Injected during packaging (git short hash)
+  DEFAULT_TARGET_LANG: 'vi',
+  DEFAULT_SOURCE_LANG: 'auto'
 };
 
 // Message types for chrome.runtime.sendMessage between content ↔ background
@@ -17,11 +19,19 @@ export const MSG = {
   API_KEYS_UPDATED:   'YOUSUB_API_KEYS_UPDATED'
 };
 
+export function devLog(...args) {
+  if (!Constants.IS_PRODUCTION) console.log(...args);
+}
+
+export function devWarn(...args) {
+  if (!Constants.IS_PRODUCTION) console.warn(...args);
+}
+
 // Compatibility for legacy global access
 if (typeof window !== 'undefined') {
   window.YouSub = window.YouSub || {};
   window.YouSub.Constants = Constants;
   window.YouSub.MSG = MSG;
+  window.YouSub.devLog = devLog;
+  window.YouSub.devWarn = devWarn;
 }
-
-console.log('[YouSub] Constants module loaded (ESM)');

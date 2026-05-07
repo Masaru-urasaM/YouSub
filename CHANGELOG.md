@@ -6,6 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Shorts Extraction Resilience — Phase 51.1 (2026-05-07)
+
+**Added**
+- `fetchTracksViaInnertube(videoId)` in `main-world-extractor.js` — YouTube Innertube API fallback for caption track extraction when all 3 metadata sources fail
+- Innertube conditional block in `run()` — bridges metadata extraction gap for Shorts and swiped videos
+
+**Fixed**
+- "Could not find subtitles" on certain YouTube Shorts — caused by missing transcript button and stale metadata sources failing to provide caption tracks
+- Swiped Shorts caption extraction — `ytInitialPlayerResponse` is stale after swiping; Innertube API provides fresh tracks with valid `baseUrl`
+
+### Production Bundling & Log Management — Phase 49 (2026-05-07)
+
+**Added**
+- `Logger._bufferEntry()` — in-memory ring buffer (10,000 entries) with debounced flush to `chrome.storage.session` every 5s
+- ERROR-level dual-path persistence — errors written to both `storage.session` and `storage.local` (max 200 entries, survives browser close)
+- `Logger._readAllLogs()` — fallback chain: session storage → error storage → in-memory buffer
+- `devLog()`, `devWarn()` exported from `constants.js` — production-gated console helpers
+- `window.YouSub.devLog`, `window.YouSub.devWarn` — global access for MAIN world scripts
+- `BUILD_DATE`, `BUILD_HASH` fields in `Constants` — injected during build from git metadata
+- `chrome.storage.session` mock in `tests/mocks/chrome.js`
+- `tests/unit/logger.test.js` — 15 new tests (buffering, flush, rotation, export, format)
+- Pre-build validation in `package.js` — version sync, file existence, IS_PRODUCTION check
+- Post-build ZIP verification — manifest validity, platform transforms, IS_PRODUCTION=true
+- Stale dist/ artifact cleanup — removes old ZIPs before build
+- Asset exclusion patterns — `*.zip`, `*-original.*`, `*.docx` skipped during packaging
+
+**Changed**
+- `logger.js` rewritten — replaced disabled `_persist()` with batch+debounce `storage.session` architecture
+- `options.js` `exportLogs()` — now delegates to `Logger.export()`, shows entry count
+- `package.js` fully rewritten — v2.0 with validation, cleanup, metadata, verification pipeline
+- 140 raw `console.log/warn` calls replaced with `devLog`/`devWarn` across 15 source files
+- 6 raw console calls in `providers.js` routed through `Logger.trace`/`Logger.warn`
+- 1 raw `console.error` in `translator.js` routed through `Logger.error`
+
+**Fixed**
+- Export Debug Logs always showed "No logs found" — storage was never written since Phase 52
+- Duplicate event listener on export button in `options.js` (bound twice at lines 66-72)
+- Production builds leaked 140+ debug messages in DevTools despite `IS_PRODUCTION: true`
+- Build ZIP contained junk files (`icon128-original.png`, `icons.zip`, `.docx`) — ZIP size reduced ~25%
+- Stale dist/ artifacts accumulated across builds (old version ZIPs never cleaned)
+
+**Tests**: 156 total (139 passed, 17 pre-existing failures), +15 new logger tests, 0 regressions
+
 ### Patched Tail Detection — Phase 61a (2026-05-07)
 
 **Fixed**

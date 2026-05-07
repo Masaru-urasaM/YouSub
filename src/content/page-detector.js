@@ -1,3 +1,5 @@
+import { devLog } from '../shared/constants.js';
+
 let currentVideoId = null;
 let onEnterCallback = null;
 let onLeaveCallback = null;
@@ -24,10 +26,10 @@ function checkPage() {
       if (onLeaveCallback) onLeaveCallback();
     }
     currentVideoId = videoId;
-    console.log('[YouSub] PageDetector: ' + (isShortsPage ? 'Shorts' : 'Watch') + ' page detected. Video ID:', videoId);
+    devLog('[YouSub] PageDetector: ' + (isShortsPage ? 'Shorts' : 'Watch') + ' page detected. Video ID:', videoId);
     if (onEnterCallback) onEnterCallback(videoId);
   } else if (!isWatchPage && !isShortsPage && currentVideoId) {
-    console.log('[YouSub] PageDetector: Left video page.');
+    devLog('[YouSub] PageDetector: Left video page.');
     if (onLeaveCallback) onLeaveCallback();
     currentVideoId = null;
   }
@@ -43,7 +45,7 @@ export const PageDetector = {
     onEnterCallback = onEnter;
     onLeaveCallback = onLeave;
 
-    console.log('[YouSub] PageDetector: Initializing and checking current page...');
+    devLog('[YouSub] PageDetector: Initializing and checking current page...');
     
     // Add listener for future navigations
     document.addEventListener('yt-navigate-finish', checkPage);
@@ -51,7 +53,7 @@ export const PageDetector = {
     // Run immediate check for the current page
     checkPage();
 
-    console.log('[YouSub] PageDetector initialized (ESM).');
+    devLog('[YouSub] PageDetector initialized (ESM).');
   },
 
   /**
@@ -62,7 +64,7 @@ export const PageDetector = {
     currentVideoId = null;
     onEnterCallback = null;
     onLeaveCallback = null;
-    console.log('[YouSub] PageDetector destroyed.');
+    devLog('[YouSub] PageDetector destroyed.');
   },
 
   /**

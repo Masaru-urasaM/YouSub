@@ -1,62 +1,44 @@
-# Gemini Memory — YouSub Project
+# AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: Healthy — v0.6.0 (Pipeline Error Visibility & Quota Diagnostics)
-**Current Milestone**: M3: Robustness
-**Main Objective**: Translation pipeline error transparency — detailed quota/rate-limit diagnostics, context summary cooldown fix, test button quota display.
+**Status**: All phases complete — v0.2.0
+**Current Milestone**: M6: Expansion (all milestones M1-M6 done)
+**Last Updated**: 2026-05-07
 
 ## Implementation Log
 
 ### Milestone 1: MVP (2026-04-03)
-- **Phase 1-3**: Project initialization, Manifest V3 setup, SPA-aware YouTube navigation.
-- **Phase 4-6**: Video element binding, transcript extraction (initial API strategy), and normalization.
-- **Phase 7-10**: Lingva translation integration, overlay rendering, and time-sync logic.
+- **Phase 1-10**: Project initialization, Manifest V3, SPA navigation, video binding, transcript extraction, Lingva translation, overlay, sync engine, MVP integration.
 
-### Milestone 2: Features (2026-04-03)
-- **Phase 12**: Migration to **Transcript DOM Scraping** to bypass Bot Detection.
-- **Phase 13**: Full Settings UI (Tabs: Translation, Appearance, About).
-- **Phase 13.5-13.7**: Provider Registry and BYOK Key Management (OpenAI, Gemini, etc.).
-- **Phase 13.8-13.9**: Multi-provider translation engine with **Failover** and **Health Monitoring**.
-- **Phase 18-22 Progress**: 100% (Shorts, Cache, Perf, Tests, Cross-browser).
-- **Phase 23-28 Progress**: 100% (Polish, Packaging, Context-aware Summary, Uncensored prompt).
-- **Phase 29-30 Progress**: 100% (Signature-based Cache, Smart Regex Parser).
-- **Phase 35.1-35.10 Progress**: 100% (Absolute ID Tracking, ESM Refactor, Cache Transparency).
-- **Phases 47-48 Progress**: 100% (**Anti-Deadlock Overhaul**. Integrated AbortController, fixed Logger I/O deadlock, and sequentialized 413 failsafe logic).
-- **Phase 50.1 Progress**: 100% (YouTube Shorts Support. Vertical UI adaptation & TrustedTypes security).
-- **Phase 50.2 Progress**: 100% (Streaming Translation. Port-based messaging & SSE support).
-- **Phase 50.3 Progress**: 100% (Local LLM Support - Ollama. Dynamic permissions & localhost proxy).
-- **Phase 50.6 Progress**: 100% (Security Hardening. Trusted Types policies & global crash recovery).
-- **Phase 50.7 Progress**: 100% (Shorts Stability. Active reel targeting & visibility checks).
-- **Last Updated**: 2026-04-10
+### Milestone 2: Features (2026-04-03 — 2026-04-04)
+- **Phase 12**: Transcript DOM Scraping (bypasses Bot Detection).
+- **Phase 13-13.9**: Settings UI, Provider Registry, BYOK Key Management, Multi-provider engine, Health/Circuit Breaker.
+- **Phase 14-16**: Dual subtitles, UI customization, structured JSONL logging.
+- **Phase 17-22**: Error handling, edge cases (Shorts, Livestreams), caching (LRU/TTL), performance optimization, test infrastructure, cross-browser (Firefox/Edge).
 
-### Implementation Log
+### Milestone 3: Robustness (2026-04-06 — 2026-04-09)
+- **Phase 23-35.10**: Visual polish, packaging, translation stabilization, context-aware batching, Absolute ID tracking, ESM refactor, cache transparency.
+- **Phases 36-48**: Trusted Types, batch sizing, service worker lifecycle, anti-deadlock overhaul, sequential splitting.
 
-- **[2026-04-03] Phase 1-16**: Core MVP, Options Page, LLM provider registry, Health/Circuit Breaker.
-- **[2026-04-04] Phase 17-22**: Toasts, Hybrid Extraction, Caching, Perf, Test Infrastructure, Cross-browser.
-- **[2026-04-06] Phase 23.5-28**: Context-aware summary, Uncensored/Uncapped prompt, Dynamic spacing fix.
-- **[2026-04-06] Phase 31**: **Popup UI Polish**. Removed redundant status text and added per-video cache purging.
-- **[2026-04-06] Phase 31.1**: **Premium Confirmation Modal**.
-- **[2026-04-06] Phase 32**: **API Key Test TPM Fix**.
-- **[2026-04-06] Phase 35**: **Incremental Subtitle Display**.
-- **[2026-04-07] Phase 35.1-35.3**: **Absolute ID Tracking & ESM Refactor**.
-- **[2026-04-07] Phase 35.9-35.10**: **Stabilization & Transparency**.
-- **[2026-04-08] Phase 35.19**: **Stability & Dashboard UI**. Resolved "Checking APIs..." hang.
-- **[2026-04-09] Phases 47-48**: **Anti-Deadlock & Stability Overhaul**. Implemented `AbortController` for fetch cancellation, disabled storage I/O during translation (Logger deadlock fix), and sequentialized 413 recursive splitting. Fixed missing `success` flags.
-- **[2026-04-10] Phase 50.1-50.7**: **Expansion & Stability Patch**. Implemented Shorts support, Streaming (SSE), and Ollama. Hardened security with Trusted Types. Fixed "stuck" subtitles and global syntax errors.
-- **[2026-04-24] Phase 59**: **MergeFixer Bug Fixes + Unit Tests**. Fixed critical false positive merge detection (`absorbed=0→1`), added `MIN_WORDS_FOR_RATIO_CHECK=4` guard for short segments, CJK-aware `wordCount()`, and partial anchor recovery. Added 37 unit tests.
-- **[2026-04-24] Phase 59.1**: **Google Translate Verification + Best-Fit**. Added same-language verification (Google VI vs LLM VI) to confirm merges before fixing. Best-fit algorithm determines exact absorbed count by accumulating Google translations. 46 total tests.
-- **[2026-04-24] Phase 59.2**: **Shift-Aware MergeFixer + LLM Re-translation**. Tail anomaly detection gates shift-candidate scanning with lower threshold (>=1.8). Realignment inserts empty slots at merge positions. `retranslateShiftedLines()` in translator.js re-translates pending lines via same LLM provider. 65 total tests.
-- **[2026-04-25] Phase 60**: **Pipeline Error Visibility & Quota Diagnostics**. Fixed 4-link bug chain: pipeline always returned `success: true`, CHUNK sent original text on failure, SyncEngine marked untranslated entries as translated, context summary poisoned cooldowns. Added failure propagation through all translation paths (sequential, Groq waterfall, non-Groq fallback, recursive split). UI shows per-provider failure breakdown with quota numbers. Test button shows remaining tokens/requests with low-quota warning. Rate limit headers extracted from successful responses.
+### Milestone 4: Quality (2026-04-10 — 2026-04-25)
+- **Phase 50.1-50.7**: YouTube Shorts support, streaming translation (SSE), Ollama local LLM, security hardening, Shorts stability.
+- **Phase 52-56**: Service worker lifecycle, cache atomicity, event listener cleanup, null safety, retry logic, request dedup, code quality, popup language selector.
+- **Phase 57**: Logger TRACE level, smart Groq payload distribution.
+- **Phase 58-59.2**: JSON structured output, merge detection & auto-fix, MergeFixer bug fixes, Google Translate verification, shift-aware realignment.
+- **Phase 60-60.1**: Pipeline error visibility, quota diagnostics, rate-limit display.
 
-### Milestone 5: Distribution (2026-04-04 →)
-- **Phase 23 [DONE]**: Visual polish + packaging.
-- **Phase 29 [DONE]**: Signature-based Cache Architecture.
-- **Phase 30 [DONE]**: Smart Regex Parser & Formatting Resilience.
-- **Phase 35.10 [DONE]**: Dual Toggle & Cache Transparency.
+### Milestone 5: Distribution (2026-05-07)
+- **Phase 49**: Production bundling & log management. Log persistence via `storage.session`, console output hygiene, build pipeline v2.0.
+
+### Milestone 6: Expansion (2026-05-07)
+- **Phase 61**: Cascade shift detection, 3-tier RoughTranslator.
+- **Phase 51.1**: Shorts extraction resilience — YouTube Innertube API fallback for caption tracks.
 
 ## Key Concepts
-- **Extraction**: Hybrid pipeline (XHR Fetch + DOM Fallback). 
-- **Translation**: Batch-based LLM translation with **Full-transcript Context Summary**.
-- **Parsing**: **Global Absolute ID** matching (`[#ID]`) for 100% precise alignment.
-- **Cache**: **Signature-based** (Video ID) with LRU/TTL management.
-- **UI**: Vanilla JS CSS-in-JS. Dynamic positioning for YouTube control bar overlap.
+- **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).
+- **Translation**: Batch-based LLM with Full-transcript Context Summary, JSON structured output.
+- **Parsing**: Global Absolute ID matching (`[#ID]`) for precise alignment.
+- **Cache**: Signature-based (Video ID) with LRU/TTL management.
+- **Merge Detection**: Multi-signal weighted scoring (token anchors, sentence boundaries, length ratio).
+- **Logging**: `storage.session` ring buffer (10K entries), ERROR dual-path to `storage.local`.
+- **Build**: Zero-build-tool packaging with pre/post validation, metadata injection.

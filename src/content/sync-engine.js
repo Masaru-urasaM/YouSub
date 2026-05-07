@@ -1,4 +1,5 @@
 import { Overlay } from './overlay.js';
+import { devLog, devWarn } from '../shared/constants.js';
 
 let subtitles = [];
 let videoElement = null;
@@ -86,7 +87,7 @@ export const SyncEngine = {
     translatedIndices = new Set();
 
     if (!subtitles.length || !videoElement) {
-      console.warn('[YouSub] SyncEngine: Missing subtitles or video element.');
+      devWarn('[YouSub] SyncEngine: Missing subtitles or video element.');
       return;
     }
 
@@ -97,7 +98,7 @@ export const SyncEngine = {
       onTimeUpdateBound = onTimeUpdate.bind(this);
       videoElement.addEventListener('timeupdate', onTimeUpdateBound);
       isRunning = true;
-      console.log('[YouSub] SyncEngine: Started (Dual Mode: ' + isDualMode + ')');
+      devLog('[YouSub] SyncEngine: Started (Dual Mode: ' + isDualMode + ')');
 
       // Force initial render in case video is currently paused
       onTimeUpdateBound();
@@ -116,7 +117,7 @@ export const SyncEngine = {
     translatedIndices = new Set();
 
     Overlay.hide();
-    console.log('[YouSub] SyncEngine: Stopped.');
+    devLog('[YouSub] SyncEngine: Stopped.');
   },
 
   setDualMode: function (enabled) {
@@ -156,7 +157,7 @@ export const SyncEngine = {
         translatedIndices.add(i);
       }
     }
-    console.log('[YouSub] SyncEngine: Full subtitles updated. Count: ' + subtitles.length);
+    devLog('[YouSub] SyncEngine: Full subtitles updated. Count: ' + subtitles.length);
     
     if (isRunning && onTimeUpdateBound) {
       onTimeUpdateBound();
@@ -170,13 +171,13 @@ export const SyncEngine = {
    */
   updatePartial: function (batch, startIndex) {
     if (!subtitles.length || !Array.isArray(batch)) {
-      console.warn('[YouSub] SyncEngine: updatePartial ignored (empty state or batch)');
+      devWarn('[YouSub] SyncEngine: updatePartial ignored (empty state or batch)');
       return;
     }
 
     // Phase 54.2: Validate startIndex bounds
     if (typeof startIndex !== 'number' || startIndex < 0 || startIndex >= subtitles.length) {
-      console.warn('[YouSub] SyncEngine: updatePartial ignored (invalid startIndex:', startIndex, ')');
+      devWarn('[YouSub] SyncEngine: updatePartial ignored (invalid startIndex:', startIndex, ')');
       return;
     }
 
@@ -201,7 +202,7 @@ export const SyncEngine = {
       }
     }
     
-    console.log(`[YouSub] SyncEngine: Merged partial batch of ${batch.length} at index ${startIndex}`);
+    devLog(`[YouSub] SyncEngine: Merged partial batch of ${batch.length} at index ${startIndex}`);
 
     if (isRunning && onTimeUpdateBound) {
       const endIndex = startIndex + batch.length - 1;

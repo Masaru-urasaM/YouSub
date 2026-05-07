@@ -1,4 +1,4 @@
-import { Constants } from '../shared/constants.js';
+import { Constants, devLog, devWarn } from '../shared/constants.js';
 import { PageDetector } from './page-detector.js';
 import { VideoBinder } from './video-binder.js';
 import { SubtitleExtractor } from './subtitle-extractor.js';
@@ -15,7 +15,7 @@ if (typeof window !== 'undefined') {
   window.YouSub.TrustedTypes = TrustedTypes;
 }
 
-console.log('[YouSub] Main: Module loaded and executing...');
+devLog('[YouSub] Main: Module loaded and executing...');
 
 // ---------------------------------------------------------------------------
 // Translation helper
@@ -144,7 +144,7 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
     }, 60000);
 
     try {
-      console.log('[YouSub] Main: requestTranslation called for', parsedEntries.length, 'entries');
+      devLog('[YouSub] Main: requestTranslation called for', parsedEntries.length, 'entries');
 
       // Extension Context Check
       if (!chrome.runtime || !chrome.runtime.id) {
@@ -189,7 +189,7 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
               
               // Diagnostic: Check if we are accidentally showing English
               if (!translatedText || translatedText.trim() === entry.text.trim()) {
-                console.warn('[YouSub] Main: No translation for segment', i, 'using original text.');
+                devWarn('[YouSub] Main: No translation for segment', i, 'using original text.');
               }
 
               return {
@@ -229,7 +229,7 @@ function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLa
 
 async function processEntries(entries, videoId, targetLang) {
   try {
-    console.log('[YouSub] Main: processEntries started. Count:', entries.length);
+    devLog('[YouSub] Main: processEntries started. Count:', entries.length);
     if (!entries || entries.length === 0) return;
 
     SyncEngine.stop();
@@ -246,13 +246,13 @@ async function processEntries(entries, videoId, targetLang) {
       };
     });
 
-    console.log('[YouSub] Main: Starting SyncEngine with original text...');
+    devLog('[YouSub] Main: Starting SyncEngine with original text...');
     VideoBinder.bind(function (video) {
-      console.log('[YouSub] Main: Video element available to SyncEngine');
+      devLog('[YouSub] Main: Video element available to SyncEngine');
       SyncEngine.start(subtitles, video);
     });
 
-    console.log('[YouSub] Main: Requesting translation from worker...');
+    devLog('[YouSub] Main: Requesting translation from worker...');
 
     let response;
     response = await requestTranslationStreaming(entries, videoId, 'auto', targetLang, (partialBatch, startIndex) => {
@@ -260,7 +260,7 @@ async function processEntries(entries, videoId, targetLang) {
     });
 
     if (response.success === false) {
-      console.warn('[YouSub] Main: Haling pipeline due to error');
+      devWarn('[YouSub] Main: Halting pipeline due to error');
       SyncEngine.stop();
       Overlay.destroy();
 
@@ -297,7 +297,7 @@ async function processEntries(entries, videoId, targetLang) {
     }
 
     if (response.translated && response.translated.length > 0) {
-      console.log('[YouSub] Main: Final translated results merging...');
+      devLog('[YouSub] Main: Final translated results merging...');
       const statusTitle = response.fromCache ? 'Loaded from cache' : 'Translation complete!';
       const statusType = response.fromCache ? 'info' : 'success';
 
@@ -319,13 +319,13 @@ async function processEntries(entries, videoId, targetLang) {
 
 async function startSubtitlePipeline(videoId, targetLang) {
   try {
-    console.log('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
+    devLog('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
     Overlay.setLoading(true);
     Overlay.show();
 
     SubtitleExtractor.extract(async function (tracks, parsedEntries, error) {
       try {
-    console.log('[YouSub] Main: Extractor results received. Entries:', parsedEntries ? parsedEntries.length : 0, 'Tracks:', tracks ? tracks.length : 0, 'Error:', error);
+    devLog('[YouSub] Main: Extractor results received. Entries:', parsedEntries ? parsedEntries.length : 0, 'Tracks:', tracks ? tracks.length : 0, 'Error:', error);
 
     if (parsedEntries && parsedEntries.length > 0) {
       await processEntries(parsedEntries, videoId, targetLang);
@@ -334,7 +334,7 @@ async function startSubtitlePipeline(videoId, targetLang) {
 
     // Fallback: Use tracks directly (Phase 50.1.3)
     if (tracks && tracks.length > 0) {
-      console.log('[YouSub] Main: Falling back to direct track fetch...');
+      devLog('[YouSub] Main: Falling back to direct track fetch...');
       Overlay.showStatus('Fetching transcript data...', 'info', 2000);
 
       // Simple heuristic: Prefer English manual over English auto over first available
@@ -346,7 +346,7 @@ async function startSubtitlePipeline(videoId, targetLang) {
         try {
           const entries = await SubtitleParser.fetch(selectedTrack.baseUrl);
           if (entries && entries.length > 0) {
-            console.log('[YouSub] Main: Fallback fetch SUCCESS. Entries:', entries.length);
+            devLog('[YouSub] Main: Fallback fetch SUCCESS. Entries:', entries.length);
             await processEntries(entries, videoId, targetLang);
             return;
           }
@@ -372,15 +372,15 @@ async function startSubtitlePipeline(videoId, targetLang) {
 }
 
 // Init PageDetector
-console.log('[YouSub] Main: Registering PageDetector callbacks...');
+devLog('[YouSub] Main: Registering PageDetector callbacks...');
 PageDetector.init(
   function onEnter(videoId) {
-    console.log('[YouSub] Main: ON_ENTER fired for video:', videoId);
+    devLog('[YouSub] Main: ON_ENTER fired for video:', videoId);
 
     Overlay.destroy();
 
     VideoBinder.bind(function (videoEl) {
-      console.log('[YouSub] Main: Video element bound properly. Checking storage...');
+      devLog('[YouSub] Main: Video element bound properly. Checking storage...');
 
       chrome.storage.local.get(['yousub_translation_enabled', 'targetLang'], function (res) {
         if (chrome.runtime.lastError) {
@@ -390,16 +390,16 @@ PageDetector.init(
 
         const enabled = res.yousub_translation_enabled;
         const targetLang = res.targetLang || 'vi';
-        console.log('[YouSub] Main: Settings result:', { enabled, targetLang });
+        devLog('[YouSub] Main: Settings result:', { enabled, targetLang });
 
         if (enabled) {
-          console.log('[YouSub] Main: Auto-translation is ENABLED. Checking cache...');
+          devLog('[YouSub] Main: Auto-translation is ENABLED. Checking cache...');
           // Phase 52.1: Guard cache check with timeout
           let cacheCheckDone = false;
           const cacheTimeout = setTimeout(() => {
             if (!cacheCheckDone) {
               cacheCheckDone = true;
-              console.warn('[YouSub] Main: Cache check timed out after 10s. Skipping auto-start.');
+              devWarn('[YouSub] Main: Cache check timed out after 10s. Skipping auto-start.');
             }
           }, 10000);
 
@@ -418,10 +418,10 @@ PageDetector.init(
                 return;
               }
               if (checkRes && checkRes.exists) {
-                console.log('[YouSub] Main: Cache hit. Auto-starting pipeline.');
+                devLog('[YouSub] Main: Cache hit. Auto-starting pipeline.');
                 startSubtitlePipeline(videoId, targetLang);
               } else {
-                console.log('[YouSub] Main: Cache miss or no cache found.');
+                devLog('[YouSub] Main: Cache miss or no cache found.');
               }
             });
           } catch (e) {
@@ -432,13 +432,13 @@ PageDetector.init(
             }
           }
         } else {
-          console.log('[YouSub] Main: Auto-translation is DISABLED.');
+          devLog('[YouSub] Main: Auto-translation is DISABLED.');
         }
       });
     });
   },
   function onLeave() {
-    console.log('[YouSub] Main: ON_LEAVE fired.');
+    devLog('[YouSub] Main: ON_LEAVE fired.');
     SyncEngine.stop();
     Overlay.destroy();
   }
@@ -452,30 +452,30 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
   const currentVideoId = PageDetector.getCurrentVideoId();
 
   if (request.type === 'YOUSUB_START_TRANSLATION' || request.type === 'YOUSUB_TOGGLE_TRANSLATION') {
-    console.log('[YouSub] Main: Translation toggle/start received:', request);
+    devLog('[YouSub] Main: Translation toggle/start received:', request);
 
     if (request.enabled === false) {
-      console.log('[YouSub] Main: Disabling translation.');
+      devLog('[YouSub] Main: Disabling translation.');
       SyncEngine.stop();
       Overlay.destroy();
     } else {
       const videoId = request.videoId || currentVideoId;
       if (videoId) {
-        console.log('[YouSub] Main: Starting pipeline for', videoId);
+        devLog('[YouSub] Main: Starting pipeline for', videoId);
         startSubtitlePipeline(videoId, request.targetLang || 'vi');
       } else {
-        console.warn('[YouSub] Main: Cannot start translation, no video ID found.');
+        devWarn('[YouSub] Main: Cannot start translation, no video ID found.');
       }
     }
   }
 
   if (request.type === 'YOUSUB_TOGGLE_DUAL_MODE') {
-    console.log('[YouSub] Main: Dual mode toggle received:', request.enabled);
+    devLog('[YouSub] Main: Dual mode toggle received:', request.enabled);
     SyncEngine.setDualMode(request.enabled);
   }
 
   if (request.type === 'YOUSUB_CACHE_CLEARED' || request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
-    console.log('[YouSub] Main: Cache cleared message received.');
+    devLog('[YouSub] Main: Cache cleared message received.');
     SyncEngine.stop();
     Overlay.destroy();
   }
@@ -485,7 +485,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
       isTranslationActive: SyncEngine.isActive(),
       isDualMode: SyncEngine.isDualModeActive()
     };
-    console.log('[YouSub] Main: Reporting state to popup:', state);
+    devLog('[YouSub] Main: Reporting state to popup:', state);
     sendResponse(state);
     return false; // Sync response
   }

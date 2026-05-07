@@ -350,12 +350,9 @@ export const Providers = {
       payload.response_format = options.responseFormat;
     }
 
-    console.log(`%c[YouSub-Trace] Requesting ${model} at ${endpoint}`, 'color: #3b82f6; font-weight: bold;', {
-      headers: {
-        'Authorization': `Bearer ${apiKey.substring(0, 4)}... (Len: ${apiKey.length})`,
-        'Content-Type': 'application/json'
-      },
-      payload
+    Logger.trace('Providers', `Requesting ${model} at ${endpoint}`, {
+      keyLen: apiKey.length,
+      payloadKeys: Object.keys(payload)
     });
 
     const headers = { 'Content-Type': 'application/json' };
@@ -394,10 +391,7 @@ export const Providers = {
       ]
     };
 
-    console.log(`%c[YouSub-API] Gemini Request (${model}, stream=${!!options.stream}):`, 'color: #10b981; font-weight: bold;', {
-      endpoint: endpoint.split('?')[0],
-      payload
-    });
+    Logger.trace('Providers', `Gemini Request (${model}, stream=${!!options.stream})`);
 
     return fetch(endpoint, {
       method: 'POST',
@@ -417,10 +411,7 @@ export const Providers = {
       stream: !!options.stream
     };
 
-    console.log(`%c[YouSub-API] Anthropic Request (${model}, stream=${!!options.stream}):`, 'color: #f59e0b; font-weight: bold;', {
-      endpoint,
-      payload
-    });
+    Logger.trace('Providers', `Anthropic Request (${model}, stream=${!!options.stream})`);
 
     return fetch(endpoint, {
       method: 'POST',
@@ -439,7 +430,7 @@ export const Providers = {
     if (response.ok) {
       try {
         const data = await response.json();
-        console.log(`%c[YouSub-API] Response XML/JSON Received (Success):`, 'color: #a855f7; font-weight: bold;', data);
+        Logger.trace('Providers', 'Response received (Success)');
         let text = '';
         let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -533,7 +524,7 @@ export const Providers = {
     let quotaDetail = null;
     try {
       const rawBody = await response.text();
-      console.log(`%c[YouSub-Trace] Raw Error Body:`, 'color: #ef4444; font-weight: bold;', rawBody);
+      Logger.trace('Providers', 'Raw Error Body', { body: rawBody.substring(0, 200) });
 
       const data = JSON.parse(rawBody);
       const detail = data.error?.message || data.error || '';
@@ -549,7 +540,7 @@ export const Providers = {
         }
       }
     } catch (e) {
-      console.warn('[YouSub-Trace] Could not parse error body as JSON');
+      Logger.warn('Providers', 'Could not parse error body as JSON');
     }
 
     return { success: false, message: errorMessage, model: modelId, statusCode: response.status, retryAfterMs, quotaDetail };

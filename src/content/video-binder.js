@@ -1,3 +1,5 @@
+import { devLog } from '../shared/constants.js';
+
 let videoElement = null;
 let observer = null;
 let timeoutId = null;
@@ -63,7 +65,7 @@ function onVideoFound(video) {
   }
 
   videoElement = video;
-  console.log('[YouSub] VideoBinder: Video element found. Duration:', video.duration, 'ReadyState:', video.readyState);
+  devLog('[YouSub] VideoBinder: Video element found. Duration:', video.duration, 'ReadyState:', video.readyState);
 
   if (boundCallback) {
     boundCallback(video);
@@ -122,7 +124,7 @@ export const VideoBinder = {
       return;
     }
 
-    console.log('[YouSub] VideoBinder: Video element not found immediately, starting MutationObserver...');
+    devLog('[YouSub] VideoBinder: Video element not found immediately, starting MutationObserver...');
     startObserver();
   },
 
@@ -141,7 +143,7 @@ export const VideoBinder = {
     videoElement = null;
     boundCallback = null;
     callbackFired = false;
-    console.log('[YouSub] VideoBinder: Unbound.');
+    devLog('[YouSub] VideoBinder: Unbound.');
   },
 
   /**

@@ -398,3 +398,23 @@
 **Phase 61b — Offline Cascade Shift Detection**: Added 6 new helper functions for offline multi-signal cascade detection (zero API calls). Three weighted signals: token-anchor matching (weight 0.4), sentence boundary alignment (weight 0.3), per-line length ratio consistency (weight 0.3). Combined score ≥ 0.6 with two-signal minimum guardrail. Added `MERGE_RATIO_MEDIUM = 1.5` secondary threshold. 27 new tests.
 
 **Phase 61c — 3-Tier RoughTranslator**: Rewrote `rough-translator.js` with 3-tier fallback: Tier 1 Chrome Translator API (on-device, 3s timeout), Tier 2 Google Translate scraping (5s timeout), Tier 3 returns null. Availability and translator instances cached per language pair. Public API unchanged. 14 new tests.
+
+### Phase 49 — Production Bundling & Log Management
+**Status**: DONE (2026-05-07)
+**Summary**: Four sub-phases finalizing the build pipeline and log management for production distribution.
+
+**Phase 49.1 — Log Persistence & Export Repair**: Restored log persistence via `chrome.storage.session` (memory-backed, no I/O deadlocks). ERROR-level entries dual-written to `storage.local` (max 200, survives browser close). In-memory ring buffer (10,000 entries) with debounced flush (5s). Fixed broken export (always showed "No logs found"). Fixed duplicate event listener on export button. 15 new tests.
+
+**Phase 49.2 — Console Output Hygiene**: Replaced 140 raw `console.log/warn` calls across 15 source files with production-gated helpers. Added `devLog()`/`devWarn()` exports in `constants.js`. MAIN world scripts use inline `_isProd` guard. Background scripts routed through `Logger.trace`/`Logger.warn`. `console.error` calls preserved (errors always visible).
+
+**Phase 49.3 — Build Pipeline Hardening**: Rewrote `scripts/package.js` with pre-build validation (version sync, file existence, IS_PRODUCTION check), stale dist/ cleanup, asset exclusion (`*.zip`, `*-original.*`, `*.docx`), build metadata injection (`BUILD_DATE`, `BUILD_HASH`), and post-build ZIP verification. ZIP size reduced ~25% by excluding junk files.
+
+**Phase 49.4 — Verification & Documentation**: Full test suite verified (156 tests, 139 passed, 17 pre-existing failures). Documentation updated across ROADMAP, CHANGELOG, and DESIGN_DECISIONS.
+
+### Phase 51.1 — Shorts Extraction Resilience
+**Status**: DONE (2026-05-07)
+**Summary**: Fixed "Could not find subtitles" on certain YouTube Shorts by adding a YouTube Innertube API fallback (`POST /youtubei/v1/player`) for caption track extraction.
+
+**Root cause**: Many Shorts lack a "Show transcript" button (DOM scraping fails), and the 3 existing metadata sources (`movie_player.getPlayerResponse()`, `window.ytInitialPlayerResponse`, `reel.data.playerResponse`) frequently return no caption tracks — especially for swiped Shorts where `ytInitialPlayerResponse` is stale.
+
+**Fix**: Added `fetchTracksViaInnertube(videoId)` in `main-world-extractor.js`. When all 3 metadata sources fail to provide tracks, the function calls YouTube's internal player API (same-origin XHR, 8s timeout) to retrieve caption tracks with fresh `baseUrl` values. The existing fallback fetch path in `main.js` then uses these URLs to download subtitle data. Only 1 file modified. Always resolves (never rejects) — pipeline continues normally on any API failure.

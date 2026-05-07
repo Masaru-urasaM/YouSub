@@ -1,9 +1,9 @@
 # YouSub — Development Roadmap
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
-> **Version**: 6.4
-> **Last updated**: 2026-04-25
-> **Total phases**: 57 (Phases 0-60 = archived/done, Phase 49 = in progress, Phase 51.1 = pending)
+> **Version**: 7.0
+> **Last updated**: 2026-05-07
+> **Total phases**: 59 (Phases 0-61 + 49 + 51.1 = all archived/done)
 
 ---
 
@@ -60,8 +60,8 @@ When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choo
 | Phase | Description | Status | Milestone |
 |-------|-------------|--------|-----------|
 | 0-61 | Core infrastructure through Cascade Shift Detection (see `ROADMAP_DONE.md`) | DONE (2026-05-07) | M1-M6 |
-| 49 | Production Bundling & Log Management | IN_PROGRESS | M5 |
-| 51.1 | Resolve Shorts Metadata/Transcript Extraction Failure | TODO | M6 |
+| 49 | Production Bundling & Log Management (see `ROADMAP_DONE.md`) | DONE (2026-05-07) | M5 |
+| 51.1 | Resolve Shorts Metadata/Transcript Extraction Failure | DONE (2026-05-07) | M6 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started
 >
@@ -71,12 +71,5 @@ When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choo
 
 ## DETAILED PHASE SPECIFICATIONS
 
-### Phase 49 — Production Bundling & Log Management
-- **Goal**: Finalize build pipeline and log rotation for production.
-- **Status**: IN_PROGRESS
-
-### Phase 51.1 — Shorts Extraction Resilience
-- **Goal**: Fix "Could not find subtitles" on certain Shorts.
-- **Problem**: Some Shorts lack a transcript button and metadata extraction is failing to find the correct `baseUrl`.
-- **Status**: TODO (User Investigation Pending)
+(No pending phases — see `ROADMAP_DONE.md` for completed work)
 

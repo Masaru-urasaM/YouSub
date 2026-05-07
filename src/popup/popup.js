@@ -1,4 +1,5 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
+import { devLog, devWarn } from '../shared/constants.js';
 
 document.addEventListener('DOMContentLoaded', function () {
   const getSubBtn = document.getElementById('get-sub-btn');
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Phase 35.8: Add fail-safe timeout for "Checking APIs..."
   const healthTimeout = setTimeout(() => {
     if (healthStatus.textContent.includes('Checking')) {
-      console.warn('[YouSub] Popup: Health check timed out. Showing fallback.');
+      devWarn('[YouSub] Popup: Health check timed out. Showing fallback.');
       healthStatus.textContent = '● System Ready (Check Skipped)';
       healthStatus.className = 'status-dot neutral';
     }
@@ -71,7 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
             browser.tabs.sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
               .then(res => {
                 if (res) {
-                  console.log('[YouSub] Popup: State received from Tab:', res);
+                  devLog('[YouSub] Popup: State received from Tab:', res);
                   if (res.isTranslationActive) getSubBtn.classList.add('active');
                   else getSubBtn.classList.remove('active');
                   
@@ -79,13 +80,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
               })
               .catch(err => {
-                console.warn('[YouSub] Popup: Could not get state from Tab (likely script not loaded).', err);
+                devWarn('[YouSub] Popup: Could not get state from Tab (likely script not loaded).', err);
               });
           }
         });
       }
     } catch (e) {
-      console.warn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
+      devWarn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
     }
   });
 
@@ -350,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function () {
         videoTitle = `Last Execution: ${rawTitle.replace(/\s*-\s*YouTube$/, '')}`;
       }
     } catch (e) {
-      console.warn('[YouSub] Popup: Could not fetch tab title.', e);
+      devWarn('[YouSub] Popup: Could not fetch tab title.', e);
     }
     statsTitle.textContent = videoTitle;
     statsTitle.title = videoTitle; // Tooltip for full title

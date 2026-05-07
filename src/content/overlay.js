@@ -1,4 +1,5 @@
 import { TrustedTypes } from '../shared/trusted-types.js';
+import { devLog, devWarn } from '../shared/constants.js';
 
 let container = null;
 let translatedElement = null;
@@ -31,7 +32,7 @@ function createOverlay() {
   }
 
   if (!playerElement) {
-    console.warn('[YouSub] Overlay: Player container not found. Retrying in 500ms...');
+    devWarn('[YouSub] Overlay: Player container not found. Retrying in 500ms...');
     setTimeout(createOverlay, 500);
     return;
   }
@@ -76,7 +77,7 @@ function createOverlay() {
   };
   chrome.storage.onChanged.addListener(storageListener);
 
-  console.log('[YouSub] Overlay: Dynamic overlay created (ESM).');
+  devLog('[YouSub] Overlay: Dynamic overlay created (ESM).');
 }
 
 export const Overlay = {
@@ -254,7 +255,7 @@ export const Overlay = {
     playerElement = null;
     currentStyles = {};
     _translationInProgress = false;
-    console.log('[YouSub] Overlay: Destroyed.');
+    devLog('[YouSub] Overlay: Destroyed.');
   }
 };
 

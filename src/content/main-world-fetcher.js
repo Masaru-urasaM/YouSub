@@ -24,6 +24,9 @@
       } catch (e) {}
     }
 
+    var _isProd = window.YouSub && window.YouSub.Constants && window.YouSub.Constants.IS_PRODUCTION;
+    function _devLog() { if (!_isProd) console.log.apply(console, arguments); }
+
     window.addEventListener('message', function (event) {
       if (event.source !== window) return;
       if (!event.data || event.data.type !== 'YOUSUB_FETCH_REQUEST') return;
@@ -31,7 +34,7 @@
       var requestId = event.data.requestId;
       var url = event.data.url;
 
-      console.log('[YouSub] MainWorldFetcher: Fetching URL:', url.substring(0, 120) + '...');
+      _devLog('[YouSub] MainWorldFetcher: Fetching URL:', url.substring(0, 120) + '...');
 
       var xhr = new XMLHttpRequest();
       xhr.open('GET', url, true);
@@ -48,7 +51,7 @@
       xhr.onload = function () {
         if (responded) return;
         responded = true;
-        console.log('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
+        _devLog('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
         if (xhr.status >= 200 && xhr.status < 300) {
           window.postMessage({
             type: 'YOUSUB_FETCH_RESPONSE',
@@ -107,7 +110,7 @@
       }, 20000);
     });
 
-    console.log('[YouSub] MainWorldFetcher: Ready (XHR mode).');
+    _devLog('[YouSub] MainWorldFetcher: Ready (XHR mode).');
   } catch (e) {
     console.error('[YouSub] MainWorldFetcher Critical Crash:', e);
   }

@@ -1,3 +1,5 @@
+import { devLog, devWarn } from '../shared/constants.js';
+
 let fetcherInjected = false;
 const pendingFetches = {};      // requestId → { resolve, reject }
 let fetchIdCounter = 0;
@@ -21,7 +23,7 @@ function decodeHtml(html) {
     const doc = parser.parseFromString(html, 'text/html');
     return doc.documentElement.textContent || '';
   } catch (e) {
-    console.warn('[YouSub] SubtitleParser: decodeHtml failed', e);
+    devWarn('[YouSub] SubtitleParser: decodeHtml failed', e);
     return html;
   }
 }
@@ -57,7 +59,7 @@ function ensureFetcherInjected() {
     }
   });
 
-  console.log('[YouSub] SubtitleParser: Main-world fetcher injected.');
+  devLog('[YouSub] SubtitleParser: Main-world fetcher injected.');
 }
 
 /**
@@ -123,14 +125,14 @@ export const SubtitleParser = {
    */
   fetch: async function (baseUrl) {
     try {
-      console.log('[YouSub] SubtitleParser: Fetching from baseUrl:', baseUrl.substring(0, 120) + '...');
+      devLog('[YouSub] SubtitleParser: Fetching from baseUrl:', baseUrl.substring(0, 120) + '...');
 
       var json3Url = baseUrl + '&fmt=json3';
 
       try {
-        console.log('[YouSub] SubtitleParser: Trying JSON3 via main-world fetch...');
+        devLog('[YouSub] SubtitleParser: Trying JSON3 via main-world fetch...');
         const json3Text = await fetchText(json3Url);
-        console.log('[YouSub] SubtitleParser: Main-world JSON3 response length:', json3Text.length);
+        devLog('[YouSub] SubtitleParser: Main-world JSON3 response length:', json3Text.length);
 
         if (json3Text && json3Text.trim().length > 0) {
           let jsonData;
@@ -139,32 +141,32 @@ export const SubtitleParser = {
           }
           const json3Result = this.parseJson3(jsonData);
           if (json3Result.length > 0) {
-            console.log('[YouSub] SubtitleParser: JSON3 success,', json3Result.length, 'entries.');
+            devLog('[YouSub] SubtitleParser: JSON3 success,', json3Result.length, 'entries.');
             return json3Result;
           }
         }
       } catch (e) {
-        console.warn('[YouSub] SubtitleParser: Main-world JSON3 failed:', e.message);
+        devWarn('[YouSub] SubtitleParser: Main-world JSON3 failed:', e.message);
       }
 
       try {
-        console.log('[YouSub] SubtitleParser: Trying XML via main-world fetch...');
+        devLog('[YouSub] SubtitleParser: Trying XML via main-world fetch...');
         const xmlText = await fetchText(baseUrl);
-        console.log('[YouSub] SubtitleParser: Main-world XML response length:', xmlText.length);
+        devLog('[YouSub] SubtitleParser: Main-world XML response length:', xmlText.length);
 
         if (xmlText && xmlText.trim().length > 0) {
           const xmlResult = this.parseXml(xmlText);
           if (xmlResult.length > 0) {
-            console.log('[YouSub] SubtitleParser: XML success,', xmlResult.length, 'entries.');
+            devLog('[YouSub] SubtitleParser: XML success,', xmlResult.length, 'entries.');
             return xmlResult;
           }
         }
       } catch (e) {
-        console.warn('[YouSub] SubtitleParser: Main-world XML failed:', e.message);
+        devWarn('[YouSub] SubtitleParser: Main-world XML failed:', e.message);
       }
 
       try {
-        console.log('[YouSub] SubtitleParser: Trying JSON3 via background fetch...');
+        devLog('[YouSub] SubtitleParser: Trying JSON3 via background fetch...');
         const bgText = await fetchFromBackground(json3Url);
         if (bgText && bgText.trim().length > 0) {
           let bgData;
@@ -173,12 +175,12 @@ export const SubtitleParser = {
           }
           const bgResult = this.parseJson3(bgData);
           if (bgResult.length > 0) {
-            console.log('[YouSub] SubtitleParser: Background JSON3 success,', bgResult.length, 'entries.');
+            devLog('[YouSub] SubtitleParser: Background JSON3 success,', bgResult.length, 'entries.');
             return bgResult;
           }
         }
       } catch (e) {
-        console.warn('[YouSub] SubtitleParser: Background fallback failed:', e.message);
+        devWarn('[YouSub] SubtitleParser: Background fallback failed:', e.message);
       }
 
       console.error('[YouSub] SubtitleParser: All fetch attempts failed.');
