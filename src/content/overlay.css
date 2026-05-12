@@ -173,3 +173,100 @@
 #yousub-overlay.yousub-shorts #yousub-text-original {
   font-size: 0.9em !important;
 }
+
+/* Custom Position Mode — user has moved/resized the overlay */
+#yousub-overlay.yousub-custom-position {
+  bottom: auto;
+  right: auto;
+  transform: none;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible;
+}
+
+#yousub-overlay.yousub-custom-position.yousub-visible {
+  transform: none;
+}
+
+/* Interaction Handles */
+.yousub-handle {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+#yousub-overlay:hover .yousub-handle {
+  opacity: 1;
+}
+
+.yousub-handle-nw { top: -4px; left: -4px; width: 16px; height: 16px; cursor: nwse-resize; }
+.yousub-handle-ne { top: -4px; right: -4px; width: 16px; height: 16px; cursor: nesw-resize; }
+.yousub-handle-sw { bottom: -4px; left: -4px; width: 16px; height: 16px; cursor: nesw-resize; }
+.yousub-handle-se { bottom: -4px; right: -4px; width: 16px; height: 16px; cursor: nwse-resize; }
+
+.yousub-handle-move {
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 10px;
+  cursor: move;
+  border-radius: 4px;
+}
+
+.yousub-handle-reset {
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 10px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.yousub-handle-nw::after, .yousub-handle-ne::after,
+.yousub-handle-sw::after, .yousub-handle-se::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.yousub-handle-move::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.yousub-handle-reset::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 3px;
+  background: rgba(255, 80, 80, 0.5);
+  border-radius: 2px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Performance: disable GPU-expensive effects during drag */
+#yousub-overlay.yousub-dragging {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: none;
+  user-select: none;
+}

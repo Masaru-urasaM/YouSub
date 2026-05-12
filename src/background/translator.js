@@ -34,7 +34,10 @@ const MAX_RECURSION_DEPTH = 3;        // Stop infinite 413 splits
 const KEY_COOLDOWN_MS = 10000;        // 10s per-key cooldown after 429
 const keyCooldowns = new Map();       // apiKey -> cooldown expiry timestamp
 const MAX_PAYLOAD_BYTES = 95000;      // ~95KB safe limit for Groq (most restrictive provider)
-const RE_TRANSLATION_MAX_LINES = 12;  // max lines per re-translation call
+const RE_TRANSLATION_MAX_LINES = 12;  // max lines per re-translation API call
+const MAX_RETRANSLATION_ROUNDS = 3;   // max detect-and-retry rounds
+const MIN_WORDS_FOR_UNTRANSLATED = 4;
+const UNTRANSLATED_OVERLAP_THRESHOLD = 0.85;
 
 // Phase 54.2: Request deduplication — track in-flight translations by videoId+lang
 const inFlightRequests = new Map();
@@ -57,48 +60,187 @@ function wait(ms) {
 
 const NON_LATIN_TARGETS = new Set(['zh', 'ja', 'ko', 'ar', 'hi', 'th', 'ru', 'uk', 'el', 'he', 'bn']);
 
-function sanitizeForeignScript(lines, tgt) {
+const FOREIGN_SCRIPT_DETECT = /[Ѐ-ԯ֐-ۿऀ-৿฀-๿　-〿぀-ゟ゠-ヿ㐀-䶿一-鿿가-힯豈-﫿]/;
+const FOREIGN_SCRIPT_STRIP = /[Ѐ-ԯ֐-ۿऀ-৿฀-๿　-〿぀-ゟ゠-ヿ㐀-䶿一-鿿가-힯豈-﫿]/g;
+
+function detectForeignScriptLines(lines, tgt) {
+  if (NON_LATIN_TARGETS.has(tgt)) return [];
+  const contaminated = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line && typeof line === 'string' && FOREIGN_SCRIPT_DETECT.test(line)) {
+      contaminated.push(i);
+    }
+  }
+  return contaminated;
+}
+
+function sanitizeForeignScript(lines, segments, tgt) {
   if (NON_LATIN_TARGETS.has(tgt)) return lines;
-  return lines.map(line => {
+  return lines.map((line, i) => {
     if (!line || typeof line !== 'string') return line;
     const cleaned = line
-      .replace(/[Ѐ-ӿ一-鿿㐀-䶿　-〿぀-ゟ゠-ヿ가-힯]/g, '')
+      .replace(FOREIGN_SCRIPT_STRIP, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
     if (cleaned !== line) Logger.debug('Translator', `[SANITIZE] Stripped foreign script from line`);
+    if (!cleaned && segments && segments[i]) return segments[i].text;
     return cleaned;
   });
 }
 
+function detectUntranslatedLines(lines, segments, tgt) {
+  if (NON_LATIN_TARGETS.has(tgt)) return [];
+  const untranslated = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const source = segments[i]?.text;
+    if (!line || !source || typeof line !== 'string' || typeof source !== 'string') continue;
+
+    const sourceWords = source.trim().split(/\s+/);
+    if (sourceWords.length <= MIN_WORDS_FOR_UNTRANSLATED) continue;
+
+    if (line.trim() === source.trim()) {
+      untranslated.push(i);
+      continue;
+    }
+
+    const lineWords = line.trim().toLowerCase().split(/\s+/);
+    const srcWords = source.trim().toLowerCase().split(/\s+/);
+    const srcSet = new Set(srcWords);
+    const shared = lineWords.filter(w => srcSet.has(w)).length;
+    const overlap = shared / Math.max(srcWords.length, lineWords.length);
+    if (overlap >= UNTRANSLATED_OVERLAP_THRESHOLD) {
+      untranslated.push(i);
+    }
+  }
+  return untranslated;
+}
+
 async function retranslateShiftedLines(segments, lines, pendingIndices, key, tabId, options) {
   const result = [...lines];
-  const pending = pendingIndices.slice(0, RE_TRANSLATION_MAX_LINES);
-
-  Logger.debug('Translator', `[RE-TRANSLATE] ${pending.length} shifted lines for ${key.provider}`);
-
-  const miniSegments = pending.map(i => segments[i]);
-  const context = options.context || '';
+  let remaining = [...new Set(pendingIndices)];
   const src = options.src || 'auto';
   const tgt = options.tgt || 'vi';
+  const context = options.context || '';
+  const checkForeignScript = !NON_LATIN_TARGETS.has(tgt);
 
-  const miniSystemPrompt = buildSystemPrompt(context, src, tgt, miniSegments.length);
-  const miniUserPrompt = miniSegments.map((s, idx) =>
-    `#${idx + 1} ${formatTimestamp(s.startMs)} ${s.text}`
-  ).join('\n');
+  for (let round = 0; round < MAX_RETRANSLATION_ROUNDS && remaining.length > 0; round++) {
+    Logger.debug('Translator', `[RE-TRANSLATE] Round ${round + 1}: ${remaining.length} lines (${key.provider})`);
 
-  const reOptions = { ...options, _skipMergeFix: true, isLastKey: true };
-  const reResult = await tryKeyForBatch(key, miniSegments, miniSystemPrompt, miniUserPrompt, tabId, reOptions);
+    for (let i = 0; i < remaining.length; i += RE_TRANSLATION_MAX_LINES) {
+      const chunk = remaining.slice(i, i + RE_TRANSLATION_MAX_LINES);
+      const miniSegments = chunk.map(idx => segments[idx]);
 
-  if (reResult.status === 'success' && reResult.translated.length === pending.length) {
-    for (let i = 0; i < pending.length; i++) {
-      result[pending[i]] = reResult.translated[i];
+      const miniSystemPrompt = buildSystemPrompt(context, src, tgt, miniSegments.length);
+      const miniUserPrompt = miniSegments.map((s, idx) =>
+        `#${idx + 1} ${formatTimestamp(s.startMs)} ${s.text}`
+      ).join('\n');
+
+      const reOptions = { ...options, _skipMergeFix: true, _skipSanitize: true, isLastKey: true };
+      const reResult = await tryKeyForBatch(key, miniSegments, miniSystemPrompt, miniUserPrompt, tabId, reOptions);
+
+      if (reResult.status === 'success' && reResult.translated.length === chunk.length) {
+        for (let j = 0; j < chunk.length; j++) {
+          result[chunk[j]] = reResult.translated[j];
+        }
+      }
     }
-    Logger.debug('Translator', `[RE-TRANSLATE] Success: filled ${pending.length} lines`);
-  } else {
-    for (const idx of pending) {
-      if (!result[idx]) result[idx] = segments[idx].text;
+
+    const stillBad = [];
+    for (const idx of pendingIndices) {
+      const line = result[idx];
+      if (!line || (typeof line === 'string' && line.trim() === '')) {
+        stillBad.push(idx);
+      } else if (checkForeignScript && typeof line === 'string' && FOREIGN_SCRIPT_DETECT.test(line)) {
+        stillBad.push(idx);
+      }
     }
-    Logger.warn('Translator', `[RE-TRANSLATE] Failed, using original text as fallback`);
+
+    remaining = stillBad;
+    if (remaining.length === 0) {
+      Logger.debug('Translator', `[RE-TRANSLATE] All clean after round ${round + 1}`);
+      break;
+    }
+    Logger.debug('Translator', `[RE-TRANSLATE] ${remaining.length} lines still problematic after round ${round + 1}`);
+  }
+
+  for (const idx of pendingIndices) {
+    if (!result[idx] || (typeof result[idx] === 'string' && result[idx].trim() === '')) {
+      result[idx] = segments[idx].text;
+      Logger.warn('Translator', `[RE-TRANSLATE] Line ${idx} empty after ${MAX_RETRANSLATION_ROUNDS} rounds, using original`);
+    }
+  }
+
+  return result;
+}
+
+async function retranslateWithVerification(segments, lines, pendingIndices, key, tabId, options) {
+  const result = [...lines];
+  const tgt = options.tgt || 'vi';
+  const src = options.src || 'auto';
+  const accepted = new Set();
+  let remaining = [...new Set(pendingIndices)];
+
+  for (let round = 0; round < MAX_RETRANSLATION_ROUNDS && remaining.length > 0; round++) {
+    Logger.debug('Translator', `[UNTRANSLATED] Verify round ${round + 1}: ${remaining.length} lines (${key.provider})`);
+
+    for (let i = 0; i < remaining.length; i += RE_TRANSLATION_MAX_LINES) {
+      const chunk = remaining.slice(i, i + RE_TRANSLATION_MAX_LINES);
+      const systemPrompt = buildVerificationPrompt(src, tgt, chunk.length);
+      const userPrompt = JSON.stringify({
+        lines: chunk.map((idx, j) => ({ n: j, t: segments[idx].text }))
+      });
+
+      try {
+        const response = await Providers.chat(
+          key.provider, key.model, key.apiKey, userPrompt,
+          { systemPrompt, temperature: 0.1, maxTokens: chunk.length * 150 }
+        );
+
+        if (response.success && response.text) {
+          const parsed = parseVerificationResponse(response.text, chunk.length);
+          if (parsed) {
+            for (const entry of parsed) {
+              const realIdx = chunk[entry.index];
+              if (realIdx === undefined) continue;
+              if (entry.keep) {
+                accepted.add(realIdx);
+                Logger.debug('Translator', `[UNTRANSLATED] Line ${realIdx} confirmed untranslatable by LLM`);
+              } else if (entry.text) {
+                result[realIdx] = entry.text;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        Logger.warn('Translator', `[UNTRANSLATED] Verification call failed: ${err.message}`);
+      }
+    }
+
+    const stillBad = [];
+    for (const idx of remaining) {
+      if (accepted.has(idx)) continue;
+      const line = result[idx];
+      const source = segments[idx]?.text;
+      if (!line || !source) continue;
+      const sourceWords = source.trim().split(/\s+/);
+      if (sourceWords.length <= MIN_WORDS_FOR_UNTRANSLATED) continue;
+      if (line.trim() === source.trim()) { stillBad.push(idx); continue; }
+      const lineWords = line.trim().toLowerCase().split(/\s+/);
+      const srcWords = source.trim().toLowerCase().split(/\s+/);
+      const srcSet = new Set(srcWords);
+      const shared = lineWords.filter(w => srcSet.has(w)).length;
+      const overlap = shared / Math.max(srcWords.length, lineWords.length);
+      if (overlap >= UNTRANSLATED_OVERLAP_THRESHOLD) stillBad.push(idx);
+    }
+
+    remaining = stillBad;
+    if (remaining.length === 0) {
+      Logger.debug('Translator', `[UNTRANSLATED] All resolved after round ${round + 1}`);
+      break;
+    }
+    Logger.debug('Translator', `[UNTRANSLATED] ${remaining.length} lines still untranslated after round ${round + 1}`);
   }
 
   return result;
@@ -419,6 +561,56 @@ function buildJsonUserPrompt(segments) {
   return JSON.stringify({ lines });
 }
 
+function buildVerificationPrompt(src, tgt, count) {
+  return `You are a subtitle translator and language verifier.
+
+The lines below may not have been translated properly from ${src} to ${tgt}.
+For each line, translate it to ${tgt}.
+
+HOWEVER: If a line is a proper noun, a name, a simple universal word, a brand name, or genuinely cannot be translated to ${tgt} — keep the original text and mark it.
+
+Return JSON: {"lines": [{"n": 0, "t": "translated text", "k": false}, ...]}
+- "n": line index (keep unchanged from input)
+- "t": the correct translation in ${tgt}, OR the original text if keeping
+- "k": true ONLY if the text is a proper noun / name / untranslatable. false if you translated it.
+
+The output "lines" array MUST contain EXACTLY ${count} objects.
+Return ONLY the JSON object. No explanations, no markdown.`;
+}
+
+function parseVerificationResponse(responseText, expectedCount) {
+  let cleaned = cleanResponse(responseText);
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    const jsonMatch = cleaned.match(/\{[\s\S]*"lines"\s*:\s*\[[\s\S]*\]\s*\}/);
+    if (jsonMatch) {
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { return null; }
+    } else {
+      return null;
+    }
+  }
+
+  let rawLines;
+  if (Array.isArray(parsed)) rawLines = parsed;
+  else if (parsed && Array.isArray(parsed.lines)) rawLines = parsed.lines;
+  else return null;
+
+  const result = [];
+  for (let i = 0; i < rawLines.length && i < expectedCount; i++) {
+    const entry = rawLines[i];
+    if (entry && typeof entry === 'object') {
+      result.push({
+        index: typeof entry.n === 'number' ? entry.n : i,
+        text: typeof entry.t === 'string' ? entry.t.trim() : '',
+        keep: !!entry.k
+      });
+    }
+  }
+  return result.length > 0 ? result : null;
+}
+
 // Phase 58: Parse JSON translation response, validate array length
 function parseJsonResponse(responseText, segments) {
   let cleaned = cleanResponse(responseText);
@@ -585,11 +777,27 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
               } else {
                 Logger.trace('Translator', `[MERGE_FIX] Clean batch - no merges (${segments.length} lines, ${key.provider})`);
               }
+
+              const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
+              if (contaminated.length > 0) {
+                Logger.info('Translator', `[SANITIZE] Foreign script in ${contaminated.length} lines, re-translating (${key.provider})`);
+                sendDebugLog(tabId, `Foreign script: ${contaminated.length} contaminated lines, re-translating...`, '#f59e0b');
+                fixedLines = await retranslateShiftedLines(segments, fixedLines, contaminated, key, tabId, options);
+                sendDebugLog(tabId, `Foreign script: Re-translation done`, '#10b981');
+              }
+
+              const untranslated = detectUntranslatedLines(fixedLines, segments, options.tgt || 'vi');
+              if (untranslated.length > 0) {
+                Logger.info('Translator', `[UNTRANSLATED] ${untranslated.length} lines may be untranslated, verifying (${key.provider})`);
+                sendDebugLog(tabId, `Untranslated: ${untranslated.length} lines, verifying with LLM...`, '#f59e0b');
+                fixedLines = await retranslateWithVerification(segments, fixedLines, untranslated, key, tabId, options);
+                sendDebugLog(tabId, `Untranslated: Verification done`, '#10b981');
+              }
             }
-            const sanitizedLines = sanitizeForeignScript(fixedLines, options.tgt || 'vi');
+            const finalLines = options._skipSanitize ? fixedLines : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
             return {
               status: 'success',
-              translated: sanitizedLines,
+              translated: finalLines,
               hadFallback: jsonResult.hadMismatch || jsonResult.validCount < segments.length,
               hadRateLimit: false,
               stats: { usage: result.usage, model: result.model }
@@ -672,11 +880,27 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
           } else {
             Logger.trace('Translator', `[MERGE_FIX] Clean batch - no merges (${segments.length} lines, ${key.provider})`);
           }
+
+          const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
+          if (contaminated.length > 0) {
+            Logger.info('Translator', `[SANITIZE] Foreign script in ${contaminated.length} lines, re-translating (${key.provider})`);
+            sendDebugLog(tabId, `Foreign script: ${contaminated.length} contaminated lines, re-translating...`, '#f59e0b');
+            fixedLines = await retranslateShiftedLines(segments, fixedLines, contaminated, key, tabId, options);
+            sendDebugLog(tabId, `Foreign script: Re-translation done`, '#10b981');
+          }
+
+          const untranslated = detectUntranslatedLines(fixedLines, segments, options.tgt || 'vi');
+          if (untranslated.length > 0) {
+            Logger.info('Translator', `[UNTRANSLATED] ${untranslated.length} lines may be untranslated, verifying (${key.provider})`);
+            sendDebugLog(tabId, `Untranslated: ${untranslated.length} lines, verifying with LLM...`, '#f59e0b');
+            fixedLines = await retranslateWithVerification(segments, fixedLines, untranslated, key, tabId, options);
+            sendDebugLog(tabId, `Untranslated: Verification done`, '#10b981');
+          }
         }
-        const sanitizedLines = sanitizeForeignScript(fixedLines, options.tgt || 'vi');
+        const finalLines = options._skipSanitize ? fixedLines : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
         return {
           status: 'success',
-          translated: sanitizedLines,
+          translated: finalLines,
           hadFallback: validLinesCount < segments.length,
           hadRateLimit: false,
           stats: { usage: result.usage, model: result.model }
@@ -1120,3 +1344,9 @@ function sendDebugLog(tabId, msg, color = '#cbd5e1', bold = false) {
     }).catch(() => { }); // Catch if tab is closed
   } catch (e) { }
 }
+
+export const _internals = {
+  detectForeignScriptLines, sanitizeForeignScript, NON_LATIN_TARGETS,
+  detectUntranslatedLines, parseVerificationResponse,
+  MIN_WORDS_FOR_UNTRANSLATED, UNTRANSLATED_OVERLAP_THRESHOLD
+};

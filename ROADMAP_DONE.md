@@ -418,3 +418,9 @@
 **Root cause**: Many Shorts lack a "Show transcript" button (DOM scraping fails), and the 3 existing metadata sources (`movie_player.getPlayerResponse()`, `window.ytInitialPlayerResponse`, `reel.data.playerResponse`) frequently return no caption tracks — especially for swiped Shorts where `ytInitialPlayerResponse` is stale.
 
 **Fix**: Added `fetchTracksViaInnertube(videoId)` in `main-world-extractor.js`. When all 3 metadata sources fail to provide tracks, the function calls YouTube's internal player API (same-origin XHR, 8s timeout) to retrieve caption tracks with fresh `baseUrl` values. The existing fallback fetch path in `main.js` then uses these URLs to download subtitle data. Only 1 file modified. Always resolves (never rejects) — pipeline continues normally on any API failure.
+
+### Phase 62 — Subtitle Overlay Resize, Move & Reset
+**Status**: DONE (2026-05-12)
+**Summary**: Added interactive resize, move, and reset functionality to the subtitle overlay box. Users can drag from 4 corners to resize, drag from top-center edge to reposition, and click bottom-center edge to reset to defaults. The overlay is constrained to always stay within the video player boundaries.
+
+**Implementation**: Dual CSS positioning modes — default centering mode (`left: 50%; transform: translateX(-50%)`) and custom position mode (`.yousub-custom-position` with percentage-based `left`/`top`). 6 invisible handle DOM elements appear on hover with visual indicators. Pointer Events API with `setPointerCapture` for reliable drag tracking. Layout persisted to `chrome.storage.local` as percentages of player dimensions (survives fullscreen/theater/resize). `ResizeObserver` on player element re-clamps overlay on dimension changes. Regular and Shorts layouts stored separately. Files modified: `src/content/overlay.js` (+250 lines), `src/content/overlay.css` (+85 lines).

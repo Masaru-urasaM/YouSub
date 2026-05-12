@@ -12,8 +12,266 @@ let storageListener = null; // Phase 53.1: Track listener for cleanup
 let currentStyles = {}; // Track applied styles to avoid redundant updates
 let _translationInProgress = false;
 
+let handles = {};
+let playerObserver = null;
+let currentLayout = null;
+let isDragging = false;
+
+const LAYOUT_MIN_WIDTH = 200;
+const LAYOUT_MIN_HEIGHT = 40;
+
 // Ensure policy is initialized once the module loads
 TrustedTypes.init();
+
+function clampPosition(left, top, width, height, playerW, playerH) {
+  return {
+    left: Math.max(0, Math.min(left, playerW - width)),
+    top: Math.max(0, Math.min(top, playerH - height))
+  };
+}
+
+function clampRect(left, top, width, height, playerW, playerH) {
+  width = Math.min(Math.max(width, LAYOUT_MIN_WIDTH), playerW);
+  height = Math.min(Math.max(height, LAYOUT_MIN_HEIGHT), playerH);
+  left = Math.max(0, Math.min(left, playerW - width));
+  top = Math.max(0, Math.min(top, playerH - height));
+  return { left, top, width, height };
+}
+
+function enterCustomMode() {
+  if (!container || !playerElement) return;
+  const playerRect = playerElement.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  if (playerRect.width === 0 || playerRect.height === 0) return;
+
+  const leftPct = (containerRect.left - playerRect.left) / playerRect.width * 100;
+  const topPct = (containerRect.top - playerRect.top) / playerRect.height * 100;
+  const widthPct = containerRect.width / playerRect.width * 100;
+
+  container.classList.add('yousub-custom-position');
+  container.style.left = leftPct + '%';
+  container.style.top = topPct + '%';
+  container.style.width = widthPct + '%';
+  container.style.bottom = 'auto';
+
+  currentLayout = { customMode: true, leftPct, topPct, widthPct, minHeightPx: null };
+}
+
+function exitCustomMode() {
+  if (!container) return;
+  container.classList.remove('yousub-custom-position');
+  container.style.left = '';
+  container.style.top = '';
+  container.style.width = '';
+  container.style.minHeight = '';
+  container.style.bottom = '';
+  currentLayout = { customMode: false, leftPct: null, topPct: null, widthPct: null, minHeightPx: null };
+}
+
+function applyLayout() {
+  if (!container || !playerElement || !currentLayout || !currentLayout.customMode) return;
+  container.classList.add('yousub-custom-position');
+  container.style.left = currentLayout.leftPct + '%';
+  container.style.top = currentLayout.topPct + '%';
+  if (currentLayout.widthPct) container.style.width = currentLayout.widthPct + '%';
+  if (currentLayout.minHeightPx) container.style.minHeight = currentLayout.minHeightPx + 'px';
+  container.style.bottom = 'auto';
+  reclampToPlayer();
+}
+
+function reclampToPlayer() {
+  if (!container || !playerElement || !currentLayout || !currentLayout.customMode) return;
+  const pw = playerElement.clientWidth;
+  const ph = playerElement.clientHeight;
+  if (pw === 0 || ph === 0) return;
+
+  const left = currentLayout.leftPct / 100 * pw;
+  const top = currentLayout.topPct / 100 * ph;
+  const width = currentLayout.widthPct ? currentLayout.widthPct / 100 * pw : container.offsetWidth;
+  const height = container.offsetHeight;
+
+  const clamped = clampRect(left, top, width, height, pw, ph);
+  container.style.left = (clamped.left / pw * 100) + '%';
+  container.style.top = (clamped.top / ph * 100) + '%';
+  if (currentLayout.widthPct) container.style.width = (clamped.width / pw * 100) + '%';
+  currentLayout.leftPct = clamped.left / pw * 100;
+  currentLayout.topPct = clamped.top / ph * 100;
+  if (currentLayout.widthPct) currentLayout.widthPct = clamped.width / pw * 100;
+}
+
+function loadLayout() {
+  const isShorts = window.location.pathname.startsWith('/shorts/');
+  const key = isShorts ? 'shorts' : 'regular';
+  chrome.storage.local.get(['yousub_overlay_layout']).then((res) => {
+    const layouts = res.yousub_overlay_layout || {};
+    const layout = layouts[key];
+    if (layout && layout.customMode) {
+      currentLayout = { ...layout };
+      applyLayout();
+    } else {
+      currentLayout = { customMode: false, leftPct: null, topPct: null, widthPct: null, minHeightPx: null };
+    }
+  });
+}
+
+function saveLayout() {
+  const isShorts = window.location.pathname.startsWith('/shorts/');
+  const key = isShorts ? 'shorts' : 'regular';
+  chrome.storage.local.get(['yousub_overlay_layout']).then((res) => {
+    const layouts = res.yousub_overlay_layout || {};
+    layouts[key] = { ...currentLayout };
+    chrome.storage.local.set({ yousub_overlay_layout: layouts });
+  });
+}
+
+function attachMoveHandler(handleEl) {
+  handleEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleEl.setPointerCapture(e.pointerId);
+
+    const playerRect = playerElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const offsetX = e.clientX - containerRect.left;
+    const offsetY = e.clientY - containerRect.top;
+
+    isDragging = true;
+    container.classList.add('yousub-dragging');
+    if (!currentLayout || !currentLayout.customMode) enterCustomMode();
+
+    const onMove = (ev) => {
+      const newLeft = ev.clientX - playerRect.left - offsetX;
+      const newTop = ev.clientY - playerRect.top - offsetY;
+      const clamped = clampPosition(newLeft, newTop, container.offsetWidth, container.offsetHeight, playerRect.width, playerRect.height);
+
+      const leftPct = clamped.left / playerRect.width * 100;
+      const topPct = clamped.top / playerRect.height * 100;
+      container.style.left = leftPct + '%';
+      container.style.top = topPct + '%';
+      currentLayout.leftPct = leftPct;
+      currentLayout.topPct = topPct;
+    };
+
+    const onUp = (ev) => {
+      handleEl.releasePointerCapture(ev.pointerId);
+      handleEl.removeEventListener('pointermove', onMove);
+      handleEl.removeEventListener('pointerup', onUp);
+      handleEl.removeEventListener('pointercancel', onUp);
+      isDragging = false;
+      container.classList.remove('yousub-dragging');
+      saveLayout();
+    };
+
+    handleEl.addEventListener('pointermove', onMove);
+    handleEl.addEventListener('pointerup', onUp);
+    handleEl.addEventListener('pointercancel', onUp);
+  });
+}
+
+function attachResizeHandler(handleEl, corner) {
+  handleEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleEl.setPointerCapture(e.pointerId);
+
+    const playerRect = playerElement.getBoundingClientRect();
+    const startRect = container.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = startRect.left - playerRect.left;
+    const startTop = startRect.top - playerRect.top;
+    const startWidth = startRect.width;
+    const startHeight = startRect.height;
+
+    isDragging = true;
+    container.classList.add('yousub-dragging');
+    if (!currentLayout || !currentLayout.customMode) enterCustomMode();
+
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      let newLeft = startLeft, newTop = startTop;
+      let newWidth = startWidth, newHeight = startHeight;
+
+      if (corner.includes('e')) newWidth = startWidth + dx;
+      if (corner.includes('w')) { newWidth = startWidth - dx; newLeft = startLeft + dx; }
+      if (corner.includes('s')) newHeight = startHeight + dy;
+      if (corner.includes('n')) { newHeight = startHeight - dy; newTop = startTop + dy; }
+
+      if (newWidth < LAYOUT_MIN_WIDTH) {
+        if (corner.includes('w')) newLeft = startLeft + startWidth - LAYOUT_MIN_WIDTH;
+        newWidth = LAYOUT_MIN_WIDTH;
+      }
+      if (newHeight < LAYOUT_MIN_HEIGHT) {
+        if (corner.includes('n')) newTop = startTop + startHeight - LAYOUT_MIN_HEIGHT;
+        newHeight = LAYOUT_MIN_HEIGHT;
+      }
+
+      const clamped = clampRect(newLeft, newTop, newWidth, newHeight, playerRect.width, playerRect.height);
+      const leftPct = clamped.left / playerRect.width * 100;
+      const topPct = clamped.top / playerRect.height * 100;
+      const widthPct = clamped.width / playerRect.width * 100;
+
+      container.style.left = leftPct + '%';
+      container.style.top = topPct + '%';
+      container.style.width = widthPct + '%';
+      container.style.minHeight = clamped.height + 'px';
+
+      currentLayout.leftPct = leftPct;
+      currentLayout.topPct = topPct;
+      currentLayout.widthPct = widthPct;
+      currentLayout.minHeightPx = clamped.height;
+    };
+
+    const onUp = (ev) => {
+      handleEl.releasePointerCapture(ev.pointerId);
+      handleEl.removeEventListener('pointermove', onMove);
+      handleEl.removeEventListener('pointerup', onUp);
+      handleEl.removeEventListener('pointercancel', onUp);
+      isDragging = false;
+      container.classList.remove('yousub-dragging');
+      saveLayout();
+    };
+
+    handleEl.addEventListener('pointermove', onMove);
+    handleEl.addEventListener('pointerup', onUp);
+    handleEl.addEventListener('pointercancel', onUp);
+  });
+}
+
+function attachResetHandler(handleEl) {
+  handleEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    exitCustomMode();
+    saveLayout();
+  });
+}
+
+function createHandles() {
+  const types = ['nw', 'ne', 'sw', 'se', 'move', 'reset'];
+  types.forEach(type => {
+    const el = document.createElement('div');
+    el.className = 'yousub-handle yousub-handle-' + type;
+    container.appendChild(el);
+    handles[type] = el;
+  });
+
+  ['nw', 'ne', 'sw', 'se'].forEach(corner => {
+    attachResizeHandler(handles[corner], corner);
+  });
+  attachMoveHandler(handles.move);
+  attachResetHandler(handles.reset);
+}
+
+function setupPlayerObserver() {
+  if (playerObserver) playerObserver.disconnect();
+  playerObserver = new ResizeObserver(() => {
+    if (!currentLayout || !currentLayout.customMode) return;
+    reclampToPlayer();
+  });
+  playerObserver.observe(playerElement);
+}
 
 function createOverlay() {
   if (container) return; // Already created
@@ -77,6 +335,10 @@ function createOverlay() {
   };
   chrome.storage.onChanged.addListener(storageListener);
 
+  createHandles();
+  loadLayout();
+  setupPlayerObserver();
+
   devLog('[YouSub] Overlay: Dynamic overlay created (ESM).');
 }
 
@@ -98,7 +360,7 @@ export const Overlay = {
   },
 
   hide: function () {
-    if (container) {
+    if (container && !isDragging) {
       container.classList.remove('yousub-visible');
     }
   },
@@ -240,6 +502,7 @@ export const Overlay = {
   },
 
   destroy: function () {
+    if (playerObserver) { playerObserver.disconnect(); playerObserver = null; }
     // Phase 53.1: Remove storage listener to prevent accumulation
     if (storageListener) {
       chrome.storage.onChanged.removeListener(storageListener);
@@ -253,6 +516,9 @@ export const Overlay = {
     originalElement = null;
     statusContainer = null;
     playerElement = null;
+    handles = {};
+    isDragging = false;
+    currentLayout = null;
     currentStyles = {};
     _translationInProgress = false;
     devLog('[YouSub] Overlay: Destroyed.');

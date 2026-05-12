@@ -6,6 +6,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Subtitle Overlay Resize, Move & Reset (2026-05-12)
+
+**Added**
+- Interactive resize from 4 corners — drag to change overlay width/height, minimum 200x40px enforced
+- Move handle at top-center edge — drag to reposition overlay anywhere within video player
+- Reset handle at bottom-center edge — click to restore default centered position
+- 6 handle DOM elements (`.yousub-handle`) with visual indicators: dots at corners, bars at center edges, appear on hover
+- `yousub_overlay_layout` storage key — persists custom position/size as percentages of player dimensions, separate for regular videos and Shorts
+- `ResizeObserver` on player element — re-clamps overlay position on fullscreen, theater mode, or window resize
+- Boundary clamping: overlay can never leave the video player area
+- `isDragging` guard in `Overlay.hide()` — prevents SyncEngine from hiding overlay during user interaction
+- `.yousub-custom-position` CSS mode — switches from default centering to absolute positioning with user-defined coordinates
+- `.yousub-dragging` CSS class — disables `backdrop-filter` and `box-shadow` during drag for smooth performance
+
+**Changed**
+- `overlay.js` — added 250 lines of resize/move/reset logic with Pointer Events API and `setPointerCapture` for reliable drag tracking
+- `overlay.css` — added 85 lines for custom position mode, handle styles, and drag performance class
+- `Overlay.destroy()` — now cleans up `ResizeObserver`, handle elements, and layout state
+
+**Tests**: Build verified (`npm run package`), 185 tests passing (17 pre-existing failures unchanged), manual browser testing confirmed all interactions working
+
+### Foreign Script Contamination Detection — Issue 1 (2026-05-07)
+
+**Added**
+- `detectForeignScriptLines(lines, tgt)` in `translator.js` — detects lines containing non-expected script characters (CJK, Cyrillic, Arabic, Hebrew, Devanagari, Bengali, Thai, Hangul, CJK Compatibility)
+- Foreign script re-translation pipeline — contaminated lines are re-translated via existing `retranslateShiftedLines()` before fallback stripping
+- `FOREIGN_SCRIPT_DETECT` / `FOREIGN_SCRIPT_STRIP` regex constants — expanded Unicode coverage beyond original inline regex
+- `_internals` export in `translator.js` for testing
+- `tests/unit/translator-sanitize.test.js` — 30 tests covering detection + sanitization
+
+**Changed**
+- `sanitizeForeignScript()` now accepts `segments` parameter — strip-to-empty lines fall back to original source text instead of returning empty string
+- `sanitizeForeignScript()` regex expanded to cover Arabic, Hebrew, Devanagari, Bengali, Thai, CJK Compatibility (previously only Cyrillic + CJK + Hangul)
+
+**Tests**: 30 new (translator-sanitize), 141 total across translator-sanitize + merge-fixer + logger suites
+
 ### Shorts Extraction Resilience — Phase 51.1 (2026-05-07)
 
 **Added**
