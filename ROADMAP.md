@@ -1,9 +1,9 @@
 # YouSub — Development Roadmap
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
-> **Version**: 7.1
-> **Last updated**: 2026-05-12
-> **Total phases**: 60 (Phases 0-62 + 49 + 51.1 = all archived/done)
+> **Version**: 7.2
+> **Last updated**: 2026-05-14
+> **Total phases**: 61 (Phases 0-63 + 49 + 51.1 = all archived/done)
 
 ---
 
@@ -63,6 +63,7 @@ When you receive this, follow the GEMINI.md workflow: Present -> Discuss -> Choo
 | 49 | Production Bundling & Log Management (see `ROADMAP_DONE.md`) | DONE (2026-05-07) | M5 |
 | 51.1 | Resolve Shorts Metadata/Transcript Extraction Failure | DONE (2026-05-07) | M6 |
 | 62 | Subtitle Overlay Resize, Move & Reset | DONE (2026-05-12) | M2 |
+| 63 | Smart Batch Distribution — Round-Robin + Model Rotation | DONE (2026-05-14) | M3 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started
 >

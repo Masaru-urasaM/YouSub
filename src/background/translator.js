@@ -32,7 +32,7 @@ const ELEVATED_BATCH_DELAY_MS = 3000;
 const MAX_CONTEXT_CHARS = 500;        // Cap context summary to prevent permanent 413
 const MAX_RECURSION_DEPTH = 3;        // Stop infinite 413 splits
 const KEY_COOLDOWN_MS = 10000;        // 10s per-key cooldown after 429
-const keyCooldowns = new Map();       // apiKey -> cooldown expiry timestamp
+const keyCooldowns = new Map();       // apiKey::model -> cooldown expiry timestamp
 const MAX_PAYLOAD_BYTES = 95000;      // ~95KB safe limit for Groq (most restrictive provider)
 const RE_TRANSLATION_MAX_LINES = 12;  // max lines per re-translation API call
 const MAX_RETRANSLATION_ROUNDS = 3;   // max detect-and-retry rounds
@@ -246,13 +246,53 @@ async function retranslateWithVerification(segments, lines, pendingIndices, key,
   return result;
 }
 
+function getCooldownKey(apiKey, model) {
+  return apiKey + '::' + (model || 'default');
+}
+
 function getFirstAvailableKey(activeKeys) {
   const now = Date.now();
   for (const key of activeKeys) {
-    const cooldownUntil = keyCooldowns.get(key.apiKey) || 0;
+    const cooldownUntil = keyCooldowns.get(getCooldownKey(key.apiKey, key.model)) || 0;
     if (now >= cooldownUntil) return key;
   }
   return activeKeys[0];
+}
+
+function groupByPhysicalKey(activeKeys) {
+  const groups = [];
+  const groupMap = new Map();
+  for (const slot of activeKeys) {
+    const existing = groupMap.get(slot.apiKey);
+    if (existing) {
+      existing.push(slot);
+    } else {
+      const newGroup = [slot];
+      groupMap.set(slot.apiKey, newGroup);
+      groups.push(newGroup);
+    }
+  }
+  return groups;
+}
+
+function sortGroupsByHealth(groups) {
+  groups.sort((a, b) => (b[0].score || 0.5) - (a[0].score || 0.5));
+}
+
+function selectGroupForBatch(keyGroups, batchIndex) {
+  const numGroups = keyGroups.length;
+  if (numGroups === 0) return null;
+  const now = Date.now();
+  for (let attempt = 0; attempt < numGroups; attempt++) {
+    const idx = (batchIndex + attempt) % numGroups;
+    const group = keyGroups[idx];
+    const hasAvailable = group.some(slot => {
+      const cd = keyCooldowns.get(getCooldownKey(slot.apiKey, slot.model)) || 0;
+      return now >= cd;
+    });
+    if (hasAvailable) return { groupIndex: idx, slots: group };
+  }
+  return { groupIndex: batchIndex % numGroups, slots: keyGroups[batchIndex % numGroups] };
 }
 
 /**
@@ -387,19 +427,26 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
         let anyBatchSucceeded = false;
         let allFailures = [];
 
-        Logger.trace('Translator', `[CHECKPOINT 4] Starting batch processing (${totalLines} lines)...`);
+        const keyGroups = groupByPhysicalKey(activeKeys);
+        sortGroupsByHealth(keyGroups);
+        Logger.trace('Translator', `[CHECKPOINT 4] Starting batch processing (${totalLines} lines, ${keyGroups.length} key groups)...`);
 
         while (cursor < totalLines) {
-          const primaryKey = getFirstAvailableKey(activeKeys);
-          const batchSize = primaryKey.maxLinesPerBatch || MAX_LINES_PER_BATCH;
+          const selected = selectGroupForBatch(keyGroups, batchIndex);
+          const primarySlot = selected ? selected.slots[0] : activeKeys[0];
+          const batchSize = primarySlot.maxLinesPerBatch || MAX_LINES_PER_BATCH;
           const batch = segments.slice(cursor, cursor + batchSize);
 
           batchIndex++;
           const batchStartTime = performance.now();
-          Logger.trace('Translator', `[CHECKPOINT 5] Batch ${batchIndex}: lines ${cursor + 1}-${cursor + batch.length}/${totalLines} (size=${batchSize})...`);
+          Logger.trace('Translator', `[CHECKPOINT 5] Batch ${batchIndex}: lines ${cursor + 1}-${cursor + batch.length}/${totalLines} (size=${batchSize}, startGroup=${selected?.groupIndex || 0})...`);
           sendDebugLog(tabId, `Translating lines ${cursor + 1}-${cursor + batch.length} / ${totalLines}...`, '#a855f7');
 
-          let result = await translateBatchWithFailover(batch, src, tgt, activeKeys, tabId, context, { signal: globalAbort.signal });
+          let result = await translateBatchWithFailover(batch, src, tgt, activeKeys, tabId, context, {
+            signal: globalAbort.signal,
+            startGroupIndex: selected?.groupIndex || 0,
+            keyGroups
+          });
 
           const elapsed = ((performance.now() - batchStartTime) / 1000).toFixed(1);
           Logger.trace('Translator', `[BATCH_RESULT] success=${result.success}, hadFallback=${result.hadFallback}, translatedCount=${result.translated?.length}, sample=${result.translated?.[0]?.substring?.(0, 50)}`);
@@ -680,9 +727,9 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
     return { status: 'aborted' };
   }
 
-  const cooldownUntil = keyCooldowns.get(key.apiKey) || 0;
+  const cooldownUntil = keyCooldowns.get(getCooldownKey(key.apiKey, key.model)) || 0;
   if (Date.now() < cooldownUntil) {
-    Logger.debug('Translator', `Skipping ${key.provider} — cooldown active`);
+    Logger.debug('Translator', `Skipping ${key.provider}/${key.model} — cooldown active`);
     return { status: 'cooldown' };
   }
 
@@ -916,8 +963,8 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
       return { status: '413', message: result.message };
     } else if (result.statusCode === 429) {
       const cooldown = Math.max(KEY_COOLDOWN_MS, result.retryAfterMs || 0);
-      keyCooldowns.set(key.apiKey, Date.now() + cooldown);
-      Logger.warn('Translator', `Rate limited (429) by ${key.provider}. Cooldown ${cooldown}ms.`);
+      keyCooldowns.set(getCooldownKey(key.apiKey, key.model), Date.now() + cooldown);
+      Logger.warn('Translator', `Rate limited (429) by ${key.provider}/${key.model}. Cooldown ${cooldown}ms.`);
       HealthManager.report(key.provider, key.apiKey, false, duration, { isTransient: true });
       return { status: '429', cooldown, message: result.message };
     } else {
@@ -1076,7 +1123,7 @@ async function fallbackToNonGroq(segments, nonGroqKeys, src, tgt, tabId, context
  * Phase 57: Groq-aware routing with waterfall distribution.
  */
 async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, context, options = {}) {
-  const { startKeyIndex = 0, depth = 0, signal } = options;
+  const { startKeyIndex = 0, startGroupIndex = 0, keyGroups, depth = 0, signal } = options;
 
   if (signal && signal.aborted) {
     return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
@@ -1153,38 +1200,80 @@ async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, co
     };
   }
 
-  // Standard sequential failover (payload fits all providers, or no Groq keys)
+  // Round-robin group failover (or legacy sequential if keyGroups not provided)
   const failures = [];
   let hadRateLimit = false;
   let had413 = false;
 
-  for (let k = startKeyIndex; k < apiKeys.length; k++) {
-    if (signal && signal.aborted) {
-      return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
+  if (keyGroups && keyGroups.length > 0) {
+    const numGroups = keyGroups.length;
+    for (let g = 0; g < numGroups; g++) {
+      const groupIdx = (startGroupIndex + g) % numGroups;
+      const group = keyGroups[groupIdx];
+      let skip413Group = false;
+
+      for (let m = 0; m < group.length; m++) {
+        if (signal && signal.aborted) {
+          return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
+        }
+        if (skip413Group) break;
+
+        const key = group[m];
+        const isLastSlot = (g === numGroups - 1) && (m === group.length - 1);
+        const result = await tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, {
+          signal, onChunk: options.onChunk, isLastKey: isLastSlot,
+          context, src, tgt
+        });
+
+        switch (result.status) {
+          case 'success':
+            return { success: true, translated: result.translated, hadFallback: result.hadFallback, hadRateLimit: false, stats: result.stats };
+          case '429':
+            hadRateLimit = true;
+            failures.push({ provider: key.provider, model: key.model, status: 429, message: result.message });
+            break;
+          case '413':
+            had413 = true;
+            skip413Group = true;
+            failures.push({ provider: key.provider, model: key.model, status: 413, message: result.message });
+            break;
+          case 'aborted':
+            return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
+          default:
+            failures.push({ provider: key.provider, model: key.model, message: result.message || result.status });
+            break;
+        }
+      }
     }
-
-    const key = apiKeys[k];
-    const result = await tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, {
-      signal, onChunk: options.onChunk, isLastKey: k === apiKeys.length - 1,
-      context, src, tgt
-    });
-
-    switch (result.status) {
-      case 'success':
-        return { success: true, translated: result.translated, hadFallback: result.hadFallback, hadRateLimit: false, stats: result.stats };
-      case '429':
-        hadRateLimit = true;
-        failures.push({ provider: key.provider, model: key.model, status: 429, message: result.message });
-        break;
-      case '413':
-        had413 = true;
-        failures.push({ provider: key.provider, model: key.model, status: 413, message: result.message });
-        break;
-      case 'aborted':
+  } else {
+    for (let k = startKeyIndex; k < apiKeys.length; k++) {
+      if (signal && signal.aborted) {
         return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
-      default:
-        failures.push({ provider: key.provider, model: key.model, message: result.message || result.status });
-        break;
+      }
+
+      const key = apiKeys[k];
+      const result = await tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, {
+        signal, onChunk: options.onChunk, isLastKey: k === apiKeys.length - 1,
+        context, src, tgt
+      });
+
+      switch (result.status) {
+        case 'success':
+          return { success: true, translated: result.translated, hadFallback: result.hadFallback, hadRateLimit: false, stats: result.stats };
+        case '429':
+          hadRateLimit = true;
+          failures.push({ provider: key.provider, model: key.model, status: 429, message: result.message });
+          break;
+        case '413':
+          had413 = true;
+          failures.push({ provider: key.provider, model: key.model, status: 413, message: result.message });
+          break;
+        case 'aborted':
+          return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
+        default:
+          failures.push({ provider: key.provider, model: key.model, message: result.message || result.status });
+          break;
+      }
     }
   }
 

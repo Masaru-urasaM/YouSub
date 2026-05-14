@@ -156,3 +156,21 @@ Two-signal minimum guardrail: at least 2 of 3 signals must fire to prevent false
 Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Regular and Shorts layouts stored independently. Percentages survive fullscreen/theater/window resize without recomputation. `ResizeObserver` on player element handles boundary re-clamping. Pointer Events API with `setPointerCapture` ensures drag continues even when pointer leaves the handle element.
 
 **References**: `src/content/overlay.js` — `enterCustomMode()`, `exitCustomMode()`, `attachMoveHandler()`, `attachResizeHandler()`; `src/content/overlay.css` — `.yousub-custom-position`
+
+---
+
+### Decision 9 — Batch Distribution: Round-Robin + Model Rotation
+
+**Date**: 2026-05-14
+**Status**: RESOLVED
+
+**Problem**: The translation pipeline always starts every batch from key index 0 (sequential failover). Key 0 absorbs all load until rate-limited, exhausting free-tier quotas while other keys sit idle. Additionally, cooldown is keyed by `apiKey` alone — a 429 on one model (e.g., Groq/llama-70b) blocks all models of the same provider despite separate per-model quotas.
+
+**Options considered**:
+1. **Simple round-robin on flat key list** — Pros: minimal change. Cons: doesn't leverage model rotation; cooldown still blocks all models of same key.
+2. **Two-tier scheduling: key group round-robin + intra-group model rotation** — Pros: distributes load across keys AND models; model-specific cooldown preserves per-model quotas; health-based ordering for optimal routing. Cons: more complex iteration logic.
+3. **Parallel batch execution across keys** — Pros: maximum throughput. Cons: race conditions, duplicate translations, complex merge logic, wastes API quota.
+
+**Resolution**: Option 2 chosen. Two-tier scheduling with 4 new functions: `getCooldownKey()` (model-aware cooldown), `groupByPhysicalKey()`, `sortGroupsByHealth()`, `selectGroupForBatch()`. Batches rotate across key groups; within each group, 429 triggers model rotation (try next model of same provider). 413 skips entire group (payload limit is provider-level). Groq waterfall path unchanged (specialized for oversized payloads). Legacy flat iteration preserved for recursive 413-split calls.
+
+**References**: `src/background/translator.js` — `groupByPhysicalKey()`, `selectGroupForBatch()`, `translateBatchWithFailover()`

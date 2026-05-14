@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Smart Batch Distribution — Round-Robin + Model Rotation (2026-05-14)
+
+**Added**
+- `getCooldownKey(apiKey, model)` — model-aware cooldown key (`apiKey::model`), isolates per-model rate limits so a 429 on one model no longer blocks other models of the same provider
+- `groupByPhysicalKey(activeKeys)` — groups expanded virtual key slots by physical API key for round-robin scheduling
+- `sortGroupsByHealth(groups)` — sorts key groups by health score (best-first) once per translation call
+- `selectGroupForBatch(keyGroups, batchIndex)` — round-robin batch selector that skips fully-cooled-down groups
+- Two-tier failover in `translateBatchWithFailover()`: outer loop rotates across key groups (round-robin), inner loop rotates across models within a group (model rotation on 429)
+
+**Changed**
+- `_translateInternal()` — batch loop now builds key groups and uses round-robin group selection instead of always starting from key index 0
+- `translateBatchWithFailover()` — standard failover section replaced with group-based iteration; legacy flat iteration preserved for recursive 413-split calls
+- Cooldown Map key changed from `apiKey` to `apiKey::model` at 3 call sites (`getFirstAvailableKey`, `tryKeyForBatch` check, `tryKeyForBatch` 429 handler)
+- 413 errors now skip the entire key group (same provider = same payload limit for all models)
+
+**Tests**: 185 tests passing (17 pre-existing failures unchanged), build verified for Chrome and Firefox
+
 ### Subtitle Overlay Resize, Move & Reset (2026-05-12)
 
 **Added**
