@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2 (working tree; Phase 64 commit pending). Entering **Milestone 7 — Professionalization & Hardening** (Phases 65-77).
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phase 65 done.
 
 ---
 
@@ -71,8 +71,8 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | 51.1 | Resolve Shorts Metadata/Transcript Extraction Failure | DONE (2026-05-07) | M6 |
 | 62 | Subtitle Overlay Resize, Move & Reset | DONE (2026-05-12) | M2 |
 | 63 | Smart Batch Distribution — Round-Robin + Model Rotation | DONE (2026-05-14) | M3 |
-| 64 | Streaming Timeout Robustness + Completeness Sweep (fixes TIMEOUT_BACKGROUND) | DONE (2026-06-08) — browser-verified; **commit pending in Phase 65** | M3 |
-| **65** | **Commit Phase 64 + Version-Truth Sync** | TODO | M7 |
+| 64 | Streaming Timeout Robustness + Completeness Sweep (fixes TIMEOUT_BACKGROUND) | DONE (2026-06-08) — browser-verified, committed `95b75ae` | M3 |
+| **65** | **Commit Phase 64 + Version-Truth Sync** | DONE (2026-06-23) | M7 |
 | **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | TODO | M7 |
 | **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | TODO | M7 |
 | **68** | **Test recovery — fix the remaining 10 failing tests** | TODO | M7 |
@@ -102,7 +102,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 > - **Verified code findings**: B2 (SyncEngine async race → TypeError on Shorts swipe) is a real blocker; B4 (circuit breaker `isCircuitOpen()` returns false when open) needs investigation; B3 (cache TTL comment "7-day" vs code 30-day) is a doc/code mismatch; B1 (error-toast `innerHTML` not fully `esc()`-ed) is low-risk defense-in-depth (sinks are not attacker-controlled), not a release blocker.
 
 ### Phase 65 — Commit Phase 64 + Version-Truth Sync
-**Status**: TODO · **Risk**: Low · **Group**: release/docs
+**Status**: DONE (2026-06-23) · **Risk**: Low · **Group**: release/docs · **Commit**: `95b75ae`
 - Commit the uncommitted Phase 64 work (developer-confirmed browser-verified): 10 modified files + 2 untracked test files.
 - Move the Phase 64 CHANGELOG entry out of "pending verify" into released state.
 - Update `MEMORY.md`: add Phases 62/63/64 to the Implementation Log, set status to v0.2.2, refresh the date.
