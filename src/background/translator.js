@@ -28,6 +28,41 @@ const RATE_LIMIT_BASE_DELAY_MS = 0;
 const INITIAL_BATCH_DELAY_MS = 50;
 const ELEVATED_BATCH_DELAY_MS = 3000;
 
+// Phase 64 (c): Per-batch timeout replaces the old single per-job cap, so total
+// job length scales with batch count instead of a hard 60s/100s wall.
+const BATCH_TIMEOUT_MS = 90000;        // wall-clock cap for one batch (incl. amplification)
+const BASE_FORCE_TIMEOUT_MS = 180000;  // absolute backstop floor for the whole job
+const PER_LINE_TIMEOUT_MS = 2500;      // backstop grows with transcript length
+const MAX_FORCE_TIMEOUT_MS = 600000;   // hard ceiling (10 min) — never run forever
+
+// Phase 64 (sweep): after the main pass, re-check for batches that did not
+// translate ("sót") and retry them, up to MAX_SWEEP_ROUNDS rounds.
+const MAX_SWEEP_ROUNDS = 3;
+const SWEEP_MAX_WAIT_MS = 15000;       // cap on waiting for key cooldowns before a sweep retry
+
+// Phase 64 (c): absolute backstop scaled by transcript length.
+function computeForceTimeoutMs(segmentCount) {
+  return Math.min(
+    Math.max(BASE_FORCE_TIMEOUT_MS, (segmentCount || 0) * PER_LINE_TIMEOUT_MS),
+    MAX_FORCE_TIMEOUT_MS
+  );
+}
+
+// Phase 64 (sweep): cooldown-aware pacing — ms to wait before retrying failed
+// batches. Pure (cooldown map + now injected) so it is unit-testable. Returns 0
+// if any key is already free (or there are no keys); otherwise the time until
+// the soonest cooldown expiry, capped at maxWaitMs.
+function soonestCooldownWaitMs(activeKeys, cooldownMap, now, maxWaitMs = SWEEP_MAX_WAIT_MS) {
+  let soonestFree = null;
+  for (const key of activeKeys || []) {
+    const until = cooldownMap.get(getCooldownKey(key.apiKey, key.model)) || 0;
+    if (until <= now) return 0; // a free key exists — no need to wait
+    if (soonestFree === null || until < soonestFree) soonestFree = until;
+  }
+  if (soonestFree === null) return 0; // no keys
+  return Math.min(Math.max(0, soonestFree - now), maxWaitMs);
+}
+
 // Phase 47: Anti-deadlock constants
 const MAX_CONTEXT_CHARS = 500;        // Cap context summary to prevent permanent 413
 const MAX_RECURSION_DEPTH = 3;        // Stop infinite 413 splits
@@ -180,12 +215,15 @@ async function retranslateWithVerification(segments, lines, pendingIndices, key,
   const tgt = options.tgt || 'vi';
   const src = options.src || 'auto';
   const accepted = new Set();
+  const signal = options.signal; // Phase 64 (c): honor batch/global abort
   let remaining = [...new Set(pendingIndices)];
 
   for (let round = 0; round < MAX_RETRANSLATION_ROUNDS && remaining.length > 0; round++) {
+    if (signal && signal.aborted) break;
     Logger.debug('Translator', `[UNTRANSLATED] Verify round ${round + 1}: ${remaining.length} lines (${key.provider})`);
 
     for (let i = 0; i < remaining.length; i += RE_TRANSLATION_MAX_LINES) {
+      if (signal && signal.aborted) break;
       const chunk = remaining.slice(i, i + RE_TRANSLATION_MAX_LINES);
       const systemPrompt = buildVerificationPrompt(src, tgt, chunk.length);
       const userPrompt = JSON.stringify({
@@ -195,7 +233,7 @@ async function retranslateWithVerification(segments, lines, pendingIndices, key,
       try {
         const response = await Providers.chat(
           key.provider, key.model, key.apiKey, userPrompt,
-          { systemPrompt, temperature: 0.1, maxTokens: chunk.length * 150 }
+          { systemPrompt, temperature: 0.1, maxTokens: chunk.length * 150, signal }
         );
 
         if (response.success && response.text) {
@@ -329,7 +367,7 @@ function normalizeTs(tsString) {
  * Main translation entry point.
  * @param {Array} segments - Array of { text, startMs }
  */
-export async function translate(segments, sourceLang, targetLang, tabId = null, onBatchComplete = null, externalSignal = null) {
+export async function translate(segments, sourceLang, targetLang, tabId = null, onBatchComplete = null, externalSignal = null, onProgress = null) {
   if (!segments || segments.length === 0) return { translated: [], hadFallback: false };
 
   // Phase 55: Filter out invalid segments before translation
@@ -346,7 +384,7 @@ export async function translate(segments, sourceLang, targetLang, tabId = null, 
     return inFlightRequests.get(dedupKey);
   }
 
-  const translatePromise = _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal);
+  const translatePromise = _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal, onProgress);
   inFlightRequests.set(dedupKey, translatePromise);
   try {
     return await translatePromise;
@@ -355,7 +393,7 @@ export async function translate(segments, sourceLang, targetLang, tabId = null, 
   }
 }
 
-async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal) {
+async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, externalSignal, onProgress) {
   Logger.trace('Translator', `[CHECKPOINT 1] Starting translation: ${segments.length} segments`);
   sendDebugLog(tabId, `Initializing translation pipeline (${segments.length} lines)...`, '#2dd4bf', true);
 
@@ -371,7 +409,9 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
     }
   }
 
-  // Internal 55s safety timeout to prevent hanging the whole background
+  // Phase 64 (c): Absolute backstop scales with transcript length (floor 180s,
+  // +2.5s/line, ceiling 600s) instead of a fixed 100s that long videos blew past.
+  const forceTimeoutMs = computeForceTimeoutMs(segments.length);
   return await Promise.race([
     (async () => {
       try {
@@ -426,12 +466,14 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
         let batchIndex = 0;
         let anyBatchSucceeded = false;
         let allFailures = [];
+        let failedRanges = []; // Phase 64 (sweep): batches to re-check at the end
 
         const keyGroups = groupByPhysicalKey(activeKeys);
         sortGroupsByHealth(keyGroups);
         Logger.trace('Translator', `[CHECKPOINT 4] Starting batch processing (${totalLines} lines, ${keyGroups.length} key groups)...`);
 
         while (cursor < totalLines) {
+          if (globalAbort.signal.aborted) break; // Phase 64 (c): stop promptly on force-cap / disconnect
           const selected = selectGroupForBatch(keyGroups, batchIndex);
           const primarySlot = selected ? selected.slots[0] : activeKeys[0];
           const batchSize = primarySlot.maxLinesPerBatch || MAX_LINES_PER_BATCH;
@@ -442,11 +484,34 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
           Logger.trace('Translator', `[CHECKPOINT 5] Batch ${batchIndex}: lines ${cursor + 1}-${cursor + batch.length}/${totalLines} (size=${batchSize}, startGroup=${selected?.groupIndex || 0})...`);
           sendDebugLog(tabId, `Translating lines ${cursor + 1}-${cursor + batch.length} / ${totalLines}...`, '#a855f7');
 
-          let result = await translateBatchWithFailover(batch, src, tgt, activeKeys, tabId, context, {
-            signal: globalAbort.signal,
-            startGroupIndex: selected?.groupIndex || 0,
-            keyGroups
-          });
+          // Phase 64 (c): per-batch timeout — a single stalled/over-amplified
+          // batch is aborted (and marked failed) so it can't hang the whole job.
+          // batchAbort is chained to globalAbort so the force-cap / port-disconnect
+          // still cancels in-flight fetches.
+          const batchAbort = new AbortController();
+          const linkAbort = () => batchAbort.abort();
+          if (globalAbort.signal.aborted) {
+            batchAbort.abort();
+          } else {
+            globalAbort.signal.addEventListener('abort', linkAbort, { once: true });
+          }
+          let batchTimedOut = false;
+          const batchTimer = setTimeout(() => { batchTimedOut = true; batchAbort.abort(); }, BATCH_TIMEOUT_MS);
+
+          let result;
+          try {
+            result = await translateBatchWithFailover(batch, src, tgt, activeKeys, tabId, context, {
+              signal: batchAbort.signal,
+              startGroupIndex: selected?.groupIndex || 0,
+              keyGroups
+            });
+          } finally {
+            clearTimeout(batchTimer);
+            globalAbort.signal.removeEventListener('abort', linkAbort);
+          }
+          if (batchTimedOut) {
+            Logger.warn('Translator', `[BATCH_TIMEOUT] Batch ${batchIndex} exceeded ${BATCH_TIMEOUT_MS}ms — marking failed for the completeness sweep.`);
+          }
 
           const elapsed = ((performance.now() - batchStartTime) / 1000).toFixed(1);
           Logger.trace('Translator', `[BATCH_RESULT] success=${result.success}, hadFallback=${result.hadFallback}, translatedCount=${result.translated?.length}, sample=${result.translated?.[0]?.substring?.(0, 50)}`);
@@ -470,6 +535,7 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
             }
           } else {
             Logger.warn('Translator', `[CHECKPOINT 5.E] Batch ${batchIndex} FAILED (lines ${cursor + 1}-${cursor + batch.length}).`);
+            failedRanges.push({ start: cursor, segments: batch }); // Phase 64 (sweep)
             batch.forEach((s, j) => {
               if (cursor + j < finalResults.length) {
                 finalResults[cursor + j] = s.text;
@@ -494,6 +560,11 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
             onBatchComplete(cursor, result.translated);
           }
 
+          // Phase 64 (a): heartbeat — every batch boundary (success OR failure)
+          // is progress, so the content watchdog can tell a stalled background
+          // from a slow-but-advancing one without resetting on PONG.
+          if (typeof onProgress === 'function') onProgress();
+
           cursor += batch.length;
 
           if (cursor < totalLines) {
@@ -502,16 +573,87 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
           }
         }
 
+        // Phase 64 (sweep): self-check for batches that did not translate and
+        // retry them, up to MAX_SWEEP_ROUNDS rounds. Cooldown-aware so we do not
+        // burn a round (and quota) hammering a still-rate-limited key.
+        let sweepRound = 0;
+        while (failedRanges.length > 0 && sweepRound < MAX_SWEEP_ROUNDS && !globalAbort.signal.aborted) {
+          sweepRound++;
+          if (typeof onProgress === 'function') onProgress(); // heartbeat before the cooldown wait
+          Logger.info('Translator', `[SWEEP] Round ${sweepRound}: re-checking ${failedRanges.length} missed batch(es).`);
+
+          const waitMs = soonestCooldownWaitMs(activeKeys, keyCooldowns, Date.now());
+          if (waitMs > 0) {
+            sendDebugLog(tabId, `Re-checking ${failedRanges.length} missed batch(es) — waiting ${Math.round(waitMs / 1000)}s for cooldown...`, '#f59e0b');
+            await wait(waitMs);
+          } else {
+            sendDebugLog(tabId, `Re-checking ${failedRanges.length} missed batch(es) (sweep round ${sweepRound})...`, '#f59e0b');
+          }
+
+          const stillFailed = [];
+          for (const range of failedRanges) {
+            if (globalAbort.signal.aborted) { stillFailed.push(range); continue; }
+
+            // Per-batch timeout for the retry too (chained to globalAbort).
+            const sweepAbort = new AbortController();
+            const linkSweep = () => sweepAbort.abort();
+            if (globalAbort.signal.aborted) sweepAbort.abort();
+            else globalAbort.signal.addEventListener('abort', linkSweep, { once: true });
+            const sweepTimer = setTimeout(() => sweepAbort.abort(), BATCH_TIMEOUT_MS);
+
+            let r;
+            try {
+              r = await translateBatchWithFailover(range.segments, src, tgt, activeKeys, tabId, context, {
+                signal: sweepAbort.signal, startGroupIndex: 0, keyGroups
+              });
+            } finally {
+              clearTimeout(sweepTimer);
+              globalAbort.signal.removeEventListener('abort', linkSweep);
+            }
+
+            if (r.success) {
+              anyBatchSucceeded = true;
+              r.translated.forEach((t, j) => {
+                if (range.start + j < finalResults.length) finalResults[range.start + j] = t;
+              });
+              if (r.hadFallback) globalHadFallback = true;
+              if (r.stats) {
+                stats.totalTokens += r.stats.usage?.totalTokens || 0;
+                stats.promptTokens += r.stats.usage?.promptTokens || 0;
+                stats.completionTokens += r.stats.usage?.completionTokens || 0;
+              }
+              if (typeof onBatchComplete === 'function') onBatchComplete(range.start, r.translated);
+              sendDebugLog(tabId, `Recovered missed batch at line ${range.start + 1} (sweep round ${sweepRound})`, '#10b981');
+            } else {
+              if (r.failures) allFailures.push(...r.failures);
+              stillFailed.push(range);
+            }
+            if (typeof onProgress === 'function') onProgress(); // heartbeat each sweep retry
+          }
+          failedRanges = stillFailed;
+        }
+
+        const incompleteAfterSweep = failedRanges.length > 0;
+        if (incompleteAfterSweep) {
+          Logger.warn('Translator', `[SWEEP] ${failedRanges.length} batch(es) still missing after ${sweepRound} sweep round(s).`);
+          sendDebugLog(tabId, `${failedRanges.length} batch(es) still failed after ${sweepRound} sweep round(s)`, '#ef4444');
+        }
+
         stats.durationMs = performance.now() - startTimeFull;
         Logger.info('Translator', '[CHECKPOINT 6] Translation pipeline complete.');
 
+        // Phase 64 (sweep): a run is successful only if at least one batch
+        // succeeded AND nothing remained missed after the sweep. An incomplete
+        // result is reported as a failure (the content side keeps the already
+        // streamed partials via the preserve-partials path).
+        const succeeded = anyBatchSucceeded && !incompleteAfterSweep;
         return {
-          success: anyBatchSucceeded,
+          success: succeeded,
           translated: finalResults,
           hadFallback: globalHadFallback,
           stats,
           failures: allFailures,
-          ...(anyBatchSucceeded ? {} : { failureReason: 'ALL_BATCHES_FAILED' })
+          ...(succeeded ? {} : { failureReason: anyBatchSucceeded ? 'INCOMPLETE_AFTER_SWEEP' : 'ALL_BATCHES_FAILED' })
         };
 
       } catch (err) {
@@ -520,10 +662,10 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
       }
     })(),
     new Promise(resolve => setTimeout(() => {
-      Logger.error('Translator', '[TIMEOUT_GUARD] Translation aborted after 100s safety limit.');
+      Logger.error('Translator', `[TIMEOUT_GUARD] Translation aborted after ${Math.round(forceTimeoutMs / 1000)}s safety limit.`);
       globalAbort.abort(); // Phase 47: Kill all in-flight fetches
       resolve({ success: false, failureReason: 'TRANSLATOR_FORCE_TIMEOUT' });
-    }, 100000))
+    }, forceTimeoutMs))
   ]);
 }
 
@@ -1237,6 +1379,12 @@ async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, co
             skip413Group = true;
             failures.push({ provider: key.provider, model: key.model, status: 413, message: result.message });
             break;
+          case 'cooldown':
+            // Phase 64 (d): surface rate-limit cooldown as a 429 so the UI shows
+            // a clear "[429] rate limited" row instead of a cryptic "cooldown".
+            hadRateLimit = true;
+            failures.push({ provider: key.provider, model: key.model, status: 429, message: 'Key on cooldown (rate limited)' });
+            break;
           case 'aborted':
             return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
           default:
@@ -1267,6 +1415,11 @@ async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, co
         case '413':
           had413 = true;
           failures.push({ provider: key.provider, model: key.model, status: 413, message: result.message });
+          break;
+        case 'cooldown':
+          // Phase 64 (d): surface rate-limit cooldown as a 429 (see group loop above).
+          hadRateLimit = true;
+          failures.push({ provider: key.provider, model: key.model, status: 429, message: 'Key on cooldown (rate limited)' });
           break;
         case 'aborted':
           return { translated: segments.map(s => s.text), hadFallback: true, hadRateLimit: false };
@@ -1437,5 +1590,9 @@ function sendDebugLog(tabId, msg, color = '#cbd5e1', bold = false) {
 export const _internals = {
   detectForeignScriptLines, sanitizeForeignScript, NON_LATIN_TARGETS,
   detectUntranslatedLines, parseVerificationResponse,
-  MIN_WORDS_FOR_UNTRANSLATED, UNTRANSLATED_OVERLAP_THRESHOLD
+  MIN_WORDS_FOR_UNTRANSLATED, UNTRANSLATED_OVERLAP_THRESHOLD,
+  // Phase 64: timeout scaling + sweep cooldown pacing (pure, unit-tested)
+  computeForceTimeoutMs, soonestCooldownWaitMs, getCooldownKey,
+  BATCH_TIMEOUT_MS, BASE_FORCE_TIMEOUT_MS, MAX_FORCE_TIMEOUT_MS,
+  MAX_SWEEP_ROUNDS, SWEEP_MAX_WAIT_MS
 };

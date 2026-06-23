@@ -2,9 +2,9 @@
 
 > **Document purpose**: This is the single source of truth for the YouSub project. It is written as an AI-readable prompt/specification so that any AI coding assistant (Gemini, Claude, etc.) can read this document and understand the full scope, architecture, decisions, and constraints of the project. It is also readable by human developers.
 >
-> **Document version**: 2.1
-> **Last updated**: 2026-04-07
-> **Status**: **STABLE** — v0.4.0 (Absolute ID Tracking & Debug Visibility)
+> **Document version**: 2.2
+> **Last updated**: 2026-06-23
+> **Status**: **STABLE** — v0.2.2 (product version; corrected from a stale "v0.4.0" label — see CHANGELOG Phase 65)
 >
 > **Structure**: This file is the navigation hub and architecture reference. For active/pending development phases, see [ROADMAP.md](ROADMAP.md). For completed phases, see [ROADMAP_DONE.md](ROADMAP_DONE.md).
 

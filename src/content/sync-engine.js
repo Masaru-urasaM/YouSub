@@ -217,6 +217,13 @@ export const SyncEngine = {
     return isRunning;
   },
 
+  // Phase 64 (b): number of lines currently holding a translation (vs original).
+  // Used by the failure path to decide whether to preserve partial results
+  // instead of tearing down the overlay.
+  getTranslatedCount: function () {
+    return translatedIndices.size;
+  },
+
   isDualModeActive: function () {
     return isDualMode;
   }

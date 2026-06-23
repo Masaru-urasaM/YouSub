@@ -6,6 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 65 — Commit Phase 64 + Version-Truth Sync (2026-06-23)
+
+Opens **Milestone 7 — Professionalization & Hardening**. Commits the previously-uncommitted Phase 64 work and reconciles the version label, which had drifted across six surfaces (real version is 0.2.2; docs/UI variously claimed 0.2.0 / 0.4.0).
+
+**Added**
+- Milestone 7 roadmap (Phases 65-77) in `ROADMAP.md` (v8.0): release-prep → tooling → test recovery → docs → hygiene → refactor → polish, with a post-v0.2.2 maintenance-mode governance note.
+
+**Changed**
+- Committed the 0.2.1 → 0.2.2 version bump (`manifest.json`, `package.json`, `src/shared/constants.js`) — previously uncommitted.
+- `src/options/options.html` — version badge and About-tab version `0.2.0` → `0.2.2`.
+- `MEMORY.md` — logged Phases 62/63/64 + Phase 65, status → v0.2.2, date → 2026-06-23.
+- `YOUSUB_PROJECT_SPEC.md` — header status `v0.4.0` → `v0.2.2` (stale label corrected; structural §2.5/2.7 fixes deferred to Phase 71).
+- Phase 64 entry below — "pending manual browser verify" resolved (developer-confirmed verified 2026-06-23).
+
+**Tests**: unchanged — 198 passing / 17 pre-existing failures (215 total, 13 suites). The 17 failures are scheduled for Phases 66 (cache TTL, circuit breaker) and 68 (ESM/eval content tests, api-manager mocks).
+
+### Phase 64 — Streaming Timeout Robustness + Completeness Sweep (2026-06-08)
+
+Fixes the `Translation failed: TIMEOUT_BACKGROUND` bug (Chrome + Firefox) where mid-translation every rendered batch vanished. Root cause: a fixed 60s content-side deadline that was never reset by streaming progress, firing while the background was still healthy, after which the failure path destroyed the overlay. See `YOUSUB_DESIGN_DECISIONS.md` Decision 10.
+
+**Added**
+- `SyncEngine.getTranslatedCount()` (`sync-engine.js`) — number of lines currently translated; drives the preserve-partials decision.
+- `computeForceTimeoutMs(segmentCount)` (`translator.js`) — background job backstop scaled by transcript length (floor 180s, +2.5s/line, ceiling 600s), replacing the fixed 100s cap.
+- `soonestCooldownWaitMs(activeKeys, cooldownMap, now, maxWaitMs)` (`translator.js`) — cooldown-aware pacing for the completeness sweep (pure, unit-tested).
+- Completeness sweep in `_translateInternal` — after the main pass, failed batches are retried up to `MAX_SWEEP_ROUNDS=3`, cooldown-aware; recovered batches stream via `onBatchComplete`. Still-missing → `success:false` / `failureReason:'INCOMPLETE_AFTER_SWEEP'`.
+- Per-batch timeout (`BATCH_TIMEOUT_MS=90000`) via a `batchAbort` AbortController chained to `globalAbort`, in both the main loop and the sweep.
+- `tests/unit/sync-engine-partial.test.js` (4 tests), `tests/unit/translator-timeout.test.js` (9 tests).
+
+**Changed**
+- `requestTranslationStreaming` (`main.js`) — the fixed 60s guardian is replaced by a **150s idle watchdog** re-armed on `CHUNK` and on a per-batch `PROGRESS` heartbeat (intentionally **not** on `PONG`, which would reduce it to an "is the SW alive" check). On fire it calls `port.disconnect()` (stops the orphaned background burn) then resolves `TIMEOUT_BACKGROUND`. Centralized cleanup via `finish()`; added `PROGRESS` and no-op `PONG` branches.
+- `service-worker.js` — the stream port now forwards a `PROGRESS` message from the translator's per-batch `onProgress` callback so the content watchdog can distinguish a stalled background from a slow-but-advancing one (e.g. consecutive failing/rate-limited batches that emit no `CHUNK`).
+- `translate()` / `_translateInternal` (`translator.js`) — added an `onProgress` heartbeat fired at every batch boundary (success or failure) in both the main loop and the sweep.
+- `retranslateWithVerification` (`translator.js`) — now threads the abort `signal` into its `Providers.chat` call and checks `signal.aborted` per round/chunk, so a batch stuck in untranslated-verification actually honors the per-batch cap / port disconnect (previously it could run unbounded, defeating the 90s cap).
+- `processEntries` failure branch (`main.js`) — preserves already-rendered partials (`getTranslatedCount() > 0` → keep subtitles, show soft "Translation incomplete: X/Y" warning); only tears down (`SyncEngine.stop()` + `Overlay.destroy()`) when nothing was translated.
+- `_translateInternal` (`translator.js`) — main loop breaks promptly on `globalAbort`; force-cap uses `computeForceTimeoutMs`; stale "55s" comment corrected.
+- `translateBatchWithFailover` (`translator.js`) — `'cooldown'` failover status is now tagged `status:429` ("Key on cooldown (rate limited)") in both the group and flat loops, surfacing rate limiting in the UI instead of a cryptic `cooldown` row.
+- Rate-limit hint added to the content error toast when failures include a 429.
+- **Success semantics (deliberate)**: a run is successful only if `anyBatchSucceeded && !incompleteAfterSweep` (was `anyBatchSucceeded`). Incomplete runs report failure but keep partials on screen.
+
+**Tests**: 185 → 198 passing (+13 new). 17 pre-existing failures unchanged. The rewritten async/port protocol paths in `main.js` and the sweep loop in `translator.js` are **not** unit-tested (browser-glue / integration paths); they were covered by an adversarial multi-agent diff review and confirmed via manual browser verification (2026-06-23). Unit tests cover the extracted pure helpers (`computeForceTimeoutMs`, `soonestCooldownWaitMs`) and `getTranslatedCount`.
+
+**Note**: `manifest.json` / `package.json` / `src/shared/constants.js` already carried an uncommitted `0.2.1 → 0.2.2` version bump (not part of this change); left untouched.
+
 ### Smart Batch Distribution — Round-Robin + Model Rotation (2026-05-14)
 
 **Added**

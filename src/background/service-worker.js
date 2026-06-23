@@ -65,7 +65,11 @@ browser.runtime.onConnect.addListener(function (port) {
             } catch (e) {
               Logger.debug('ServiceWorker', 'Port disconnected, chunk dropped.');
             }
-          }, portAbort.signal);
+          }, portAbort.signal, () => {
+            // Phase 64 (a): per-batch heartbeat so the content idle watchdog can
+            // tell a stalled background from a slow-but-advancing one.
+            try { port.postMessage({ type: 'PROGRESS' }); } catch (e) { /* disconnected */ }
+          });
 
           if (result.success) {
             if (!result.hadFallback) {

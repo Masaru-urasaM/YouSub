@@ -1,9 +1,9 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: All phases complete — v0.2.0
-**Current Milestone**: M6: Expansion (all milestones M1-M6 done)
-**Last Updated**: 2026-05-07
+**Status**: v0.2.2 — Phases 0-64 complete (entering Milestone 7: Professionalization & Hardening, Phases 65-77)
+**Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
+**Last Updated**: 2026-06-23
 
 ## Implementation Log
 
@@ -33,6 +33,14 @@
 ### Milestone 6: Expansion (2026-05-07)
 - **Phase 61**: Cascade shift detection, 3-tier RoughTranslator.
 - **Phase 51.1**: Shorts extraction resilience — YouTube Innertube API fallback for caption tracks.
+
+### Post-M6 Enhancements (2026-05-12 — 2026-06-08)
+- **Phase 62**: Subtitle overlay resize/move/reset — dual CSS positioning modes, per-layout storage (regular vs Shorts).
+- **Phase 63**: Smart batch distribution — round-robin key groups + intra-group model rotation, model-aware cooldown.
+- **Phase 64**: Streaming timeout robustness — 150s idle watchdog, per-batch 90s cap, completeness sweep, preserve-partials (fixes TIMEOUT_BACKGROUND). Browser-verified 2026-06-23.
+
+### Milestone 7: Professionalization & Hardening (in progress, from 2026-06-23)
+- **Phase 65**: Commit Phase 64 + version-truth sync (0.2.1 → 0.2.2 across all surfaces). See ROADMAP.md for Phases 66-77.
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

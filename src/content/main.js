@@ -27,35 +27,56 @@ devLog('[YouSub] Main: Module loaded and executing...');
 function requestTranslationStreaming(parsedEntries, videoId, sourceLang, providedTargetLang, onUpdate) {
   return new Promise(function (resolve) {
     let hasResolved = false;
-    
     let keepaliveInterval = null;
+    let port = null;
 
-    // Guardian timeout
-    const timeout = setTimeout(() => {
-      if (!hasResolved) {
-        hasResolved = true;
-        if (keepaliveInterval) clearInterval(keepaliveInterval);
-        console.error('[YouSub] Main: Streaming translation request timed out after 60s');
-        resolve({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
-      }
-    }, 60000);
+    // Phase 64 (a): Idle watchdog — replaces the old fixed 60s deadline.
+    // Re-armed on every CHUNK and on every PROGRESS heartbeat (one per batch
+    // boundary, success OR failure), so it measures *silence* (the background
+    // making no progress through the work list), not total job time. The window
+    // sits above the per-batch cap (90s) + a sweep cooldown wait (15s) + margin,
+    // so a slow-but-advancing job (even one with consecutive failing batches)
+    // never trips it — only a genuinely stalled background does. We deliberately
+    // do NOT reset on PONG: that would reduce the watchdog to an "is the SW
+    // alive" check, and SW death already surfaces as PORT_DISCONNECTED.
+    const STREAM_IDLE_TIMEOUT_MS = 150000;
+    let watchdog = null;
+
+    function finish(result) {
+      if (hasResolved) return;
+      hasResolved = true;
+      if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+      if (keepaliveInterval) { clearInterval(keepaliveInterval); keepaliveInterval = null; }
+      resolve(result);
+    }
+
+    function armWatchdog() {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (hasResolved) return;
+        console.error('[YouSub] Main: Streaming translation stalled — no progress for ' + (STREAM_IDLE_TIMEOUT_MS / 1000) + 's');
+        // Phase 64 (c): disconnect so the background aborts in-flight work
+        // (portAbort.abort) instead of running orphaned to its own cap.
+        try { if (port) port.disconnect(); } catch (e) { /* already gone */ }
+        finish({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
+      }, STREAM_IDLE_TIMEOUT_MS);
+    }
 
     try {
       if (!chrome.runtime || !chrome.runtime.id) {
-        clearTimeout(timeout);
-        resolve({ success: false, failureReason: 'CONTEXT_INVALIDATED' });
+        finish({ success: false, failureReason: 'CONTEXT_INVALIDATED' });
         return;
       }
 
-      const port = chrome.runtime.connect({ name: 'yousub-stream' });
+      port = chrome.runtime.connect({ name: 'yousub-stream' });
+      armWatchdog();
 
-      // Phase 52.1: Keepalive — ping every 25s to prevent SW termination
+      // Phase 52.1: Keepalive — ping every 25s to keep the SW/event page alive.
       keepaliveInterval = setInterval(() => {
         try { port.postMessage({ type: 'PING' }); } catch (e) { clearInterval(keepaliveInterval); }
       }, 25000);
 
       const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
-      
       const segments = parsedEntries.map(e => ({ text: e.text, startMs: e.startMs }));
 
       port.postMessage({
@@ -70,7 +91,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
         if (hasResolved) return;
 
         if (response.type === 'CHUNK') {
-          // Process partial batch update
+          armWatchdog(); // Phase 64 (a): streaming progress resets the idle timer
           const startIndex = response.startIndex;
           const translatedBatch = response.translated.map((text, i) => {
             const entry = parsedEntries[startIndex + i];
@@ -82,49 +103,44 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
             };
           });
           if (onUpdate) onUpdate(translatedBatch, startIndex);
+          return;
+        }
+
+        if (response.type === 'PROGRESS') {
+          armWatchdog(); // Phase 64 (a): a completed batch attempt (success or fail) is progress
+          return;
+        }
+
+        if (response.type === 'PONG') {
+          // Keepalive ack — intentionally does NOT reset the watchdog (see above).
+          return;
         }
 
         if (response.type === 'COMPLETE') {
-          hasResolved = true;
-          clearTimeout(timeout);
-          clearInterval(keepaliveInterval);
-          const fullTranslated = parsedEntries.map((entry, i) => {
-            return {
-              startMs: entry.startMs,
-              endMs: entry.endMs,
-              original: entry.text,
-              text: response.translated[i] || entry.text
-            };
-          });
-          resolve({ success: true, translated: fullTranslated, fromCache: !!response.fromCache });
-          port.disconnect();
+          const fullTranslated = parsedEntries.map((entry, i) => ({
+            startMs: entry.startMs,
+            endMs: entry.endMs,
+            original: entry.text,
+            text: response.translated[i] || entry.text
+          }));
+          finish({ success: true, translated: fullTranslated, fromCache: !!response.fromCache });
+          try { port.disconnect(); } catch (e) { /* already gone */ }
+          return;
         }
 
         if (response.type === 'ERROR') {
-          hasResolved = true;
-          clearTimeout(timeout);
-          clearInterval(keepaliveInterval);
-          resolve({ success: false, failureReason: response.failureReason, error: response.error, failures: response.failures });
-          port.disconnect();
+          finish({ success: false, failureReason: response.failureReason, error: response.error, failures: response.failures });
+          try { port.disconnect(); } catch (e) { /* already gone */ }
+          return;
         }
       });
 
       port.onDisconnect.addListener(() => {
-        if (!hasResolved) {
-          hasResolved = true;
-          clearTimeout(timeout);
-          clearInterval(keepaliveInterval);
-          resolve({ success: false, failureReason: 'PORT_DISCONNECTED' });
-        }
+        finish({ success: false, failureReason: 'PORT_DISCONNECTED' });
       });
 
     } catch (e) {
-      if (!hasResolved) {
-        hasResolved = true;
-        clearTimeout(timeout);
-        if (keepaliveInterval) clearInterval(keepaliveInterval);
-        resolve({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
-      }
+      finish({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
     }
   });
 }
@@ -261,6 +277,21 @@ async function processEntries(entries, videoId, targetLang) {
 
     if (response.success === false) {
       devWarn('[YouSub] Main: Halting pipeline due to error');
+
+      // Phase 64 (b): Preserve already-rendered partial translations on failure.
+      // If any line was translated and streamed in via updatePartial, keep those
+      // subtitles on screen instead of destroying the overlay; show a soft notice.
+      const partialCount = SyncEngine.getTranslatedCount();
+      if (partialCount > 0) {
+        devWarn('[YouSub] Main: Preserving', partialCount, 'partial translations despite error');
+        Overlay.setLoading(false);
+        const reason = response.failureReason || 'Error';
+        const notice = `<strong>Translation incomplete:</strong> ${partialCount}/${entries.length} lines translated. (${reason})`;
+        Overlay.showStatus(TrustedTypes.toSafeHTML(notice), 'warning', 8000);
+        return;
+      }
+
+      // Nothing translated yet — tear down and show the full error.
       SyncEngine.stop();
       Overlay.destroy();
 
@@ -287,6 +318,10 @@ async function processEntries(entries, videoId, targetLang) {
         });
         msg += '<br><small>' + lines.join('<br>') + '</small>';
         if (unique.length > 5) msg += `<br><small>+ ${unique.length - 5} more</small>`;
+        // Phase 64 (d): actionable hint when failures are rate-limit related.
+        if (response.failures.some(f => f.status === 429)) {
+          msg += `<br><small>⚠ Rate limited — add more API keys or wait a minute.</small>`;
+        }
       } else if (response.error) {
         msg += `<br><small>${response.error}</small>`;
       }

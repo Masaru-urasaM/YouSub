@@ -174,3 +174,29 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Resolution**: Option 2 chosen. Two-tier scheduling with 4 new functions: `getCooldownKey()` (model-aware cooldown), `groupByPhysicalKey()`, `sortGroupsByHealth()`, `selectGroupForBatch()`. Batches rotate across key groups; within each group, 429 triggers model rotation (try next model of same provider). 413 skips entire group (payload limit is provider-level). Groq waterfall path unchanged (specialized for oversized payloads). Legacy flat iteration preserved for recursive 413-split calls.
 
 **References**: `src/background/translator.js` — `groupByPhysicalKey()`, `selectGroupForBatch()`, `translateBatchWithFailover()`
+
+---
+
+### Decision 10 — Streaming Timeout Reconciliation: Idle Watchdog + Per-Batch Cap + Completeness Sweep
+
+**Date**: 2026-06-08
+**Status**: RESOLVED
+
+**Problem**: Users hit `Translation failed: TIMEOUT_BACKGROUND` on Chrome and Firefox — the first batch rendered, then mid-translation every batch vanished. Root cause: the content script armed a **fixed 60s** deadline (`requestTranslationStreaming`) that was never reset by streaming `CHUNK` progress, while the background allowed itself **100s** (`_translateInternal`). The two budgets were created in separate phases for separate goals (60s = Phase 42-46 UI spinner "Request Heartbeat"; 55s→100s = Phase 47-48 zombie-fetch killer) and never reconciled. For any multi-batch video the 60s content deadline fired first, while the background was still healthy and streaming; `processEntries` then ran `SyncEngine.stop()` + `Overlay.destroy()`, discarding all rendered partials.
+
+**Options considered**:
+1. **Just raise the 60s number** — Pros: one-line. Cons: any fixed total-time deadline eventually breaks on a longer video; doesn't fix partial-loss or the orphaned-background burn.
+2. **Reset the fixed deadline on each CHUNK** — Pros: simple. Cons: an idle reset alone doesn't bound a single over-amplified/stalled batch that emits no CHUNK for 30-90s.
+3. **Idle watchdog (CHUNK-reset) + per-batch background cap + completeness sweep + preserve partials** — Pros: deadline measures *silence* not total time; one batch can't hang the job; long videos finish; partials survive failure; honest completeness guarantee. Cons: larger, touches both content and background protocol.
+
+**Resolution**: Option 3.
+- **Watchdog (a)**: content deadline replaced by a 150s idle watchdog re-armed on `CHUNK` **and** on a per-batch `PROGRESS` heartbeat (the background emits one at every batch boundary, success or failure). Deliberately **NOT** reset on `PONG` — that would reduce it to an "is the SW process alive" check (SW death already surfaces as `PORT_DISCONNECTED` via `onDisconnect`). The heartbeat closes a gap found in review: a `CHUNK` is sent only on batch *success*, so several consecutive failing/rate-limited batches (each up to the 90s cap) would otherwise produce >150s of `CHUNK` silence and false-fire the watchdog on a job that is in fact still advancing. With the heartbeat, the watchdog measures true stall (no batch boundary crossed) while the window (150s) still sits above one batch cap (90s) + a sweep cooldown wait (15s) + margin. (Abort propagation was also fixed so the 90s cap is real: `retranslateWithVerification` now honors the abort `signal` — previously its `Providers.chat` calls ran unbounded.)
+- **Per-batch cap + scaled backstop (c)**: each batch is wrapped in a 90s `AbortController` chained to `globalAbort`; the fixed 100s job cap is replaced by `computeForceTimeoutMs` (floor 180s, +2.5s/line, ceiling 600s) so total time scales with batch count. The content watchdog now calls `port.disconnect()` on fire, so the background aborts in-flight work instead of running orphaned (~40s of wasted quota under the old design).
+- **Completeness sweep**: after the main pass, failed batches (`failedRanges`) are retried up to 3 rounds, cooldown-aware via `soonestCooldownWaitMs` (waits for the soonest key-cooldown expiry, capped at 15s, so the sweep doesn't burn rounds hammering a 429'd key). Recovered batches stream via `onBatchComplete`.
+- **Success-semantics flip (deliberate)**: success now requires `anyBatchSucceeded && !incompleteAfterSweep`. A run still missing batches after 3 sweeps returns `success:false` / `INCOMPLETE_AFTER_SWEEP`. This is stricter than the old `anyBatchSucceeded`, honoring the explicit requirement "nếu gặp vấn đề thì trả về lỗi". UX is preserved because the content side keeps the already-streamed partials (preserve-partials path) and shows a soft "Translation incomplete: X/Y" notice instead of wiping the overlay.
+- **Preserve partials (b)**: `processEntries` keeps rendered partials on any `success:false` when `SyncEngine.getTranslatedCount() > 0`; only tears down when nothing was translated.
+- **Rate-limit UX (d)**: `'cooldown'` failover status is tagged `status:429` so the UI shows a clear `[429]` row + "Rate limited — add more API keys" hint instead of a cryptic `cooldown`.
+
+**Tradeoff accepted**: a video with one permanently-failing batch (e.g. a single exhausted free-tier key) now shows an "incomplete" warning instead of silent success-with-fallback. This is intentional honesty; partials remain on screen. `BATCH_TIMEOUT_MS` (90s) and `STREAM_IDLE_TIMEOUT_MS` (120s) are tunable if real traces show legitimate batches exceeding them.
+
+**References**: `src/content/main.js` — `requestTranslationStreaming` (watchdog), `processEntries` (preserve partials); `src/background/translator.js` — `computeForceTimeoutMs`, `soonestCooldownWaitMs`, per-batch timeout + sweep in `_translateInternal`; `src/content/sync-engine.js` — `getTranslatedCount`.
