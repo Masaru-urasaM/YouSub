@@ -27,7 +27,7 @@ describe('HealthManager Module', () => {
     expect(stats.yousub_health_stats[hash].avgTime).toBe(500);
   });
 
-  test('should open circuit breaker after 3 consecutive failures', async () => {
+  test('should open circuit breaker after 10 consecutive failures', async () => {
     const provider = 'openai';
     const key = 'key2';
     
@@ -37,7 +37,10 @@ describe('HealthManager Module', () => {
     let isOpen = await HealthManager.isCircuitOpen(provider, key);
     expect(isOpen).toBe(false);
 
-    await HealthManager.report(provider, key, false); // 3rd fail
+    // 8 more failures (10 total) — the breaker opens at consecutiveFails >= 10 (health.js:65)
+    for (let i = 0; i < 8; i++) {
+      await HealthManager.report(provider, key, false);
+    }
     isOpen = await HealthManager.isCircuitOpen(provider, key);
     expect(isOpen).toBe(true);
 

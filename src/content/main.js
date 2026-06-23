@@ -295,9 +295,12 @@ async function processEntries(entries, videoId, targetLang) {
       SyncEngine.stop();
       Overlay.destroy();
 
-      let msg = `<strong>Translation failed:</strong> ${response.failureReason || 'Error'}`;
+      // Phase 66 (B1): esc() escapes any value derived from API error text before it
+      // reaches innerHTML (the Overlay uses a TrustedTypes passthrough policy).
+      // failureReason is an internal constant, but escape it too for consistency.
+      const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      let msg = `<strong>Translation failed:</strong> ${esc(response.failureReason) || 'Error'}`;
       if (response.failures && response.failures.length > 0) {
-        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const unique = [];
         const seen = new Set();
         for (const f of response.failures) {
@@ -309,8 +312,8 @@ async function processEntries(entries, videoId, targetLang) {
           if (f.message) {
             const retryMatch = f.message.match(/try again in\s+([^\s.]+(?:\.\d+s?)?)/i);
             const limitMatch = f.message.match(/Limit\s+(\d+),\s*Used\s+(\d+)/);
-            if (limitMatch) detail = `${limitMatch[2]}/${limitMatch[1]} used`;
-            if (retryMatch) detail += (detail ? ', ' : '') + `retry ${retryMatch[1]}`;
+            if (limitMatch) detail = `${esc(limitMatch[2])}/${esc(limitMatch[1])} used`;
+            if (retryMatch) detail += (detail ? ', ' : '') + `retry ${esc(retryMatch[1])}`;
             if (!detail) detail = esc(f.message.substring(0, 80));
           }
           const status = f.status ? ` [${f.status}]` : '';

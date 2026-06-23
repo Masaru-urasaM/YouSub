@@ -1,7 +1,7 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-64 complete (entering Milestone 7: Professionalization & Hardening, Phases 65-77)
+**Status**: v0.2.2 — Phases 0-66 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
 **Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
 **Last Updated**: 2026-06-23
 
@@ -41,6 +41,7 @@
 
 ### Milestone 7: Professionalization & Hardening (in progress, from 2026-06-23)
 - **Phase 65**: Commit Phase 64 + version-truth sync (0.2.1 → 0.2.2 across all surfaces). See ROADMAP.md for Phases 66-77.
+- **Phase 66**: Fix correctness blockers + hardening. B2 SyncEngine start/stop race (arrow callback + `if (!videoElement) return` guard) — real code fix; B4 was a *test* bug (circuit opens at 10, test expected 3) — test fixed, `health.js` unchanged; B3 kept 30-day cache TTL (fixed comment + test fixture); B1 `esc()` hardening on error-toast captures (test deferred → Phase 68). 198→202 pass / 17→15 fail (217 total). New: `sync-engine-race.test.js`. Kept shipped behavior (TTL 30, circuit 10) — see Decision 11.
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

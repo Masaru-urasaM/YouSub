@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 66 — Fix Correctness Blockers + Hardening (2026-06-23)
+
+Fixes the verified correctness/hygiene findings from the Milestone 7 audit. A read-only re-verification (which ran the real suite) reframed two of the four: **B4 was a test bug, not a code bug**, and the failing **B3** cache test was caused by the 7-vs-30-day mismatch, not just a stale comment. Behavioral forks (cache TTL, circuit threshold) were resolved by the developer in favor of **keeping the shipped behavior** — see `YOUSUB_DESIGN_DECISIONS.md` Decision 11.
+
+**Fixed**
+- **B2 (real blocker)** `sync-engine.js` — the `timeupdate` listener was registered inside the async `chrome.storage.local.get(...).then()` callback. A `stop()` that won the race (e.g. rapid Shorts swipe) left `videoElement` null, so the late callback threw `TypeError` on `addEventListener(null)`. Converted the callback to an arrow function (correct lexical `this`) and added an `if (!videoElement) return` guard.
+- **B4 (test bug)** `health.test.js` — `isCircuitOpen()` and the breaker logic are correct (opens at `consecutiveFails >= 10`, `Date.now() < circuitBreakerUntil`). The test wrongly expected the circuit open after **3** failures; corrected it to loop to 10 and renamed it. `health.js` unchanged.
+- **B3 (doc + test)** `cache.js` / `cache.test.js` — kept the shipped **30-day** TTL behavior, corrected the stale "7-day" comment, and updated the test fixture (8-day → 31-day) to exercise the real expiry boundary.
+- **B1 (hardening)** `main.js` — wrapped `esc()` around `failureReason`, `retryMatch[1]`, and the `limitMatch` captures before they reach the Overlay `innerHTML` (TrustedTypes passthrough). Defense-in-depth; the sinks are internal constants / tightly-constrained regex captures, not attacker-controlled.
+
+**Added**
+- `tests/unit/sync-engine-race.test.js` (2 tests) — deterministic start()/stop() race regression for B2 (late-callback-bails-out + happy-path-still-arms), using the working ESM-import pattern (not the `eval()` loader).
+
+**Deferred**
+- A dedicated `esc()` escaping test for B1 → Phase 68: `esc()` is an un-exported closure in a content script the Jest harness cannot yet load (the same ESM/`eval()` blocker that reds `sync-engine.test.js`). Tracked in `DEFERRED.md`.
+
+**Tests**: 198 → **202 passing** / 17 → **15 failing** (215 → **217 total**, 14 suites). Recovered the cache-TTL and circuit-breaker tests and added 2 race tests. The remaining 15 failures (suites `subtitle-parser`, `sync-engine` `eval`-loader, `api-manager` mock key-count) are unchanged and scheduled for Phase 68.
+
 ### Phase 65 — Commit Phase 64 + Version-Truth Sync (2026-06-23)
 
 Opens **Milestone 7 — Professionalization & Hardening**. Commits the previously-uncommitted Phase 64 work and reconciles the version label, which had drifted across six surfaces (real version is 0.2.2; docs/UI variously claimed 0.2.0 / 0.4.0).

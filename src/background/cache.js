@@ -2,7 +2,7 @@
  * cache.js — Translation Cache Module (ES Module)
  * 
  * Manages local storage of translated subtitles to minimize API calls and latency.
- * Strategy: LRU (Least Recently Used) with a 100-video limit and 7-day TTL.
+ * Strategy: LRU (Least Recently Used) with a 100-video limit and 30-day TTL.
  */
 
 import '../shared/libs/browser-polyfill.js';

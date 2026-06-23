@@ -92,9 +92,18 @@ export const SyncEngine = {
     }
 
     // Load Dual Mode preference
-    chrome.storage.local.get(['yousub_dual_mode']).then(function(res) {
+    chrome.storage.local.get(['yousub_dual_mode']).then((res) => {
+      // Phase 66 (B2): guard the start() -> stop() race. If stop() ran while this
+      // async storage read was pending, videoElement is now null — bail out so we
+      // neither throw on addEventListener(null) nor re-arm a torn-down engine.
+      // (Arrow callback also gives onTimeUpdate.bind() the correct lexical `this`.)
+      if (!videoElement) {
+        devLog('[YouSub] SyncEngine: start() canceled before storage resolved.');
+        return;
+      }
+
       isDualMode = !!res.yousub_dual_mode;
-      
+
       onTimeUpdateBound = onTimeUpdate.bind(this);
       videoElement.addEventListener('timeupdate', onTimeUpdateBound);
       isRunning = true;

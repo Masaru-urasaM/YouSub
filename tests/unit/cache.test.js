@@ -36,7 +36,7 @@ describe('Cache Module', () => {
       [key]: {
         videoId, sl, tl,
         translated,
-        timestamp: now - (8 * 24 * 60 * 60 * 1000) // 8 days ago (limit is 7)
+        timestamp: now - (31 * 24 * 60 * 60 * 1000) // 31 days ago (TTL is 30)
       }
     });
 

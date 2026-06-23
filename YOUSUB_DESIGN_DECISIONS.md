@@ -200,3 +200,24 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Tradeoff accepted**: a video with one permanently-failing batch (e.g. a single exhausted free-tier key) now shows an "incomplete" warning instead of silent success-with-fallback. This is intentional honesty; partials remain on screen. `BATCH_TIMEOUT_MS` (90s) and `STREAM_IDLE_TIMEOUT_MS` (120s) are tunable if real traces show legitimate batches exceeding them.
 
 **References**: `src/content/main.js` — `requestTranslationStreaming` (watchdog), `processEntries` (preserve partials); `src/background/translator.js` — `computeForceTimeoutMs`, `soonestCooldownWaitMs`, per-batch timeout + sweep in `_translateInternal`; `src/content/sync-engine.js` — `getTranslatedCount`.
+
+### Decision 11 — Phase 66 Behavioral Forks: Keep Shipped Cache TTL (30d) and Circuit Threshold (10)
+
+**Date**: 2026-06-23
+**Status**: RESOLVED
+
+**Problem**: The Phase 66 audit found two places where a test/comment encoded a different value than the shipped code, forcing a choice between changing live behavior or updating the test/comment:
+- **Cache TTL**: `cache.js` ships `TTL_MS = 30 days`, but the file comment and `cache.test.js` fixture (8-day-old entry expected to expire) both encoded a **7-day** intent.
+- **Circuit-breaker threshold**: `health.js:65` opens the breaker at `consecutiveFails >= 10`, but `health.test.js` expected it open after **3** failures.
+
+**Options considered**:
+1. **Keep shipped behavior, fix the doc/test** — Pros: zero change to v0.2.2 runtime behavior users already rely on; lowest risk; no re-validation of cache/backoff dynamics needed. Cons: the original (possibly intended) 7-day / 3-fail design is overridden by what shipped.
+2. **Revert to the doc/test values (7-day TTL, 3-fail threshold)** — Pros: honors the apparent original design intent. Cons: changes shipped behavior — a 7-day TTL shortens cache lifetime (more re-translation → more user API cost), and a 3-fail threshold makes backoff more aggressive (cuts keys sooner); both need browser re-validation. No evidence the shipped values are wrong.
+
+**Resolution**: Option 1 for both (developer decision, 2026-06-23).
+- **Cache TTL → keep 30 days.** Corrected the `cache.js` comment ("7-day" → "30-day") and updated the `cache.test.js` fixture (8-day → 31-day) so the test exercises the real 30-day boundary. Rationale: the 30-day value is what users run; shortening it only increases API cost with no demonstrated benefit.
+- **Circuit threshold → keep 10.** `health.js` is unchanged; only `health.test.js` was corrected (loop to 10 fails, renamed). The `>= 10` site notes it was "Relaxed from 5", i.e. a deliberate tuning choice, not drift.
+
+**Tradeoff accepted**: the older 7-day / 3-fail "intent" (if it ever was intent) is now formally superseded by the shipped 30-day / 10-fail behavior. Both remain single-constant tunables (`TTL_MS`, the `>= 10` check) if real usage data later argues for a change.
+
+**References**: `src/background/cache.js` (`TTL_MS`), `src/background/health.js:65` (circuit threshold), `tests/unit/cache.test.js`, `tests/unit/health.test.js`; Phase 66 in `ROADMAP.md` / `CHANGELOG.md`.

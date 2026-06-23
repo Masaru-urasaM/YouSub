@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phase 65 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-66 done.
 
 ---
 
@@ -73,7 +73,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | 63 | Smart Batch Distribution — Round-Robin + Model Rotation | DONE (2026-05-14) | M3 |
 | 64 | Streaming Timeout Robustness + Completeness Sweep (fixes TIMEOUT_BACKGROUND) | DONE (2026-06-08) — browser-verified, committed `95b75ae` | M3 |
 | **65** | **Commit Phase 64 + Version-Truth Sync** | DONE (2026-06-23) | M7 |
-| **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | TODO | M7 |
+| **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | DONE (2026-06-23) | M7 |
 | **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | TODO | M7 |
 | **68** | **Test recovery — fix the remaining 10 failing tests** | TODO | M7 |
 | **69** | **[EPIC] Coverage expansion 34% → ≥70%** | TODO | M7 |
@@ -111,13 +111,14 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 - **Verify**: `manifest`/`package`/`constants`/options-UI/`MEMORY` all read 0.2.2; `git status` clean.
 
 ### Phase 66 — Fix correctness blockers + hardening
-**Status**: TODO · **Risk**: Low-Med · **Group**: correctness · **Depends**: 65
-- **B2 (blocker)** `sync-engine.js`: guard `if (!videoElement) return` inside the storage `.then()`, fix the `this` binding in the callback, ensure `stop()` runs before the async path; add a regression test (rapid start/stop race).
-- **B4** `health.js`: investigate & fix `isCircuitOpen()` (suspected timestamp comparison bug) + restore/repair its test.
-- **B3** `cache.js`: reconcile the 7-day comment vs 30-day code — **proposal: keep 30 days, fix the comment** (lower risk than changing cache behavior); align the TTL test.
-- **B1** `main.js`: apply `esc()` to `failureReason` / `retryMatch[1]` / `limitMatch` captures (one-line defense-in-depth).
-- Fix + regression test live in **this same phase** per blocker, so the suite is never left in a known-bad state.
-- **Verify**: related tests green, no regressions; manual check on a normal video + a Shorts swipe for B2.
+**Status**: DONE (2026-06-23) · **Risk**: Low-Med · **Group**: correctness · **Depends**: 65
+- **B2 (real blocker — FIXED)** `sync-engine.js`: the `timeupdate` listener was armed inside the async storage `.then()`; converted that callback to an arrow function (correct lexical `this`) and added an `if (!videoElement) return` guard so a `stop()` that wins the race no longer throws `TypeError` on `addEventListener(null)` nor re-arms a torn-down engine. New regression suite `tests/unit/sync-engine-race.test.js` (2 deterministic tests).
+- **B4 (was a TEST bug, not a code bug)** `health.js`: re-verification showed `isCircuitOpen()` is correct (`Date.now() < circuitBreakerUntil`) and the breaker opens at `consecutiveFails >= 10` (health.js:65). The failing test wrongly expected it open after **3** fails — fixed `health.test.js` (loop to 10, renamed). `health.js` code **unchanged**.
+- **B3 (decision: keep 30-day behavior)** `cache.js`: the code shipped a 30-day TTL while the comment + test claimed 7. Per developer decision, kept the 30-day behavior, corrected the comment, and updated `cache.test.js` (8-day → 31-day fixture). See Decision 11.
+- **B4 threshold (decision: keep 10)**: kept the shipped `>= 10` circuit threshold (rejected reverting to 3) — preserves live backoff behavior. See Decision 11.
+- **B1 (hardening — done; test deferred)** `main.js`: wrapped `esc()` around `failureReason`, `retryMatch[1]`, and the `limitMatch` captures. The dedicated escaping test is deferred to Phase 68 (`esc()` is an un-exported closure in a content script the harness cannot yet load). See `DEFERRED.md` D1.
+- **Tests**: 198 → **202 pass** / 17 → **15 fail** (215 → **217 total**); +2 race tests, cache-TTL + circuit-breaker recovered. Remaining 15 failures are Phase 68 scope (subtitle-parser, sync-engine `eval`, api-manager mocks).
+- **Verify**: targeted suites green (16/16); full suite no regressions. Browser re-check of B2 (normal video + rapid Shorts swipe) recommended before next release.
 
 ### Phase 67 — Dev-tooling foundation
 **Status**: TODO · **Risk**: Low · **Group**: tooling
@@ -132,7 +133,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 - Fix the 6 ESM/`eval()` content-script tests (use dynamic `import()` in the test instead of `eval()` on ESM source).
 - Fix the 4 api-manager mock tests (disable model-rotation in setup, or update assertions to account for per-model key expansion).
 - (B3/B4 tests already handled in Phase 66.)
-- **Verify**: **0 failing tests** (215/215).
+- **Verify**: **0 failing tests** (217/217 — Phase 66 added 2 race tests).
 
 ### Phase 69 — [EPIC] Coverage expansion 34% → ≥70%
 **Status**: TODO · **Risk**: Low · **Group**: tests · **Depends**: 68
@@ -206,7 +207,7 @@ Split at execution:
 
 ## OPEN QUESTIONS (resolve at the relevant phase)
 - **Phase 65/71**: Is SPEC's "v0.4.0" intentional (future roadmap version) or a typo? (Do not overwrite without confirming.)
-- **Phase 66**: Cache TTL — keep 30 days (fix comment) or change to 7 days (change behavior)? Proposal: keep 30.
+- ~~**Phase 66**: Cache TTL — keep 30 days or change to 7?~~ **RESOLVED (2026-06-23)**: keep 30 days. Also kept the circuit-breaker threshold at 10 (not 3). See Decision 11.
 - **Phase 70**: Is the repo hosted on GitHub (CI worthwhile) or is a local pre-commit hook sufficient?
 - **Phase 73**: Keep `src/debug/` (documented dev tool) or remove it?
 - **Phase 77**: Is Japanese UI localization actually wanted, or only the transcript-selector resilience?
