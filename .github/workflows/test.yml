@@ -1,0 +1,42 @@
+name: CI
+
+# The repo is currently local-only (no GitHub remote). This workflow is
+# ready-to-use and activates automatically the moment the repo is pushed to a
+# GitHub remote — no extra setup required. It mirrors the local quality gates
+# (Phase 67 lint/format + Phase 69 coverage threshold) plus a build smoke test.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    name: Lint, test & package
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: '0' # skip git-hook install during `npm ci` in CI
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # matches .nvmrc
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Format check (Prettier)
+        run: npm run format:check
+
+      - name: Unit tests + coverage gate
+        run: npm test
+
+      - name: Verify extension build (Chrome + Firefox)
+        run: npm run package

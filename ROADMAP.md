@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-69 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-70 done.
 
 ---
 
@@ -77,7 +77,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | DONE (2026-06-24) | M7 |
 | **68** | **Test recovery — fix the remaining 15 failing tests** | DONE (2026-06-24) | M7 |
 | **69** | **[EPIC] Coverage expansion (23% → 40% honest; 70% = M7 exit)** | DONE (2026-06-24) | M7 |
-| **70** | **CI pipeline (GitHub Actions) — optional (private repo)** | TODO | M7 |
+| **70** | **CI pipeline (GitHub Actions) — ready-to-use, dormant until pushed** | DONE (2026-06-24) | M7 |
 | **71** | **SPEC reconciliation + README + LICENSE** | TODO | M7 |
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | TODO | M7 |
 | **73** | **Repo hygiene cleanup** | TODO | M7 |
@@ -149,12 +149,12 @@ Split into reviewable sub-phases (Rule 5):
 - **Deferred to their refactor phases**: deep `translator.js` orchestration coverage → Phase 75; UI-glue (`tab-translation`/`popup`/`options`) + entries → Phase 76.
 - **Verify**: 420/420 green, `npm test` exits 0 with the threshold gate, `npm run lint` + `prettier --check` clean.
 
-### Phase 70 — CI pipeline (optional)
-**Status**: TODO · **Risk**: Low · **Group**: tooling · **Depends**: 67-69
-- `.github/workflows/test.yml`: run test + lint + coverage gate on PR; verify `npm run package`.
-- Consider renaming default branch `master → main`.
-- *Optional because the repo is private*; a local pre-commit hook (Phase 67) may suffice. Confirm whether the repo is hosted on GitHub.
-- **Verify**: workflow green.
+### Phase 70 — CI pipeline (ready-to-use)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tooling · **Depends**: 67-69
+- **Decision (developer)**: repo is currently local-only (no GitHub remote, kept private by design). Chose to **write the workflow now, dormant** — it activates automatically the moment the repo is pushed to GitHub. Did **not** rename `master → main` (deferred to if/when a remote is added).
+- Created `.github/workflows/test.yml`: on push/PR to main|master → `npm ci` → `npm run lint` → `npm run format:check` → `npm test` (with the Phase 69 coverage-threshold gate) → `npm run package` (Chrome + Firefox build smoke test). Node 22 (matches `.nvmrc`), `HUSKY=0` to skip hook install in CI.
+- Every step was verified locally before commit: lint 0, format:check 0, test exit 0 (420/420 + gate), package exit 0 (both ZIPs, VERIFY OK). The workflow YAML is Prettier-clean so it won't fail its own `format:check` step.
+- **Verify**: all gate commands pass locally; workflow will run green once a GitHub remote exists.
 
 ### Phase 71 — SPEC reconciliation + README + LICENSE
 **Status**: TODO · **Risk**: Low · **Group**: docs
@@ -202,20 +202,22 @@ Split at execution:
 - **76c** — Hygiene: `chrome.* → browser.*` consistency, HTML-vs-JS default-value drift, stale comments, inline-style → class, pull the version badge from constants. Wire or remove the dead GitHub/Issue links (private repo → clear placeholder or remove).
 - **Verify**: manual UI pass.
 
-### Phase 77 — Transcript-button locale resilience (+ optional Japanese UI)
+### Phase 77 — Transcript-button locale resilience + Japanese UI i18n
 **Status**: TODO · **Risk**: Med · **Group**: feature · **Depends**: 76
-- **Committed work**: make transcript-button detection locale-resilient (`aria-label` containing "transcript" + a locale dictionary EN/VI/JA + `html[lang]`), so non-English YouTube uses the fast DOM-scrape path instead of the slow Innertube fallback.
-- **Optional (await developer confirmation)**: localize the UI to Japanese via `chrome.i18n`. NOTE: the global rule "English + Japanese" governs the language of **code/comments**, not necessarily product localization — confirm scope before committing.
-- **Verify**: non-English YouTube uses the fast path; if i18n is built, language switch works.
+- **Committed work (both confirmed by developer 2026-06-24)**:
+  1. Make transcript-button detection locale-resilient (`aria-label` containing "transcript" + a locale dictionary EN/VI/JA + `html[lang]`), so non-English YouTube uses the fast DOM-scrape path instead of the slow Innertube fallback.
+  2. Localize the UI to Japanese via `chrome.i18n`: extract all UI strings (popup + options + overlay status) into `_locales/en/messages.json` + `_locales/ja/messages.json`, set `default_locale` in the manifest, and wire `chrome.i18n.getMessage` (or a small helper) across the HTML/JS. (The global rule "English + Japanese" governs code/comments; this adds product-level JA localization on top.)
+- Likely an [EPIC] — split at execution (77a selector resilience, 77b i18n extraction/wiring) given the string-sweep scope.
+- **Verify**: non-English YouTube uses the fast path; UI renders correctly in both `en` and `ja`.
 
 ---
 
 ## OPEN QUESTIONS (resolve at the relevant phase)
-- **Phase 65/71**: Is SPEC's "v0.4.0" intentional (future roadmap version) or a typo? (Do not overwrite without confirming.)
+- ~~**Phase 65/71**: Is SPEC's "v0.4.0" intentional or a typo?~~ **RESOLVED**: the SPEC header was already corrected to v0.2.2 in Phase 65; the only remaining "v0.4.0" is a historical row in the SPEC's own revision-history table (left as history). No action needed.
 - ~~**Phase 66**: Cache TTL — keep 30 days or change to 7?~~ **RESOLVED (2026-06-23)**: keep 30 days. Also kept the circuit-breaker threshold at 10 (not 3). See Decision 11.
-- **Phase 70**: Is the repo hosted on GitHub (CI worthwhile) or is a local pre-commit hook sufficient?
-- **Phase 73**: Keep `src/debug/` (documented dev tool) or remove it?
-- **Phase 77**: Is Japanese UI localization actually wanted, or only the transcript-selector resilience?
+- ~~**Phase 70**: Is the repo hosted on GitHub (CI worthwhile)?~~ **RESOLVED (2026-06-24)**: repo is local-only; wrote a ready-to-use workflow that stays dormant until a GitHub remote is added. No branch rename.
+- ~~**Phase 73**: Keep `src/debug/` or remove it?~~ **RESOLVED**: keep + document — it's a shipped advanced-diagnostics panel wired via `popup.js` (`open-debug-btn` → `src/debug/debug.html`); removing it would break the popup.
+- ~~**Phase 77**: Is Japanese UI localization wanted, or only selector resilience?~~ **RESOLVED (2026-06-24)**: do BOTH — transcript-selector locale resilience **and** full Japanese UI i18n via `chrome.i18n`.
 
 ---
 

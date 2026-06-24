@@ -1,7 +1,7 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-69 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
+**Status**: v0.2.2 — Phases 0-70 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
 **Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
 **Last Updated**: 2026-06-24
 
@@ -45,6 +45,7 @@
 - **Phase 67**: Dev-tooling foundation (67a-d). ESLint 9 flat config + Prettier + `.editorconfig`/`.nvmrc`; `package.json` metadata (license AGPL-3.0-only, removed dangling `main`); lint cleaned to **0 problems** (dead-code removal, behavior-preserved, −176 lines); repo-wide Prettier format (52 files, commit `50462db`, + `.git-blame-ignore-revs`); husky + lint-staged pre-commit (lint-staged only, not `npm test`). Tests 202/15 unchanged. New deps: eslint, @eslint/js, globals, prettier, husky, lint-staged.
 - **Phase 68**: Test recovery — **test-only, no production code touched**. Fixed all 15 red tests across 3 suites: `subtitle-parser`(6) + `sync-engine`(5) swapped `eval(scriptContent)` → direct ESM `import` (sync-engine needs `jest.unstable_mockModule('overlay.js')` since it calls the imported binding); `api-manager`(4) set `yousub_model_rotation:false` to isolate failover/circuit/sort. Updated stale assertions to shipped behavior (renderSubtitles 4th `isTranslated` arg; `decodeHtml` strips inline tags; hide-on-gap needs prior valid index). Added 1 rotation-on expansion test. **218/218 pass, 0 fail** (was 202/15). DEFERRED D1 (`esc()` test) re-pointed to Phase 75 (main.js entry has top-level side effects; needs `esc()` extracted to utils first).
 - **Phase 69** (Coverage, [EPIC]): honest denominator (`src/**` minus vendored polyfill) baseline **23%**. Decision 12 (developer-approved): "70% global" reframed as Milestone-7 exit (reached across 69/75/76), not one phase. Did the honest winnable work via a 4-agent parallel workflow (each gated green + lint/prettier, no `src/` edits): providers.js 0.35%→97%, overlay.js 6%→61%, translator pure-helpers (via expanded `_internals`) 11%→24%, page-detector/trusted-types/utils 100%, subtitle-extractor 90%, video-binder 88%. **+202 tests (218→420)**, **global 23%→40%**. Added `collectCoverageFrom` + `coverageThreshold` ratchet (38/34/36) to jest.config; added storage-level `chrome.storage.onChanged` to the mock. DEFERRED D3 (providers cosmetic timeout msg). translator deep coverage→75, UI glue→76.
+- **Phase 70** (CI): created `.github/workflows/test.yml` (push/PR → npm ci → lint → format:check → test+coverage-gate → package). Repo is local-only (no remote) → workflow is **dormant until pushed to GitHub**; did NOT rename master→main. All steps verified locally (lint/format/test/package all exit 0). Resolved open questions: v0.4.0 (already fixed in P65, only a historical SPEC revision-row remains), src/debug (keep — shipped, wired via popup.js), Phase 77 (developer wants BOTH selector resilience AND full Japanese UI i18n via chrome.i18n).
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

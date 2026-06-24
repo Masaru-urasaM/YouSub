@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 70 — CI Pipeline (ready-to-use GitHub Actions) (2026-06-24)
+
+Adds a CI workflow that mirrors the local quality gates so they also run on GitHub.
+
+**Added**
+- `.github/workflows/test.yml` — on push/PR to `main`|`master`: `npm ci` → `npm run lint` → `npm run format:check` → `npm test` (with the Phase 69 coverage-threshold gate) → `npm run package` (Chrome + Firefox build smoke test). Node 22 (matches `.nvmrc`), `HUSKY=0` to skip hook install in CI.
+
+**Notes**
+- Decision (developer): the repo is local-only (no GitHub remote, private by design). The workflow is written **dormant** — it activates automatically once the repo is pushed to GitHub. The default branch was **not** renamed (`master` kept); revisit `master → main` if/when a remote is added.
+- Every gate command was verified locally before commit: lint 0, format:check 0, `npm test` exit 0 (420/420 + threshold), `npm run package` exit 0 (both ZIPs, VERIFY OK). The YAML is Prettier-clean so it won't fail its own `format:check` step.
+
 ### Phase 69 — [EPIC] Coverage Expansion: Honest 23% → 40% (+202 tests) (2026-06-24)
 
 Raises real test coverage with high-value, behavior-meaningful tests. Strategy is **Decision 12** (developer-approved): an honest denominator (`src/**` minus the vendored polyfill) measured a **23%** baseline; "≥70% global" is reframed as a **Milestone-7 exit** target reached across Phases 69/75/76, not a single-phase deliverable. Phase 69 does the honest winnable work now and ratchets the gate at the achieved level.
