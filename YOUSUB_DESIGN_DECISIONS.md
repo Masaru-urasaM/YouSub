@@ -221,3 +221,21 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Tradeoff accepted**: the older 7-day / 3-fail "intent" (if it ever was intent) is now formally superseded by the shipped 30-day / 10-fail behavior. Both remain single-constant tunables (`TTL_MS`, the `>= 10` check) if real usage data later argues for a change.
 
 **References**: `src/background/cache.js` (`TTL_MS`), `src/background/health.js:65` (circuit threshold), `tests/unit/cache.test.js`, `tests/unit/health.test.js`; Phase 66 in `ROADMAP.md` / `CHANGELOG.md`.
+
+### Decision 12 — Phase 69 Coverage Strategy: Honest Denominator + Achieved-Level Ratchet (70% = Milestone-7 Exit, not Phase 69)
+
+**Date**: 2026-06-24
+**Status**: RESOLVED (developer-approved)
+
+**Problem**: ROADMAP Phase 69 targets "≥70% global coverage." With an honest denominator (all `src/**` minus the vendored `browser-polyfill.js`) the measured baseline was **23%**. Reaching 70% in one phase is structurally impossible without either (a) the Phase 75 `translator.js` refactor (2052 lines at 12% — ~¼ of testable LOC), (b) grinding low-value DOM-glue tests for `tab-translation.js` (818 L), `popup.js`, `options/*` and the entry scripts — all slated for the Phase 76 UI rework and likely to churn, or (c) gaming the metric by excluding orchestration/UI from measurement.
+
+**Options considered**:
+1. **Realistic ratchet** — write honest high-value tests now (providers, overlay, translator pure helpers, light content modules), set `coverageThreshold` at the achieved number, and complete the big modules with their own refactor phases (translator → 75, UI → 76). 70% becomes the Milestone-7 *exit* goal. Pros: every test written is durable and meaningful; no churn; no gaming. Cons: Phase 69 lands ~40% global, not 70%.
+2. **Force 70% now** — also test UI glue + entries via jsdom. Pros: hits the number this phase. Cons: large effort on brittle, low-value DOM-glue tests that Phase 76 will likely rewrite; effectively wasted work.
+3. **Scope the gate to "core logic"** — measure everything but gate only background/content logic modules. Pros: 70%-on-core achievable now. Cons: a scoped gate can read as hiding the UI/entry gap; needs careful documentation to stay honest.
+
+**Resolution**: Option 1 (developer choice, 2026-06-24; advisor concurred). Coverage measured over `src/**` minus vendored libs only (no orchestration/UI exclusions — "hard to test" ≠ "exclude from the metric"). Phase 69 raised global **23% → 39.9%** with +202 honest tests (providers 97%, overlay 61%, page-detector/trusted-types/utils 100%, subtitle-extractor 90%, video-binder 88%, translator helpers 11%→24%). `coverageThreshold` set a hair below the achieved global (lines/stmts 38, branches 34, funcs 36) so it ratchets without blocking minor changes. Deep `translator.js` coverage deferred to Phase 75 (test the extracted modules, not the soon-to-be-rewritten orchestration); UI-glue coverage to Phase 76.
+
+**Tradeoff accepted**: "≥70% global" is reinterpreted as a Milestone-7 exit criterion reached incrementally across Phases 69/75/76, not a Phase-69 deliverable. The threshold must be raised (never lowered) as those phases land.
+
+**References**: `jest.config.cjs` (`collectCoverageFrom`, `coverageThreshold`); `src/background/translator.js` (`_internals`); Phase 69 in `ROADMAP.md` / `CHANGELOG.md`; the 8 new `tests/unit/*.test.js` files.

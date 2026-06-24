@@ -78,6 +78,12 @@ global.chrome = {
         removeListener: jest.fn(),
       },
     },
+    // WebExtensions also exposes change events at the storage level
+    // (chrome.storage.onChanged) — src/content/overlay.js subscribes here.
+    onChanged: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+    },
   },
   runtime: {
     id: 'mock-extension-id',

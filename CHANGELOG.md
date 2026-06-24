@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 69 — [EPIC] Coverage Expansion: Honest 23% → 40% (+202 tests) (2026-06-24)
+
+Raises real test coverage with high-value, behavior-meaningful tests. Strategy is **Decision 12** (developer-approved): an honest denominator (`src/**` minus the vendored polyfill) measured a **23%** baseline; "≥70% global" is reframed as a **Milestone-7 exit** target reached across Phases 69/75/76, not a single-phase deliverable. Phase 69 does the honest winnable work now and ratchets the gate at the achieved level.
+
+**Added — 8 new test files, +202 tests (218 → 420 total, all green)**
+- `providers.test.js` (50) — `providers.js` **0.35% → 97%** lines. Mocks `global.fetch`; exercises `chat`/`chatStream` for openai/gemini/anthropic styles (+ auto-detect/abort/timeout/signal), `handleResponse` status mapping (401/403/404/429/500, retry-after), SSE `handleStreamResponse`, `fetchQuota`, `testApiKey`.
+- `overlay.test.js` (30) — `overlay.js` **6% → 61%**. jsdom DOM assertions for lazy container creation, `renderSubtitles` (single/dual/translated/loading), show/hide, `showStatus`, `applyStyles`/`refreshStyles`, Phase 62 custom-layout load + reset, `destroy`.
+- `translator-helpers.test.js` (59) — `translator.js` **11% → 24%** via the (expanded) `_internals` pure helpers: `formatTimestamp`, `normalizeTs`, prompt builders, `getProviderJsonConfig`, `parseJsonResponse` (object/array/markdown/mismatch/garbage), `cleanResponse`, `partitionKeysByProvider`, `splitForGroqPayload`, `groupByPhysicalKey`, `sortGroupsByHealth`, `selectGroupForBatch`.
+- `page-detector.test.js` (14) → **100%**; `subtitle-extractor.test.js` (14) → **90%**; `video-binder.test.js` (14) → **88%**; `trusted-types.test.js` (6) → **100%**; `utils.test.js` (15) → **100%**.
+
+**Changed (non-test, behavior-preserving)**
+- `jest.config.cjs`: added `collectCoverageFrom: ['src/**/*.js', '!src/shared/libs/**']` (honest denominator) and a `coverageThreshold` global gate set a hair below the achieved numbers (statements/lines 38, branches 34, functions 36) — ratchets, never lowered.
+- `src/background/translator.js`: expanded `export const _internals` with 14 already-existing pure helpers so they can be unit-tested. **No logic change** (lint clean, the 55 existing translator tests still pass).
+- `tests/mocks/chrome.js`: added `chrome.storage.onChanged` at the storage level (matches the real WebExtensions API that `overlay.js` subscribes to; previously only nested under `storage.local` — a latent footgun surfaced by the overlay tests).
+
+**Notes / follow-ups**
+- Global lines **23.27% → 39.91%**; `npm test` now enforces the threshold (exit 0).
+- Deferred to their refactor phases: deep `translator.js` orchestration coverage → **Phase 75** (test the extracted modules, not the soon-to-be-rewritten `_translateInternal`/`tryKeyForBatch`); UI glue (`tab-translation` 818 L, `popup`, `options`) + entries → **Phase 76**.
+- DEFERRED **D3**: `Providers.chat()` default `timeoutMs` is 15s but its timeout message says "(30s)" — cosmetic; plus two effectively-dead defensive branches. No `src/` fix in this test-only phase.
+
+**Tests**: 218 → **420** (+202); 0 failing; coverage 23% → **40%** global.
+
 ### Phase 68 — Test Recovery: All 15 Failing Tests Green (2026-06-24)
 
 Recovers the 3 remaining red suites with **test-only changes** — no production code touched. Suite goes from **202 passing / 15 failing (217)** to **218 passing / 0 failing (218)** (+1 new rotation test). `npm run lint` and `prettier --check` clean on all three rewritten files.

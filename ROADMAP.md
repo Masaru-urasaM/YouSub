@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-68 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-69 done.
 
 ---
 
@@ -76,7 +76,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | DONE (2026-06-23) | M7 |
 | **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | DONE (2026-06-24) | M7 |
 | **68** | **Test recovery — fix the remaining 15 failing tests** | DONE (2026-06-24) | M7 |
-| **69** | **[EPIC] Coverage expansion 34% → ≥70%** | TODO | M7 |
+| **69** | **[EPIC] Coverage expansion (23% → 40% honest; 70% = M7 exit)** | DONE (2026-06-24) | M7 |
 | **70** | **CI pipeline (GitHub Actions) — optional (private repo)** | TODO | M7 |
 | **71** | **SPEC reconciliation + README + LICENSE** | TODO | M7 |
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | TODO | M7 |
@@ -138,14 +138,16 @@ Split into reviewable sub-phases (Rule 5):
 - **D1** (`esc()` test): eval blocker cleared but `esc()` is an un-exported closure in the side-effectful `main.js` entry → re-pointed to Phase 75 (extract to `utils.js`). See `DEFERRED.md`.
 - **Verify**: **0 failing tests — 218/218** (217 + 1 new rotation test); `npm run lint` + `prettier --check` clean.
 
-### Phase 69 — [EPIC] Coverage expansion 34% → ≥70%
-**Status**: TODO · **Risk**: Low · **Group**: tests · **Depends**: 68
-Split at execution:
-- **69a** — Export `translator.js` pure functions via `_internals`; unit-test `computeForceTimeoutMs`, `soonestCooldownWaitMs`, `splitForGroqPayload`.
-- **69b** — Test the Phase 64 port/watchdog protocol (mock `chrome.runtime.connect`) + `sync-engine`.
-- **69c** — Cover `providers.js` (currently 0.35%) + `api-manager`.
-- Add `coverageThreshold` to `jest.config.cjs`, raised gradually to avoid an abrupt gate.
-- **Verify**: ≥70% global, ≥80% on critical paths.
+### Phase 69 — [EPIC] Coverage expansion (honest 23% → 40%; 70% reframed as M7 exit)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tests · **Depends**: 68
+- **Strategy decision (Decision 12, developer-approved)**: an honest coverage denominator (`src/**` minus vendored `browser-polyfill.js`) measured a **23%** baseline. "≥70% global" is not achievable in one phase without the Phase 75 translator refactor or low-value UI-glue grinding → reinterpreted as a **Milestone-7 exit** target reached incrementally (69 now, 75 translator, 76 UI). Chose the "realistic ratchet": write honest high-value tests now, gate at the achieved level.
+- **Done as one coordinated coverage pass** (folded the planned 69a/b/c into a 4-agent parallel workflow, each agent gated to green + lint/prettier-clean, no `src/` production edits):
+  - `providers.js` 0.35% → **97%** (50 tests, mock `fetch`); `overlay.js` 6% → **61%** (30 tests, jsdom); translator **pure helpers** via expanded `_internals` (59 tests, translator.js 11% → 24%); `page-detector` **100%**, `subtitle-extractor` **90%**, `video-binder` **88%**, `trusted-types` **100%**, `utils` **100%** (63 tests).
+  - **+202 tests** (218 → **420**); **global 23% → 39.9%** lines; `coverageThreshold` set a hair below achieved (lines/stmts 38, branches 34, funcs 36) — ratchets, never lower.
+- Config: `jest.config.cjs` gained `collectCoverageFrom` + `coverageThreshold`; `translator.js` `_internals` expanded (behavior-preserving); `tests/mocks/chrome.js` gained storage-level `onChanged` (real-API shape; was a latent footgun).
+- Findings → DEFERRED **D3** (providers `chat()` "30s" message vs 15s default; two dead defensive branches).
+- **Deferred to their refactor phases**: deep `translator.js` orchestration coverage → Phase 75; UI-glue (`tab-translation`/`popup`/`options`) + entries → Phase 76.
+- **Verify**: 420/420 green, `npm test` exits 0 with the threshold gate, `npm run lint` + `prettier --check` clean.
 
 ### Phase 70 — CI pipeline (optional)
 **Status**: TODO · **Risk**: Low · **Group**: tooling · **Depends**: 67-69

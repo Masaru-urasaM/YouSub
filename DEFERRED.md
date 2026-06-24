@@ -21,3 +21,11 @@
 **Why**: Phase 67b removed a never-called `loadAppearance()` from `src/options/tab-appearance.js` (confirmed dead — no references repo-wide). Its existence suggests the Appearance form was meant to populate its inputs from `yousub_appearance` storage on open, but it was never wired. Current behavior: the form shows the HTML default values; the actual subtitle overlay still reads saved appearance from storage, so the end-user appearance works — only the settings *form* may not reflect saved values.
 **Dependency**: none (independent UI fix).
 **Revisit when**: Phase 76 (UI/UX polish + a11y). Re-add appearance-form population on tab open (read `yousub_appearance`, set inputs, call `updatePreview()`), or confirm it is intentional.
+
+### D3 — `Providers.chat()` timeout-message says "30s" but default is 15s
+
+**Deferred**: 2026-06-24 (Phase 69)
+**Effort**: Small
+**Why**: Found while unit-testing `providers.js`. `Providers.chat()` (src/background/providers.js:336-337) defaults `timeoutMs` to **15000** but the default `timeoutMsg` reads "Request timed out (30s)". On a real 15s abort the user-facing message would wrongly say "(30s)". Cosmetic only — no functional impact; not fixed in Phase 69 (test-only phase, no `src/` changes).
+**Dependency**: none.
+**Revisit when**: Phase 75 (translator/providers touch-up) — align the message with the actual default, or make the message derive from `timeoutMs`. Also note two effectively-dead defensive branches confirmed during testing (`chat()` "Unknown API style" return, `fetchQuota()` trailing `return null`) — harmless, reachable only if the provider registry loses a valid `apiStyle`/endpoint.
