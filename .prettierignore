@@ -1,0 +1,10 @@
+node_modules/
+coverage/
+dist/
+build/
+*.zip
+package-lock.json
+# Scratch/junk scheduled for removal in Phase 73.
+tmp/
+# Bundled third-party polyfill — keep upstream formatting.
+src/shared/libs/

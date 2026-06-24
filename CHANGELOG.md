@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 67a — Dev-Tooling Foundation: Config + Metadata + LICENSE (2026-06-24)
+
+First slice of Phase 67, split (Rule 5) into **67a** config → **67b** lint-triage → **67c** repo-wide Prettier format → **67d** pre-commit hook. Adds lint/format/editor tooling and project metadata with **no code or formatting changes**.
+
+**Added**
+- ESLint 9 flat config (`eslint.config.js`) — `@eslint/js` recommended + per-area globals (src → browser/serviceworker/webextensions, scripts → node, tests → node/jest/browser); ignores `node_modules`, `coverage`, `dist`, the bundled polyfill, and `tmp/` junk. `no-unused-vars` set to `warn` for the Milestone 7 triage.
+- Prettier config (`.prettierrc`: `singleQuote`, `printWidth:100`, `arrowParens:always`, `endOfLine:auto`) + `.prettierignore`; `.editorconfig`; `.nvmrc` (Node 22).
+- `LICENSE` — full official GNU AGPL-3.0 text (34,523 bytes, fetched from gnu.org). Developer chose AGPLv3.
+- Dev deps: `eslint`, `@eslint/js`, `globals`, `prettier`. New scripts: `lint`, `lint:fix`, `format`, `format:check`.
+
+**Changed**
+- `package.json` metadata: filled `description`, `author` (Masaru), `keywords`, `engines` (`node >=20`); `license` ISC → `AGPL-3.0-only` + `private: true`; **removed** the dangling `main: index.js` (no such file; meaningless for a browser extension).
+
+**Baseline captured (no fixes applied — drives 67b/67c)**
+- ESLint: **89 problems (34 errors, 55 warnings)**. Top: `no-unused-vars` (55, warn), `no-undef` (mostly missing-global config — bare `console`/`YouSub` in a file the globs didn't cover → fixable via config in 67b), `no-empty` (14, mostly intentional empty catches), plus a few genuine ones (`no-redeclare`, `no-useless-escape`, `no-irregular-whitespace`).
+- Prettier: **63 files** would reformat → isolated commit in 67c (markdown scoping decided at 67c).
+
+**Tests**: unchanged — 202 passing / 15 pre-existing failures (217 total). Tooling does not touch runtime or test logic.
+
 ### Phase 66 — Fix Correctness Blockers + Hardening (2026-06-23)
 
 Fixes the verified correctness/hygiene findings from the Milestone 7 audit. A read-only re-verification (which ran the real suite) reframed two of the four: **B4 was a test bug, not a code bug**, and the failing **B3** cache test was caused by the 7-vs-30-day mismatch, not just a stale comment. Behavioral forks (cache TTL, circuit threshold) were resolved by the developer in favor of **keeping the shipped behavior** — see `YOUSUB_DESIGN_DECISIONS.md` Decision 11.

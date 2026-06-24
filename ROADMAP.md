@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-66 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-66 done, 67 in progress (67a done).
 
 ---
 
@@ -74,7 +74,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | 64 | Streaming Timeout Robustness + Completeness Sweep (fixes TIMEOUT_BACKGROUND) | DONE (2026-06-08) — browser-verified, committed `95b75ae` | M3 |
 | **65** | **Commit Phase 64 + Version-Truth Sync** | DONE (2026-06-23) | M7 |
 | **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | DONE (2026-06-23) | M7 |
-| **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | TODO | M7 |
+| **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | IN PROGRESS (67a done 2026-06-24) | M7 |
 | **68** | **Test recovery — fix the remaining 10 failing tests** | TODO | M7 |
 | **69** | **[EPIC] Coverage expansion 34% → ≥70%** | TODO | M7 |
 | **70** | **CI pipeline (GitHub Actions) — optional (private repo)** | TODO | M7 |
@@ -121,12 +121,13 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 - **Verify**: targeted suites green (16/16); full suite no regressions. Browser re-check of B2 (normal video + rapid Shorts swipe) recommended before next release.
 
 ### Phase 67 — Dev-tooling foundation
-**Status**: TODO · **Risk**: Low · **Group**: tooling
-- Add ESLint (`eslint:recommended`, ES2020, envs: webextensions + node + jest), Prettier, `.editorconfig`, `.nvmrc`, `package.json` `engines`, and `lint`/`format` scripts.
-- Fill `package.json` metadata (author, description, repository), fix `"main": "index.js"` (remove or correct), create a `LICENSE` file (ISC to match package.json, or developer's choice).
-- Add a pre-commit hook (husky + lint-staged) running lint + format on staged files.
-- Run `prettier --write` once as a **separate format-only commit** so the functional diff stays reviewable.
-- **Verify**: `npm run lint` clean (after fixing flagged issues), `npm test` still green.
+**Status**: IN PROGRESS (67a done 2026-06-24) · **Risk**: Low · **Group**: tooling
+Split into reviewable sub-phases (Rule 5):
+- **67a (DONE 2026-06-24)** — ESLint 9 flat config + Prettier + `.editorconfig` + `.nvmrc` (22) + `package.json` metadata/scripts/`engines`; removed dangling `main`; `LICENSE` = **AGPLv3** (developer choice), `license` field ISC → `AGPL-3.0-only` + `private:true`. No code/format changes. Baseline: ESLint **89** (34 err/55 warn), Prettier **63** files.
+- **67b (TODO)** — ESLint triage: fix config-level `no-undef` (globals coverage) + the few real errors (`no-redeclare`, `no-useless-escape`, `no-irregular-whitespace`); decide `no-empty` (likely `allowEmptyCatch`) and `no-control-regex` (likely inline-disable in sanitizers). Target: **0 errors**; warnings tracked.
+- **67c (TODO)** — repo-wide `prettier --write` as one **format-only** commit (developer opted in). Decide markdown inclusion (recommend excluding the hand-crafted `*.md` specs/roadmap to protect tables/wording).
+- **67d (TODO)** — pre-commit hook (husky + lint-staged) running `eslint --fix` + prettier on staged files.
+- **Verify**: `npm run lint` 0 errors after 67b; `npm test` green throughout.
 
 ### Phase 68 — Test recovery (remaining 10 failures)
 **Status**: TODO · **Risk**: Low · **Group**: tests · **Depends**: 67

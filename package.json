@@ -1,26 +1,46 @@
 {
   "name": "yousub",
   "version": "0.2.2",
+  "description": "Real-time AI subtitle translator for YouTube (BYOK, multi-provider LLM)",
   "type": "module",
-  "main": "index.js",
+  "private": true,
+  "author": "Masaru",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "youtube",
+    "subtitles",
+    "translation",
+    "chrome-extension",
+    "firefox-extension",
+    "manifest-v3",
+    "llm",
+    "byok"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "directories": {
     "test": "tests"
   },
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "package": "node scripts/package.js all",
     "package:chrome": "node scripts/package.js chrome",
     "package:firefox": "node scripts/package.js firefox"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@jest/globals": "^30.3.0",
     "adm-zip": "^0.5.17",
+    "eslint": "^9.39.4",
+    "globals": "^17.7.0",
     "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0"
+    "jest-environment-jsdom": "^30.3.0",
+    "prettier": "^3.8.4"
   },
   "dependencies": {
     "jimp": "^1.6.0",
