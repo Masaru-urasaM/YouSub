@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 67d — Pre-Commit Hook (husky + lint-staged) (2026-06-24)
+
+Adds a pre-commit hook so future commits stay lint-clean and formatted. **Completes Phase 67.**
+
+**Added**
+- `husky` v9 + `lint-staged` (dev deps); `prepare: "husky"` script; `.husky/pre-commit` runs `npx lint-staged`.
+- `lint-staged` config: staged `*.{js,cjs,mjs}` → `eslint --fix` + `prettier --write`; staged `*.{json,css,html}` → `prettier --write`. Markdown is intentionally excluded (consistent with 67c).
+
+**Notes**
+- The hook runs **lint-staged only**, not `npm test` (husky's default) — the suite has 15 known pre-existing failures (Phase 68), so a test hook would block every commit. Full-suite gating belongs in CI (Phase 70).
+- `core.hooksPath` = `.husky/_` (auto-gitignored). On a fresh clone, `npm install` re-runs `prepare` to reinstate the hook.
+
 ### Phase 67c — Repo-Wide Prettier Format (2026-06-24)
 
 One-time mechanical `prettier --write` across all code (js/json/css/html); the hand-crafted `*.md` governance docs + `LICENSE` are excluded (`.prettierignore`) to protect their tables/wording. **52 files reformatted** (commit `50462db`). **No logic change** — gated by `eslint .`=0, `prettier --check`=clean, tests 202/15 unchanged. Added `.git-blame-ignore-revs` (configure via `git config blame.ignoreRevsFile .git-blame-ignore-revs`) so the reformat doesn't pollute `git blame`.
