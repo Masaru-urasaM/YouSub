@@ -23,8 +23,6 @@ const MAX_LINES_PER_BATCH = 50;
 // Phase 54.1: Re-enable retry for transient failures (timeouts, 5xx)
 const RETRY_ATTEMPTS = 2;
 const RETRY_DELAYS_MS = [1000, 3000];
-const RATE_LIMIT_MAX_RETRIES = 0;
-const RATE_LIMIT_BASE_DELAY_MS = 0;
 const INITIAL_BATCH_DELAY_MS = 50;
 const ELEVATED_BATCH_DELAY_MS = 3000;
 
@@ -95,7 +93,9 @@ function wait(ms) {
 
 const NON_LATIN_TARGETS = new Set(['zh', 'ja', 'ko', 'ar', 'hi', 'th', 'ru', 'uk', 'el', 'he', 'bn']);
 
+// eslint-disable-next-line no-misleading-character-class, no-irregular-whitespace -- intentional: matches foreign-script (incl. combining/ideographic-space) chars to detect contamination
 const FOREIGN_SCRIPT_DETECT = /[Ѐ-ԯ֐-ۿऀ-৿฀-๿　-〿぀-ゟ゠-ヿ㐀-䶿一-鿿가-힯豈-﫿]/;
+// eslint-disable-next-line no-misleading-character-class, no-irregular-whitespace -- intentional: strips foreign-script (incl. combining/ideographic-space) chars from text
 const FOREIGN_SCRIPT_STRIP = /[Ѐ-ԯ֐-ۿऀ-৿฀-๿　-〿぀-ゟ゠-ヿ㐀-䶿一-鿿가-힯豈-﫿]/g;
 
 function detectForeignScriptLines(lines, tgt) {
@@ -288,15 +288,6 @@ function getCooldownKey(apiKey, model) {
   return apiKey + '::' + (model || 'default');
 }
 
-function getFirstAvailableKey(activeKeys) {
-  const now = Date.now();
-  for (const key of activeKeys) {
-    const cooldownUntil = keyCooldowns.get(getCooldownKey(key.apiKey, key.model)) || 0;
-    if (now >= cooldownUntil) return key;
-  }
-  return activeKeys[0];
-}
-
 function groupByPhysicalKey(activeKeys) {
   const groups = [];
   const groupMap = new Map();
@@ -355,7 +346,7 @@ function formatTimestamp(ms) {
  */
 function normalizeTs(tsString) {
   if (!tsString) return '';
-  const parts = tsString.replace(/[\[\]]/g, '').split(':');
+  const parts = tsString.replace(/[[\]]/g, '').split(':');
   if (parts.length !== 3) return tsString;
   const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1], 10);
@@ -426,7 +417,6 @@ async function _translateInternal(segments, src, tgt, tabId, onBatchComplete, ex
 
         const finalResults = new Array(segments.length).fill(null);
         let globalHadFallback = false;
-        const allFailuresMap = new Map();
 
         // Accumulated stats
         const stats = {
@@ -807,10 +797,10 @@ function parseJsonResponse(responseText, segments) {
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (e) {
+  } catch {
     const jsonMatch = cleaned.match(/\{[\s\S]*"lines"\s*:\s*\[[\s\S]*\]\s*\}/);
     if (jsonMatch) {
-      try { parsed = JSON.parse(jsonMatch[0]); } catch (e2) { return null; }
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { return null; }
     } else {
       return null;
     }
@@ -1476,7 +1466,7 @@ async function translateBatchWithFailover(segments, src, tgt, apiKeys, tabId, co
 /**
  * Generate a context summary of the video based on the full transcript.
  */
-async function generateContextSummary(texts, apiKeys, tabId, src, tgt) {
+async function generateContextSummary(texts, apiKeys, tabId, src, _tgt) {
   // Phase 37: Sample only the first 100 lines for context to save tokens and stay within TPM
   const sampleTexts = texts.slice(0, 100);
   const fullTranscript = sampleTexts.join('\n');
@@ -1517,7 +1507,7 @@ Return ONLY the summary.`;
       if (result.statusCode === 429) {
         Logger.trace('Translator', `Context summary: 429 from ${key.provider}, trying next...`);
       }
-    } catch (e) {
+    } catch {
       Logger.warn('Translator', `Failed to generate summary with ${key.provider}`);
     }
   }
@@ -1584,7 +1574,7 @@ function sendDebugLog(tabId, msg, color = '#cbd5e1', bold = false) {
       color,
       bold
     }).catch(() => { }); // Catch if tab is closed
-  } catch (e) { }
+  } catch { }
 }
 
 export const _internals = {

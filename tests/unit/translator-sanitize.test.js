@@ -3,8 +3,7 @@ import { _internals } from '../../src/background/translator.js';
 
 const {
   detectForeignScriptLines, sanitizeForeignScript, NON_LATIN_TARGETS,
-  detectUntranslatedLines, parseVerificationResponse,
-  MIN_WORDS_FOR_UNTRANSLATED, UNTRANSLATED_OVERLAP_THRESHOLD
+  detectUntranslatedLines, parseVerificationResponse
 } = _internals;
 
 beforeAll(() => {

@@ -870,7 +870,7 @@ describe('fix (shift-aware)', () => {
     outputLines[7] = 'Toi nghi rang ho nen cho phep mang nhieu mech Toi nghi rang ho nen cho phep mang nhieu mech';
 
     let callCount = 0;
-    RoughTranslator.translateBatch = jest.fn(async (texts) => {
+    RoughTranslator.translateBatch = jest.fn(async (_texts) => {
       callCount++;
       if (callCount === 1) {
         return [

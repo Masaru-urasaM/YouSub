@@ -13,15 +13,15 @@
 
   try {
     // Phase 50.6: Trusted Types Bypass
-    var policy = null;
     if (window.trustedTypes && window.trustedTypes.createPolicy) {
       try {
-        policy = window.trustedTypes.createPolicy('yousub-fetcher-policy', {
+        // Registers the named Trusted Types policy with the browser (side effect).
+        window.trustedTypes.createPolicy('yousub-fetcher-policy', {
           createHTML: function(html) { return html; },
           createScript: function(s) { return s; },
           createScriptURL: function(u) { return u; }
         });
-      } catch (e) {}
+      } catch {}
     }
 
     var _isProd = window.YouSub && window.YouSub.Constants && window.YouSub.Constants.IS_PRODUCTION;
@@ -100,7 +100,7 @@
         if (responded) return;
         responded = true;
         console.error('[YouSub] MainWorldFetcher: Safety timeout (20s). Aborting XHR.');
-        try { xhr.abort(); } catch (e) {}
+        try { xhr.abort(); } catch {}
         window.postMessage({
           type: 'YOUSUB_FETCH_RESPONSE',
           requestId: requestId,

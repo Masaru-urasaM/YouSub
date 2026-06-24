@@ -218,27 +218,27 @@ export const Providers = {
             try {
               const json = JSON.parse(trimmed.substring(6));
               chunkText = json.choices?.[0]?.delta?.content || '';
-            } catch (e) {}
+            } catch {}
           } else if (style === 'anthropic' && trimmed.startsWith('data: ')) {
             try {
               const json = JSON.parse(trimmed.substring(6));
               if (json.type === 'content_block_delta') {
                 chunkText = json.delta?.text || '';
               }
-            } catch (e) {}
+            } catch {}
           } else if (style === 'gemini') {
             // Gemini stream is often a series of JSON objects in one chunk or SSE-like
             // If it's a standard fetch stream of JSON array parts:
             try {
               const json = JSON.parse(trimmed);
               chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            } catch (e) {
+            } catch {
               // Handle case where Gemini might prepend 'data: ' in some proxy setups
               if (trimmed.startsWith('data: ')) {
                 try {
                   const json = JSON.parse(trimmed.substring(6));
                   chunkText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                } catch (e2) {}
+                } catch {}
               }
             }
           }
@@ -495,7 +495,7 @@ export const Providers = {
           }
           return { success: false, message: errorMsg, model: modelId, usage: usage };
         }
-      } catch (e) {
+      } catch {
         return { success: false, message: 'Parse error', model: modelId };
       }
     }
@@ -539,7 +539,7 @@ export const Providers = {
           quotaDetail.retryIn = r[1];
         }
       }
-    } catch (e) {
+    } catch {
       Logger.warn('Providers', 'Could not parse error body as JSON');
     }
 

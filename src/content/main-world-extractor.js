@@ -19,24 +19,14 @@
     // -------------------------------------------------------------------------
     // Phase 50.6: Trusted Types Bypass & Safety
     // -------------------------------------------------------------------------
-    var policy = null;
     if (window.trustedTypes && window.trustedTypes.createPolicy) {
       try {
-        policy = window.trustedTypes.createPolicy('yousub-extractor-policy', {
+        window.trustedTypes.createPolicy('yousub-extractor-policy', {
           createHTML: function(html) { return html; },
           createScript: function(s) { return s; },
           createScriptURL: function(u) { return u; }
         });
-      } catch (e) {}
-    }
-
-    function setSafeHTML(el, html) {
-      if (!el) return;
-      if (policy && policy.createHTML) {
-        el.innerHTML = policy.createHTML(html);
-      } else {
-        el.innerHTML = html;
-      }
+      } catch {}
     }
 
     var _isProd = window.YouSub && window.YouSub.Constants && window.YouSub.Constants.IS_PRODUCTION;
@@ -172,9 +162,9 @@
 
     // Regular Video Logic
     // Click "...more" to expand description
-    var moreBtn = document.querySelector('tp-yt-paper-button#expand');
-    if (moreBtn) {
-      moreBtn.click();
+    var expandMoreBtn = document.querySelector('tp-yt-paper-button#expand');
+    if (expandMoreBtn) {
+      expandMoreBtn.click();
       _devLog('[YouSub] MainWorldExtractor: Expanded description.');
       return true;
     }
@@ -345,35 +335,6 @@
   }
 
   // -------------------------------------------------------------------------
-  // Step 4: Close the transcript panel
-  // -------------------------------------------------------------------------
-  function closeTranscriptPanel() {
-    // Method 1: Click the close button on the engagement panel
-    var closeBtn = document.querySelector(
-      'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"] #visibility-button button'
-    );
-    if (closeBtn) {
-      closeBtn.click();
-      _devLog('[YouSub] MainWorldExtractor: Closed transcript panel.');
-      return;
-    }
-
-    // Method 2: Try generic close button
-    var panels = document.querySelectorAll('ytd-engagement-panel-section-list-renderer');
-    for (var i = 0; i < panels.length; i++) {
-      var panel = panels[i];
-      if (panel.querySelector('ytd-transcript-renderer')) {
-        var close = panel.querySelector('#visibility-button button, tp-yt-icon-button#visibility-button');
-        if (close) {
-          close.click();
-          _devLog('[YouSub] MainWorldExtractor: Closed transcript panel (method 2).');
-          return;
-        }
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------------
   // Fallback: Extract track info and video metadata from page
   // -------------------------------------------------------------------------
   function extractVideoMetadata() {
@@ -387,7 +348,7 @@
     // 1. Try movie_player.getPlayerResponse()
     var player = document.getElementById('movie_player');
     if (player && typeof player.getPlayerResponse === 'function') {
-      try { sources.push(player.getPlayerResponse()); } catch (e) {}
+      try { sources.push(player.getPlayerResponse()); } catch {}
     }
     // 2. Try window.ytInitialPlayerResponse
     if (window.ytInitialPlayerResponse) sources.push(window.ytInitialPlayerResponse);
@@ -397,7 +358,7 @@
       if (reel && reel.data && reel.data.playerResponse) {
         sources.push(reel.data.playerResponse);
       }
-    } catch(e) {}
+    } catch {}
 
     for (var s = 0; s < sources.length; s++) {
       var resp = sources[s];
@@ -522,7 +483,7 @@
           if (responded) return;
           responded = true;
           _devWarn('[YouSub] Innertube: Safety timeout (12s)');
-          try { xhr.abort(); } catch (e) {}
+          try { xhr.abort(); } catch {}
           resolve({ tracks: null, isLive: false });
         }, 12000);
 

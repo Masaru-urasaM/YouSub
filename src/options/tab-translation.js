@@ -1,5 +1,4 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
-import { Logger } from '../shared/logger.js';
 
 let apiKeys = [];
 let failoverEnabled = true;
@@ -66,6 +65,7 @@ function buildQuotaDisplay(response, providerId) {
  */
 const sanitizeKey = (key) => {
   if (!key) return '';
+  // eslint-disable-next-line no-control-regex -- intentional: strips control/zero-width chars
   return key.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
 };
 
@@ -205,7 +205,6 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const testBtn = clone.querySelector('.test-key-btn');
   const statusText = clone.querySelector('.status-text');
   const healthIndicator = clone.querySelector('.health-indicator');
-  const healthDot = clone.querySelector('.health-dot');
   const healthStatsText = clone.querySelector('.health-stats');
   const connectOllamaBtn = clone.querySelector('.connect-ollama-btn');
   const fetchOllamaBtn = clone.querySelector('.fetch-ollama-models-btn');
@@ -569,7 +568,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       testBtn.textContent = 'Test';
       testBtn.disabled = false;
       debouncedSave();
-    }).catch((err) => {
+    }).catch((_err) => {
       statusText.classList.add('failed');
       statusText.textContent = 'Failed: Extension error';
       keyData.status = 'failed';

@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 67b — Dev-Tooling: Lint Cleanup to Zero Problems (2026-06-24)
+
+Resolves all 66 ESLint problems from the 67a baseline (11 errors + 55 `no-unused-vars` warnings) across 16 files. Executed as 15 parallel per-file agents under strict surgical rules, then gated by `eslint .` (0 problems) + the full test suite (no regression) + manual diff review of every under-tested content/options script. **Behavior-preserving** — net −176 lines, almost all dead code.
+
+**Fixed (errors → 0)**
+- `no-useless-catch`: unwrapped the rethrow-only `try/catch` around `handleRequest` (`service-worker.js`).
+- `no-useless-escape`: `/[\[\]]/g` → `/[[\]]/g` (`translator.js`, identical inside a char class).
+- `no-redeclare`: `moreBtn` → `expandMoreBtn` in the regular-video branch (`main-world-extractor.js`); the Shorts branch's `moreBtn` is a mutually-exclusive path.
+- Intentional sanitizer regexes (control / combining / irregular-whitespace chars deliberately matched to strip them) → documented `// eslint-disable-next-line`, regex byte-for-byte unchanged: `translator.js` foreign-script detect/strip (L98-99), `utils.js` `sanitizeKey` (L3, byte-verified identical), `tab-translation.js` `sanitizeKey` (L69).
+
+**Removed (dead code, `no-unused-vars` → 0)**
+- `translator.js`: dead `RATE_LIMIT_MAX_RETRIES`/`RATE_LIMIT_BASE_DELAY_MS`, dead `getFirstAvailableKey()`, dead `allFailuresMap` (all audit-confirmed dead).
+- `main.js`: the entire non-streaming `requestTranslation()` fallback (~100 lines) — the pipeline only uses the streaming path.
+- `main-world-extractor.js`: dead `setSafeHTML()` / `closeTranscriptPanel()`. Both `main-world-*.js`: dropped unused `policy` binding but **kept the `createPolicy()` side-effect** (it registers a Trusted Types policy).
+- `tab-appearance.js`: unused `Logger` import + never-called `loadAppearance()` (see DEFERRED D2). `popup.js`: dead `showError()` + unused `loadingDiv`/`loadingText`. `tab-translation.js`: unused `Logger` import + `healthDot`.
+- Many unused caught-error bindings `catch (e)` → `catch` (ES2019 optional binding); unused args → `_`-prefixed. Config: `no-empty` allows empty catch; `YouSub` added as a src global; `resize_icons.js` ignored.
+
+**Tests**: 202 passing / 15 pre-existing failures (217) — unchanged. `npm run lint` now exits clean (0 errors, 0 warnings).
+
 ### Phase 67a — Dev-Tooling Foundation: Config + Metadata + LICENSE (2026-06-24)
 
 First slice of Phase 67, split (Rule 5) into **67a** config → **67b** lint-triage → **67c** repo-wide Prettier format → **67d** pre-commit hook. Adds lint/format/editor tooling and project metadata with **no code or formatting changes**.

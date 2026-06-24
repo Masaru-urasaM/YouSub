@@ -37,7 +37,7 @@ browser.runtime.onConnect.addListener(function (port) {
     port.onMessage.addListener(async function (request) {
       // Phase 52.1: Keepalive — respond to PING with PONG
       if (request.type === 'PING') {
-        try { port.postMessage({ type: 'PONG' }); } catch (e) { /* port disconnected */ }
+        try { port.postMessage({ type: 'PONG' }); } catch { /* port disconnected */ }
         return;
       }
 
@@ -49,7 +49,7 @@ browser.runtime.onConnect.addListener(function (port) {
           // 1. Check Cache First
           const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
           if (cached) {
-            try { port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true }); } catch (e) { /* disconnected */ }
+            try { port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true }); } catch { /* disconnected */ }
             return;
           }
 
@@ -62,26 +62,26 @@ browser.runtime.onConnect.addListener(function (port) {
                 translated: batchTranslated,
                 chunk: chunk
               });
-            } catch (e) {
+            } catch {
               Logger.debug('ServiceWorker', 'Port disconnected, chunk dropped.');
             }
           }, portAbort.signal, () => {
             // Phase 64 (a): per-batch heartbeat so the content idle watchdog can
             // tell a stalled background from a slow-but-advancing one.
-            try { port.postMessage({ type: 'PROGRESS' }); } catch (e) { /* disconnected */ }
+            try { port.postMessage({ type: 'PROGRESS' }); } catch { /* disconnected */ }
           });
 
           if (result.success) {
             if (!result.hadFallback) {
               await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
             }
-            try { port.postMessage({ type: 'COMPLETE', ...result }); } catch (e) { /* disconnected */ }
+            try { port.postMessage({ type: 'COMPLETE', ...result }); } catch { /* disconnected */ }
           } else {
-            try { port.postMessage({ type: 'ERROR', ...result }); } catch (e) { /* disconnected */ }
+            try { port.postMessage({ type: 'ERROR', ...result }); } catch { /* disconnected */ }
           }
         } catch (err) {
           Logger.error('ServiceWorker', `Stream Port Error: ${err.message}`);
-          try { port.postMessage({ type: 'ERROR', error: err.message, failureReason: 'STREAM_CRASH' }); } catch (e) { /* disconnected */ }
+          try { port.postMessage({ type: 'ERROR', error: err.message, failureReason: 'STREAM_CRASH' }); } catch { /* disconnected */ }
         }
       }
     });
@@ -118,7 +118,6 @@ browser.runtime.onMessage.addListener(function (request, sender, sendResponse) {
  * Central handler for all requests to ensure async consistency
  */
 async function handleRequest(request, sender) {
-  try {
     // 1. YOUSUB_TRANSLATE_REQUEST
     if (request.type === 'YOUSUB_TRANSLATE_REQUEST') {
       const { segments, videoId, sourceLang, targetLang } = request;
@@ -214,9 +213,6 @@ async function handleRequest(request, sender) {
     }
 
     return { success: false, failureReason: 'INVALID_REQUEST_TYPE' };
-  } catch (err) {
-    throw err; // Caught by the listener wrapper
-  }
 }
 
 /**

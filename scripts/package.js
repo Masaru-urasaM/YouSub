@@ -81,7 +81,7 @@ function getBuildMetadata() {
   let buildHash = 'unknown';
   try {
     buildHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-  } catch (_) {}
+  } catch {}
   return { buildDate, buildHash };
 }
 

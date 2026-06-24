@@ -1,5 +1,3 @@
-import { Logger } from '../shared/logger.js';
-
 let fontSizeInput, fontSizeVal, fontColorInput, fontColorHex, bgOpacityInput, bgOpacityVal, posBottomInput, posBottomVal, previewOverlay;
 let triggerSaveCallback = null;
 let saveTimeout = null;
@@ -79,30 +77,6 @@ function updatePreview() {
 function debouncedSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(saveAppearance, 500);
-}
-
-function loadAppearance() {
-  browser.storage.local.get(['yousub_appearance']).then((res) => {
-    const appearance = res.yousub_appearance || {};
-
-    // Set form values
-    fontSizeInput.value = appearance.fontSize || 1.5;
-    fontSizeVal.textContent = appearance.fontSize || 1.5;
-
-    const fontColor = appearance.fontColor || '#ffffff';
-    fontColorInput.value = fontColor;
-    fontColorHex.textContent = fontColor.toUpperCase();
-
-    const bgOpacity = appearance.bgOpacity !== undefined ? appearance.bgOpacity : 0.25;
-    bgOpacityInput.value = bgOpacity;
-    bgOpacityVal.textContent = Math.round(bgOpacity * 100) + '%';
-
-    const posBottom = appearance.posBottom !== undefined ? appearance.posBottom : 20;
-    posBottomInput.value = posBottom;
-    posBottomVal.textContent = posBottom + 'px';
-
-    updatePreview();
-  });
 }
 
 function saveAppearance() {

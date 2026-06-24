@@ -15,8 +15,9 @@ export default [
       '**/*.zip',
       // Bundled third-party polyfill — not our code to lint.
       'src/shared/libs/**',
-      // Scratch/junk scheduled for removal in Phase 73.
+      // Scratch/junk scheduled for removal/relocation in Phase 73.
       'tmp/**',
+      'resize_icons.js',
     ],
   },
 
@@ -32,6 +33,9 @@ export default [
         ...globals.browser,
         ...globals.serviceworker,
         ...globals.webextensions,
+        // Project's own compatibility namespace (window.YouSub), referenced
+        // across content modules that are wired together at runtime.
+        YouSub: 'readonly',
       },
     },
   },
@@ -68,6 +72,9 @@ export default [
   {
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Empty catch blocks are an intentional best-effort pattern throughout
+      // the extension (storage/DOM calls that may legitimately no-op).
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
 ];

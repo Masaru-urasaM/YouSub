@@ -97,7 +97,7 @@ export const Logger = {
         await api.local.set({ [STORAGE_KEY_ERRORS]: existing });
         this._errorBuffer = [];
       }
-    } catch (_) {
+    } catch {
       // Silent fail — log persistence must never break the app
     }
 
@@ -126,7 +126,7 @@ export const Logger = {
           : (p.level === 'WARN' ? '#f59e0b'
           : (p.level === 'TRACE' ? '#06b6d4' : '#3b82f6'));
         console.log(`%c[${p.level}] [${p.tag}] ${p.msg}`, `color: ${color}`, p);
-      } catch (_) { console.log(l); }
+      } catch { console.log(l); }
     });
     console.groupEnd();
   },
@@ -162,14 +162,14 @@ export const Logger = {
         const res = await api.session.get([STORAGE_KEY_SESSION]);
         sessionLogs = res[STORAGE_KEY_SESSION] || [];
       }
-    } catch (_) {}
+    } catch {}
 
     try {
       if (api.local) {
         const res = await api.local.get([STORAGE_KEY_ERRORS]);
         errorLogs = res[STORAGE_KEY_ERRORS] || [];
       }
-    } catch (_) {}
+    } catch {}
 
     if (sessionLogs.length > 0) return sessionLogs;
     if (errorLogs.length > 0) return errorLogs;

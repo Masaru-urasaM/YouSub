@@ -57,7 +57,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
         console.error('[YouSub] Main: Streaming translation stalled — no progress for ' + (STREAM_IDLE_TIMEOUT_MS / 1000) + 's');
         // Phase 64 (c): disconnect so the background aborts in-flight work
         // (portAbort.abort) instead of running orphaned to its own cap.
-        try { if (port) port.disconnect(); } catch (e) { /* already gone */ }
+        try { if (port) port.disconnect(); } catch { /* already gone */ }
         finish({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
       }, STREAM_IDLE_TIMEOUT_MS);
     }
@@ -73,7 +73,7 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
 
       // Phase 52.1: Keepalive — ping every 25s to keep the SW/event page alive.
       keepaliveInterval = setInterval(() => {
-        try { port.postMessage({ type: 'PING' }); } catch (e) { clearInterval(keepaliveInterval); }
+        try { port.postMessage({ type: 'PING' }); } catch { clearInterval(keepaliveInterval); }
       }, 25000);
 
       const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
@@ -124,13 +124,13 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
             text: response.translated[i] || entry.text
           }));
           finish({ success: true, translated: fullTranslated, fromCache: !!response.fromCache });
-          try { port.disconnect(); } catch (e) { /* already gone */ }
+          try { port.disconnect(); } catch { /* already gone */ }
           return;
         }
 
         if (response.type === 'ERROR') {
           finish({ success: false, failureReason: response.failureReason, error: response.error, failures: response.failures });
-          try { port.disconnect(); } catch (e) { /* already gone */ }
+          try { port.disconnect(); } catch { /* already gone */ }
           return;
         }
       });
@@ -141,100 +141,6 @@ function requestTranslationStreaming(parsedEntries, videoId, sourceLang, provide
 
     } catch (e) {
       finish({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
-    }
-  });
-}
-
-function requestTranslation(parsedEntries, videoId, sourceLang, providedTargetLang) {
-  // Keep standard request as fallback or for non-streaming mode
-  return new Promise(function (resolve) {
-    let hasResolved = false;
-
-    // Guardian: 60s timeout for the entire background request
-    const timeout = setTimeout(() => {
-      if (!hasResolved) {
-        hasResolved = true;
-        console.error('[YouSub] Main: Translation request timed out after 60s');
-        resolve({ success: false, failureReason: 'TIMEOUT_BACKGROUND' });
-      }
-    }, 60000);
-
-    try {
-      devLog('[YouSub] Main: requestTranslation called for', parsedEntries.length, 'entries');
-
-      // Extension Context Check
-      if (!chrome.runtime || !chrome.runtime.id) {
-        clearTimeout(timeout);
-        console.error('[YouSub] Main: Extension context invalidated.');
-        resolve({ success: false, failureReason: 'CONTEXT_INVALIDATED' });
-        return;
-      }
-
-      const segments = parsedEntries.map(function (e) {
-        return { text: e.text, startMs: e.startMs };
-      });
-      const targetLang = providedTargetLang || (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
-
-      chrome.runtime.sendMessage(
-        {
-          type: 'YOUSUB_TRANSLATE_REQUEST',
-          videoId: videoId,
-          segments: segments,
-          sourceLang: sourceLang || 'auto',
-          targetLang: targetLang
-        },
-        function (response) {
-          if (hasResolved) return; // Already timed out
-          hasResolved = true;
-          clearTimeout(timeout);
-
-          if (chrome.runtime.lastError) {
-            console.error('[YouSub] Main: Message error:', chrome.runtime.lastError.message);
-            resolve({ success: false, failureReason: 'RUNTIME_ERROR', error: chrome.runtime.lastError.message });
-            return;
-          }
-
-          if (response && response.success === false) {
-            resolve({ success: false, failureReason: response.failureReason, failures: response.failures });
-            return;
-          }
-
-          if (response && response.success && Array.isArray(response.translated)) {
-            const translated = parsedEntries.map(function (entry, i) {
-              const translatedText = response.translated[i];
-              
-              // Diagnostic: Check if we are accidentally showing English
-              if (!translatedText || translatedText.trim() === entry.text.trim()) {
-                devWarn('[YouSub] Main: No translation for segment', i, 'using original text.');
-              }
-
-              return {
-                startMs: entry.startMs,
-                endMs: entry.endMs,
-                original: entry.text,
-                text: translatedText || entry.text
-              };
-            });
-            resolve({
-              success: true,
-              translated: translated,
-              hadFallback: !!response.hadFallback,
-              fromCache: !!response.fromCache,
-              failureReason: response.failureReason,
-              failures: response.failures
-            });
-            return;
-          }
-
-          resolve({ success: false, failureReason: 'UNKNOWN_RESPONSE' });
-        }
-      );
-    } catch (e) {
-      if (hasResolved) return;
-      hasResolved = true;
-      clearTimeout(timeout);
-      console.error('[YouSub] Main: requestTranslation crash:', e);
-      resolve({ success: false, failureReason: 'INTERNAL_ERROR', error: e.toString() });
     }
   });
 }
@@ -417,7 +323,7 @@ PageDetector.init(
 
     Overlay.destroy();
 
-    VideoBinder.bind(function (videoEl) {
+    VideoBinder.bind(function (_videoEl) {
       devLog('[YouSub] Main: Video element bound properly. Checking storage...');
 
       chrome.storage.local.get(['yousub_translation_enabled', 'targetLang'], function (res) {

@@ -6,8 +6,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const clearPageCacheBtn = document.getElementById('clear-page-cache-btn');
   const openDebugBtn = document.getElementById('open-debug-btn');
   const openSettingsBtn = document.getElementById('open-settings-btn');
-  const loadingDiv = document.getElementById('loading');
-  const loadingText = document.getElementById('loading-text');
 
   const dualModeToggle = document.getElementById('dual-mode-toggle');
   const healthStatus = document.getElementById('health-status');
@@ -119,7 +117,7 @@ document.addEventListener('DOMContentLoaded', function () {
           return url.pathname.split('/')[2];
         }
       }
-    } catch (e) { }
+    } catch { }
     return null;
   }
 
@@ -284,12 +282,6 @@ document.addEventListener('DOMContentLoaded', function () {
         browser.tabs.sendMessage(tabs[0].id, msg).catch(() => { });
       }
     });
-  }
-
-  function showError(msg) {
-    console.error(`YouSub Error: ${msg}`);
-    getSubBtn.classList.remove('active');
-    browser.storage.local.set({ yousub_translation_enabled: false });
   }
 
   /**
