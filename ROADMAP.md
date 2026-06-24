@@ -82,7 +82,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | DONE (2026-06-24) | M7 |
 | **73** | **Repo hygiene cleanup** | DONE (2026-06-24) | M7 |
 | **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
-| **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | TODO | M7 |
+| **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | IN PROGRESS (75a done) | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | TODO | M7 |
 | **77** | **Transcript-button locale resilience (+ optional Japanese UI i18n)** | TODO | M7 |
 

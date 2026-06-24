@@ -66,4 +66,35 @@ describe('HealthManager Module', () => {
     const score = await HealthManager.getScore('new', 'key');
     expect(score).toBe(0.5);
   });
+
+  describe('computeScore (Phase 75a — unified scoring formula)', () => {
+    test('returns the neutral 0.5 for missing or zero-sample entries', () => {
+      expect(HealthManager.computeScore(undefined)).toBe(0.5);
+      expect(HealthManager.computeScore(null)).toBe(0.5);
+      expect(HealthManager.computeScore({ successCount: 0, failCount: 0 })).toBe(0.5);
+    });
+
+    test('weights success-rate by a 10s-capped speed multiplier', () => {
+      // successRate 0.5, speedMult max(0.1, 1 - 2000/10000) = 0.8 -> 0.4
+      expect(
+        HealthManager.computeScore({ successCount: 1, failCount: 1, avgTime: 2000 })
+      ).toBeCloseTo(0.4, 5);
+      // successRate 1.0, speedMult max(0.1, 1 - 500/10000) = 0.95 -> 0.95
+      expect(
+        HealthManager.computeScore({ successCount: 10, failCount: 0, avgTime: 500 })
+      ).toBeCloseTo(0.95, 5);
+    });
+
+    test('floors the speed multiplier at 0.1 for very slow keys (>10s)', () => {
+      // avgTime 50000 -> 1 - 5 = -4, floored to 0.1; successRate 1 -> 0.1
+      expect(
+        HealthManager.computeScore({ successCount: 1, failCount: 0, avgTime: 50000 })
+      ).toBeCloseTo(0.1, 5);
+    });
+
+    test('applies no speed penalty when avgTime is 0 (untimed)', () => {
+      // successRate 1.0, speedMult stays 1.0 -> 1.0
+      expect(HealthManager.computeScore({ successCount: 3, failCount: 0, avgTime: 0 })).toBe(1.0);
+    });
+  });
 });

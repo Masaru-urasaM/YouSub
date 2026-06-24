@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 75a — Unify the Health-Score Formula (2026-06-24)
+
+First slice of the [EPIC] Phase 75 translator refactor — the safe, behavior-preserving part.
+
+**Context**: The key health score was computed by two divergent formulas — an inline copy in `api-manager.getValidKeys()` (10s speed cap) and `HealthManager.getScore()` (5s cap). Investigation found `getScore()` is **dead in production** (only called from tests); the live key-ordering uses the inline api-manager formula.
+
+**Changed (behavior-preserving)**
+- Added `HealthManager.computeScore(entry)` — the single source of truth, using the **live production 10s-cap** formula. `getScore()` and `api-manager.getValidKeys()` both now call it. Production key ordering is provably unchanged (same formula, hoisted); only the dead `getScore()` path changes (5s → 10s), and nothing in `src/` calls it.
+
+**Added**
+- 4 `computeScore` unit tests pinning the formula (neutral default, 10s-capped speed weighting, 0.1 floor, untimed no-penalty). `health.js` coverage 69% → 80%.
+
+**Tests**: 420 → **424** (all green); `npm test` exit 0 with the coverage gate; lint + prettier clean.
+
+**Note**: the rest of Phase 75 (decomposing the ~420-line `tryKeyForBatch`) is **gated on developer go/no-go** — it is pure structural cleanup of the shipped engine (no bug), and the translator suite can't yet certify behavior-identical. Characterization tests for the `translate()` path are being added first as the safety net (per Decision 12, which deferred deep translator coverage to Phase 75).
+
 ### Phase 74 — Privacy / Store Compliance (2026-06-24)
 
 **Added**

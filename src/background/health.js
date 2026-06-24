@@ -107,29 +107,36 @@ export const HealthManager = {
   },
 
   /**
-   * Calculates a performance score (0.0 to 1.0).
+   * Pure scoring formula (0.0–1.0): success-rate weighted by a speed multiplier.
+   * Single source of truth — both `getScore()` and api-manager's key sorting call
+   * this. Phase 75a unified the previously-divergent formulas (getScore used a 5s
+   * speed cap, api-manager used 10s) onto the **live production** 10s cap, so key
+   * ordering is unchanged.
+   * @param {Object} [entry] - a `yousub_health_stats` record, or undefined/null.
+   */
+  computeScore(entry) {
+    if (!entry || entry.successCount + entry.failCount === 0) {
+      return 0.5; // Default neutral score
+    }
+    const total = entry.successCount + entry.failCount;
+    const successRate = entry.successCount / total;
+    // Speed score (bonus for fast providers); penalty grows toward the 10s cap.
+    let speedMult = 1.0;
+    if (entry.avgTime > 0) {
+      speedMult = Math.max(0.1, 1 - entry.avgTime / 10000);
+    }
+    return successRate * speedMult;
+  },
+
+  /**
+   * Calculates a performance score (0.0 to 1.0) for a stored provider/key.
    */
   async getScore(providerId, apiKey) {
     const hash = this.getHash(providerId, apiKey);
     return new Promise((resolve) => {
       browser.storage.local.get(['yousub_health_stats']).then((res) => {
         const stats = res.yousub_health_stats || {};
-        const entry = stats[hash];
-
-        if (!entry || entry.successCount + entry.failCount === 0) {
-          return resolve(0.5); // Default neutral score
-        }
-
-        const total = entry.successCount + entry.failCount;
-        const successRate = entry.successCount / total;
-
-        // Speed score (bonus for fast providers, e.g., < 1000ms is good)
-        let speedMult = 1.0;
-        if (entry.avgTime > 0) {
-          speedMult = Math.max(0.1, 1 - entry.avgTime / 5000); // Cap at 5s
-        }
-
-        resolve(successRate * speedMult);
+        resolve(this.computeScore(stats[hash]));
       });
     });
   },

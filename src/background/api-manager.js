@@ -101,18 +101,9 @@ export const APIManager = {
             );
           }
 
-          // Defensive scoring: default to 1.0 if no fails, or penalize only if results exist
-          if (!entry || entry.successCount + entry.failCount === 0) {
-            k.score = 0.5; // Neutral
-          } else {
-            const total = entry.successCount + entry.failCount;
-            const successRate = entry.successCount / total;
-            let speedMult = 1.0;
-            if (entry.avgTime > 0) {
-              speedMult = Math.max(0.1, 1 - entry.avgTime / 10000); // Cap at 10s
-            }
-            k.score = successRate * speedMult;
-          }
+          // Phase 75a: single source of truth for the health score (this was an
+          // inline duplicate of HealthManager's formula; identical 10s-cap math).
+          k.score = HealthManager.computeScore(entry);
 
           k.isCircuitOpen = isOpen;
           return { key: k, isOpen };
