@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-72 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-73 done.
 
 ---
 
@@ -80,7 +80,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **70** | **CI pipeline (GitHub Actions) — ready-to-use, dormant until pushed** | DONE (2026-06-24) | M7 |
 | **71** | **SPEC reconciliation + README + LICENSE** | DONE (2026-06-24) | M7 |
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | DONE (2026-06-24) | M7 |
-| **73** | **Repo hygiene cleanup** | TODO | M7 |
+| **73** | **Repo hygiene cleanup** | DONE (2026-06-24) | M7 |
 | **74** | **Privacy / store compliance** | TODO | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | TODO | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | TODO | M7 |
@@ -172,13 +172,13 @@ Split into reviewable sub-phases (Rule 5):
 - **Verify**: only one AI-rules file (`CLAUDE.md`); remaining "Gemini" matches are the LLM provider, not the retired file.
 
 ### Phase 73 — Repo hygiene cleanup
-**Status**: TODO · **Risk**: Low · **Group**: hygiene
-- `git rm --cached` the personal résumé `.docx`, `icons.zip`, `icon128-original.png`, `tests/unit/jest_output.txt`, `tests/unit/translator_test.html`, `tmp/*`.
-- Update `.gitignore` (`*.docx`, `tmp/`, `coverage/`, `*_output.txt`, `*-original.png`).
-- Move `resize_icons.js` → `scripts/` (parameterize the hard-coded path) or remove it.
-- Decide `src/debug/` fate: keep + document as an internal dev tool (it is wired via `popup.js`), or remove.
-- *(Private repo → no urgent git-history scrub; just stop tracking.)*
-- **Verify**: `git status` clean; `npm run package` still produces valid Chrome + Firefox ZIPs with no junk files.
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: hygiene
+- `git rm --cached` (untracked, kept on disk): the personal résumé `.docx`, `assets/icons/icons.zip`, `assets/icons/icon128-original.png`, `tests/unit/jest_output.txt`, `tmp/test_logic.js`, `tmp/test_parser.js`. Fully deleted the stale `tests/unit/translator_test.html`.
+- **Removed `resize_icons.js`** (not relocated): it was doubly dead — a hard-coded source path into another tool's temp folder AND jimp v0.x API (`.resize(128,128).writeAsync`) incompatible with the installed jimp 1.6, and it only emitted 3 of the 6 required icon sizes. Removing its sole consumer let me also drop the orphaned **`jimp` dependency** → `npm audit` **38 → 19** vulnerabilities (the rest are dev-only transitive deps of jest/eslint, not shipped).
+- Updated `.gitignore` (`tmp/`, `*.docx`, `*.zip`, `*_output.txt`, `*-original.png`); removed the now-unneeded `resize_icons.js` entry from `eslint.config.js`.
+- `src/debug/` — **kept** (developer-confirmed): it's a shipped advanced-diagnostics panel wired via `popup.js`; documented in the SPEC (Phase 71).
+- **Privacy note (DEFERRED D4)**: untracking stops future tracking but the résumé `.docx` **remains in git history**. Private repo → no urgent scrub; must scrub before any public push.
+- **Verify**: `git status` clean; `npm run lint` 0; `npm test` 420/420 + gate; `npm run package` produces valid Chrome + Firefox ZIPs (the skip-list already excluded the junk, so the ZIPs are unchanged).
 
 ### Phase 74 — Privacy / store compliance
 **Status**: TODO · **Risk**: Low · **Group**: privacy

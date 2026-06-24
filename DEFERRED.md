@@ -29,3 +29,19 @@
 **Why**: Found while unit-testing `providers.js`. `Providers.chat()` (src/background/providers.js:336-337) defaults `timeoutMs` to **15000** but the default `timeoutMsg` reads "Request timed out (30s)". On a real 15s abort the user-facing message would wrongly say "(30s)". Cosmetic only — no functional impact; not fixed in Phase 69 (test-only phase, no `src/` changes).
 **Dependency**: none.
 **Revisit when**: Phase 75 (translator/providers touch-up) — align the message with the actual default, or make the message derive from `timeoutMs`. Also note two effectively-dead defensive branches confirmed during testing (`chat()` "Unknown API style" return, `fetchQuota()` trailing `return null`) — harmless, reachable only if the provider registry loses a valid `apiStyle`/endpoint.
+
+### D4 — Personal résumé `.docx` remains in git history
+
+**Deferred**: 2026-06-24 (Phase 73)
+**Effort**: Medium (history rewrite)
+**Why**: Phase 73 `git rm --cached`'d `assets/icons/グエンバンフアン履歴書.docx` (a personal résumé that had been committed) and added `*.docx` to `.gitignore`, so it is no longer tracked. But untracking does **not** remove it from past commits — it is still retrievable from git history. The repo is private, so this is not an active exposure.
+**Dependency**: none.
+**Revisit when**: **Before any public push / open-sourcing.** Scrub it (and re-check for any other sensitive blobs) from history with `git filter-repo` (or BFG), then force-push. Until then, keeping the repo private is sufficient.
+
+### D5 — 19 npm-audit vulnerabilities in dev-only transitive deps
+
+**Deferred**: 2026-06-24 (Phase 73)
+**Effort**: Small–Medium
+**Why**: After removing the `jimp` dependency in Phase 73, `npm audit` dropped from 38 → **19** (1 low / 17 moderate / 1 high). The remaining advisories are all transitive dependencies of **dev** tooling (jest/eslint/etc.), which are **not shipped** in the extension ZIP — so there is no user-facing exposure. `npm audit fix --force` would pull breaking major bumps.
+**Dependency**: none.
+**Revisit when**: A dedicated tooling-maintenance pass (or alongside Phase 70 CI hardening). Try `npm audit fix` (non-breaking) first; evaluate majors individually. Low priority since it's dev-only.

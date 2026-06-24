@@ -2,7 +2,14 @@ logs/
 node_modules/
 coverage/
 dist/
+tmp/
 *.log
 .DS_Store
 Thumbs.db
 .env
+
+# Phase 73 hygiene: keep generated/source/scratch artifacts out of the repo
+*.docx
+*.zip
+*_output.txt
+*-original.png

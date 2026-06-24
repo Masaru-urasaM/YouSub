@@ -55,7 +55,6 @@
     "prettier": "^3.8.4"
   },
   "dependencies": {
-    "jimp": "^1.6.0",
     "webextension-polyfill": "^0.12.0"
   }
 }

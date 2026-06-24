@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 73 — Repo Hygiene Cleanup (2026-06-24)
+
+Stops tracking committed junk and removes dead tooling. No source/behavior change; build output is byte-identical (the packager already skip-listed these files).
+
+**Removed (untracked via `git rm --cached`, kept on disk)**
+- Personal résumé `assets/icons/グエンバンフアン履歴書.docx`, `assets/icons/icons.zip`, `assets/icons/icon128-original.png`, `tests/unit/jest_output.txt`, `tmp/test_logic.js`, `tmp/test_parser.js`.
+
+**Removed (deleted)**
+- `tests/unit/translator_test.html` — stale manual test page.
+- `resize_icons.js` — doubly-dead: hard-coded source path into another tool's temp folder + jimp v0.x API (`.resize(128,128).writeAsync`) incompatible with the installed jimp 1.6, and only emitted 3 of the 6 icon sizes. Not relocated (would need a rewrite to be usable).
+- The orphaned **`jimp` dependency** (its only consumer was `resize_icons.js`) → `npm audit` **38 → 19** vulnerabilities. The remaining 19 are dev-only transitive deps (jest/eslint), not shipped (see DEFERRED D5).
+
+**Changed**
+- `.gitignore`: added `tmp/`, `*.docx`, `*.zip`, `*_output.txt`, `*-original.png`.
+- `eslint.config.js`: dropped the now-unneeded `resize_icons.js` ignore; reworded the `tmp/**` ignore comment.
+- `package.json` / `package-lock.json`: `jimp` removed.
+
+**Notes**
+- `src/debug/` is **kept** (developer-confirmed) — shipped advanced-diagnostics panel wired via `popup.js`; documented in the SPEC (Phase 71).
+- **Privacy (DEFERRED D4)**: untracking does not scrub git history — the résumé `.docx` is still retrievable from past commits. Private repo → no urgent action, but it must be scrubbed (`git filter-repo`/BFG) before any public push.
+
+**Verify**: `git status` clean; `npm run lint` 0; `npm test` 420/420 + coverage gate; `npm run package` produces valid Chrome + Firefox ZIPs (VERIFY OK, unchanged).
+
 ### Phase 72 — AI-Governance Consolidation (2026-06-24)
 
 Makes `CLAUDE.md` the single canonical AI-rules file.

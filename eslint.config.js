@@ -15,9 +15,8 @@ export default [
       '**/*.zip',
       // Bundled third-party polyfill — not our code to lint.
       'src/shared/libs/**',
-      // Scratch/junk scheduled for removal/relocation in Phase 73.
+      // Gitignored scratch dir (Phase 73).
       'tmp/**',
-      'resize_icons.js',
     ],
   },
 
