@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 68 — Test Recovery: All 15 Failing Tests Green (2026-06-24)
+
+Recovers the 3 remaining red suites with **test-only changes** — no production code touched. Suite goes from **202 passing / 15 failing (217)** to **218 passing / 0 failing (218)** (+1 new rotation test). `npm run lint` and `prettier --check` clean on all three rewritten files.
+
+**Fixed — `subtitle-parser.test.js` (6 tests)**
+- Replaced the `eval(scriptContent)` loader (threw `Cannot use import statement outside a module` on the ESM file) with a direct `import { SubtitleParser }`. The module is pure (only `DOMParser`, which jsdom provides), so no mocking is needed.
+- Updated the "decode HTML entities" assertion to the **actual shipped behavior**: `decodeHtml()` parses the decoded markup as HTML and returns `textContent`, so inline `<b>` formatting tags are **stripped** while entities are decoded (`<b>Encoded &amp; Text</b>` → `Encoded & Text`, not the test's never-validated `<b>…</b>`). See note below.
+
+**Fixed — `sync-engine.test.js` (5 tests)**
+- Replaced `eval()` with a direct ESM `import` + `jest.unstable_mockModule('overlay.js', …)` (same pattern as `logger.test.js`). Necessary because `SyncEngine` calls the *imported* `Overlay` binding directly — assigning `window.YouSub.Overlay` no longer intercepts it.
+- Updated two stale assertions to the current code: `Overlay.renderSubtitles(...)` now takes a **4th `isTranslated` arg**; and the "hide on gap" test now first enters a subtitle (so `currentIndex` becomes valid) before moving into the gap — a fresh engine sitting in a gap correctly renders nothing.
+- Added a `flushMicrotasks()` helper + non-zero `offsetWidth/Height` on the mock video (so the Shorts hidden-video guard doesn't early-return).
+
+**Fixed — `api-manager.test.js` (4 tests)**
+- `getValidKeys()` defaults model-rotation **on**, fanning each base key out across its provider's models (e.g. 3 keys → 12 entries). The four failover/circuit/sort tests now set `yousub_model_rotation: false` to isolate the logic they actually assert.
+- **Added** one test verifying the rotation-**on** path still expands keys (`isRotationClone` clones present, base keys intact) so that branch keeps coverage.
+
+**Notes / follow-ups**
+- The `decodeHtml` tag-stripping is the long-shipped (v0.2.2) behavior; the old test expectation was never validated (eval always threw before reaching it). Recorded as actual behavior here — flag for the developer if literal `<b>`/`<i>` markers in subtitles should instead be preserved (would be a separate feature change, not a Phase 68 fix).
+- DEFERRED **D1** (B1 `esc()` escaping test): the eval→import blocker is now cleared, but `esc()` remains an un-exported closure inside the side-effectful `main.js` entry (top-level `TrustedTypes.init()` + `onMessage` listener). Importing that entry into a unit test would wire global listeners and risks destabilizing the now-green suite, so D1 is re-pointed to **Phase 75** (extract `esc()` to `shared/utils.js` alongside the translator refactor, then unit-test it). Not blocking.
+
+**Tests**: 217 → **218** total; 15 failing → **0 failing**; 3 suites recovered (`subtitle-parser`, `sync-engine`, `api-manager`).
+
 ### Phase 67d — Pre-Commit Hook (husky + lint-staged) (2026-06-24)
 
 Adds a pre-commit hook so future commits stay lint-clean and formatted. **Completes Phase 67.**

@@ -18,6 +18,7 @@ describe('APIManager Module', () => {
     await chrome.storage.local.set({
       yousub_api_keys: mockKeys,
       yousub_failover_enabled: true,
+      yousub_model_rotation: false, // isolate failover logic from model-rotation expansion
     });
 
     const keys = await APIManager.getValidKeys();
@@ -29,6 +30,7 @@ describe('APIManager Module', () => {
     await chrome.storage.local.set({
       yousub_api_keys: mockKeys,
       yousub_failover_enabled: false,
+      yousub_model_rotation: false,
     });
 
     const keys = await APIManager.getValidKeys();
@@ -40,6 +42,7 @@ describe('APIManager Module', () => {
     await chrome.storage.local.set({
       yousub_api_keys: mockKeys,
       yousub_failover_enabled: true,
+      yousub_model_rotation: false,
     });
 
     // Manually trip circuit breaker for OpenAI (key2)
@@ -59,6 +62,7 @@ describe('APIManager Module', () => {
     await chrome.storage.local.set({
       yousub_api_keys: mockKeys,
       yousub_failover_enabled: true,
+      yousub_model_rotation: false,
     });
 
     // key3 (Anthropic) is very healthy, key2 (OpenAI) is meh
@@ -76,6 +80,24 @@ describe('APIManager Module', () => {
     expect(keys).toHaveLength(3);
     expect(keys[1].provider).toBe('anthropic'); // Anthropic moved up in backups
     expect(keys[2].provider).toBe('openai');
+  });
+
+  test('should expand each key into per-model rotation clones when rotation is enabled', async () => {
+    await chrome.storage.local.set({
+      yousub_api_keys: mockKeys,
+      yousub_failover_enabled: true,
+      yousub_model_rotation: true, // default-on path: each key fans out across its models
+    });
+
+    const keys = await APIManager.getValidKeys();
+
+    // Rotation must produce strictly more entries than the 3 base keys.
+    expect(keys.length).toBeGreaterThan(3);
+    // The first entry of each provider is the base (no clone flag); the extras are clones.
+    expect(keys.some((k) => k.isRotationClone === true)).toBe(true);
+    // Base keys (one per provider) are still present and not flagged as clones.
+    const baseKeys = keys.filter((k) => !k.isRotationClone);
+    expect(baseKeys.map((k) => k.provider)).toEqual(['google', 'openai', 'anthropic']);
   });
 
   test('should mark key as failed in storage', async () => {

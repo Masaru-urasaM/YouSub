@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-67 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-68 done.
 
 ---
 
@@ -75,7 +75,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **65** | **Commit Phase 64 + Version-Truth Sync** | DONE (2026-06-23) | M7 |
 | **66** | **Fix correctness blockers (B2 race, B4 circuit) + hardening (B1, B3)** | DONE (2026-06-23) | M7 |
 | **67** | **Dev-tooling foundation (ESLint/Prettier/EditorConfig/.nvmrc) + pre-commit + metadata** | DONE (2026-06-24) | M7 |
-| **68** | **Test recovery — fix the remaining 10 failing tests** | TODO | M7 |
+| **68** | **Test recovery — fix the remaining 15 failing tests** | DONE (2026-06-24) | M7 |
 | **69** | **[EPIC] Coverage expansion 34% → ≥70%** | TODO | M7 |
 | **70** | **CI pipeline (GitHub Actions) — optional (private repo)** | TODO | M7 |
 | **71** | **SPEC reconciliation + README + LICENSE** | TODO | M7 |
@@ -129,12 +129,14 @@ Split into reviewable sub-phases (Rule 5):
 - **67d (DONE 2026-06-24)** — husky v9 + lint-staged pre-commit (`eslint --fix` + `prettier --write` on staged js/json/css/html; md excluded). Replaced husky's default `npm test` hook — the 15 known failures would block every commit; full-suite gating → CI/Phase 70.
 - **Verify**: `npm run lint` 0 errors after 67b; `npm test` green throughout.
 
-### Phase 68 — Test recovery (remaining 10 failures)
-**Status**: TODO · **Risk**: Low · **Group**: tests · **Depends**: 67
-- Fix the 6 ESM/`eval()` content-script tests (use dynamic `import()` in the test instead of `eval()` on ESM source).
-- Fix the 4 api-manager mock tests (disable model-rotation in setup, or update assertions to account for per-model key expansion).
+### Phase 68 — Test recovery (remaining 15 failures)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tests · **Depends**: 67
+- **Done — test-only, no production code touched.** The real count was **15** failing across 3 suites (the audit's "10/6 ESM" was an undercount): `subtitle-parser` (6, eval) + `sync-engine` (5, eval) + `api-manager` (4, mock).
+- Replaced the `eval(scriptContent)` loaders with direct ESM `import` — `subtitle-parser` imports cleanly; `sync-engine` needs `jest.unstable_mockModule('overlay.js', …)` since it calls the imported `Overlay` binding directly.
+- Updated stale assertions to shipped behavior: `renderSubtitles` 4th `isTranslated` arg; `decodeHtml` strips inline tags; hide-on-gap needs a prior valid index. `api-manager`: set `yousub_model_rotation:false` to isolate failover/circuit/sort; **added** a rotation-on expansion test.
 - (B3/B4 tests already handled in Phase 66.)
-- **Verify**: **0 failing tests** (217/217 — Phase 66 added 2 race tests).
+- **D1** (`esc()` test): eval blocker cleared but `esc()` is an un-exported closure in the side-effectful `main.js` entry → re-pointed to Phase 75 (extract to `utils.js`). See `DEFERRED.md`.
+- **Verify**: **0 failing tests — 218/218** (217 + 1 new rotation test); `npm run lint` + `prettier --check` clean.
 
 ### Phase 69 — [EPIC] Coverage expansion 34% → ≥70%
 **Status**: TODO · **Risk**: Low · **Group**: tests · **Depends**: 68

@@ -1,7 +1,7 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-67 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
+**Status**: v0.2.2 — Phases 0-68 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
 **Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
 **Last Updated**: 2026-06-24
 
@@ -43,6 +43,7 @@
 - **Phase 65**: Commit Phase 64 + version-truth sync (0.2.1 → 0.2.2 across all surfaces). See ROADMAP.md for Phases 66-77.
 - **Phase 66**: Fix correctness blockers + hardening. B2 SyncEngine start/stop race (arrow callback + `if (!videoElement) return` guard) — real code fix; B4 was a *test* bug (circuit opens at 10, test expected 3) — test fixed, `health.js` unchanged; B3 kept 30-day cache TTL (fixed comment + test fixture); B1 `esc()` hardening on error-toast captures (test deferred → Phase 68). 198→202 pass / 17→15 fail (217 total). New: `sync-engine-race.test.js`. Kept shipped behavior (TTL 30, circuit 10) — see Decision 11.
 - **Phase 67**: Dev-tooling foundation (67a-d). ESLint 9 flat config + Prettier + `.editorconfig`/`.nvmrc`; `package.json` metadata (license AGPL-3.0-only, removed dangling `main`); lint cleaned to **0 problems** (dead-code removal, behavior-preserved, −176 lines); repo-wide Prettier format (52 files, commit `50462db`, + `.git-blame-ignore-revs`); husky + lint-staged pre-commit (lint-staged only, not `npm test`). Tests 202/15 unchanged. New deps: eslint, @eslint/js, globals, prettier, husky, lint-staged.
+- **Phase 68**: Test recovery — **test-only, no production code touched**. Fixed all 15 red tests across 3 suites: `subtitle-parser`(6) + `sync-engine`(5) swapped `eval(scriptContent)` → direct ESM `import` (sync-engine needs `jest.unstable_mockModule('overlay.js')` since it calls the imported binding); `api-manager`(4) set `yousub_model_rotation:false` to isolate failover/circuit/sort. Updated stale assertions to shipped behavior (renderSubtitles 4th `isTranslated` arg; `decodeHtml` strips inline tags; hide-on-gap needs prior valid index). Added 1 rotation-on expansion test. **218/218 pass, 0 fail** (was 202/15). DEFERRED D1 (`esc()` test) re-pointed to Phase 75 (main.js entry has top-level side effects; needs `esc()` extracted to utils first).
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

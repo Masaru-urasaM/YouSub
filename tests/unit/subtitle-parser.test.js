@@ -1,23 +1,16 @@
-import { describe, test, expect, beforeEach } from '@jest/globals';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { describe, test, expect } from '@jest/globals';
+import { SubtitleParser } from '../../src/content/subtitle-parser.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+/**
+ * SubtitleParser is a clean ESM module: importing it runs the compatibility
+ * shim (window.YouSub.SubtitleParser) as a side-effect and exposes the parser
+ * directly. parseJson3/parseXml are pure functions that only rely on jsdom's
+ * built-in DOMParser, so no module mocking is required.
+ *
+ * (Phase 68: replaced the old eval(scriptContent) loader, which threw
+ * "Cannot use import statement outside a module" on this ESM file.)
+ */
 describe('SubtitleParser Module', () => {
-  let YS;
-  const scriptPath = path.resolve(__dirname, '../../src/content/subtitle-parser.js');
-  const scriptContent = fs.readFileSync(scriptPath, 'utf8');
-
-  beforeEach(() => {
-    window.YouSub = {};
-    YS = window.YouSub;
-    // JSDOM provides DOMParser by default
-    eval(scriptContent);
-  });
-
   test('should parse JSON3 correctly', () => {
     const mockData = {
       events: [
@@ -26,7 +19,7 @@ describe('SubtitleParser Module', () => {
       ],
     };
 
-    const result = YS.SubtitleParser.parseJson3(mockData);
+    const result = SubtitleParser.parseJson3(mockData);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ startMs: 100, endMs: 600, text: 'Hello' });
     expect(result[1]).toEqual({ startMs: 700, endMs: 1000, text: 'World' });
@@ -43,7 +36,7 @@ describe('SubtitleParser Module', () => {
       ],
     };
 
-    const result = YS.SubtitleParser.parseJson3(mockData);
+    const result = SubtitleParser.parseJson3(mockData);
     expect(result[0].text).toBe('Hello there!');
   });
 
@@ -57,7 +50,7 @@ describe('SubtitleParser Module', () => {
       </timedtext>
     `;
 
-    const result = YS.SubtitleParser.parseXml(xmlText);
+    const result = SubtitleParser.parseXml(xmlText);
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ startMs: 1500, endMs: 4000, text: 'XML Hello' });
     expect(result[1]).toEqual({ startMs: 5000, endMs: 6000, text: 'XML World' });
@@ -72,9 +65,10 @@ describe('SubtitleParser Module', () => {
       </timedtext>
     `;
 
-    const result = YS.SubtitleParser.parseXml(xmlText);
-    // document.createElement('textarea').innerHTML = '&lt;b&gt;' -> '<b>'
-    expect(result[0].text).toBe('<b>Encoded & Text</b>');
+    const result = SubtitleParser.parseXml(xmlText);
+    // decodeHtml() parses the decoded markup as HTML and returns textContent,
+    // so inline formatting tags (<b>) are stripped while entities are decoded.
+    expect(result[0].text).toBe('Encoded & Text');
   });
 
   test('should sort tracks by start time', () => {
@@ -85,13 +79,13 @@ describe('SubtitleParser Module', () => {
       ],
     };
 
-    const result = YS.SubtitleParser.parseJson3(mockData);
+    const result = SubtitleParser.parseJson3(mockData);
     expect(result[0].text).toBe('Early');
     expect(result[1].text).toBe('Late');
   });
 
   test('should return empty array on invalid input', () => {
-    expect(YS.SubtitleParser.parseJson3(null)).toEqual([]);
-    expect(YS.SubtitleParser.parseXml('invalid xml')).toEqual([]);
+    expect(SubtitleParser.parseJson3(null)).toEqual([]);
+    expect(SubtitleParser.parseXml('invalid xml')).toEqual([]);
   });
 });
