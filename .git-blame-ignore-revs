@@ -1,0 +1,3 @@
+# Phase 67c — repo-wide Prettier format (mechanical, no logic change).
+# Configure: git config blame.ignoreRevsFile .git-blame-ignore-revs
+50462db5fdd23178f325b209b8073543d82979e4

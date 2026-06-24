@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 67c — Repo-Wide Prettier Format (2026-06-24)
+
+One-time mechanical `prettier --write` across all code (js/json/css/html); the hand-crafted `*.md` governance docs + `LICENSE` are excluded (`.prettierignore`) to protect their tables/wording. **52 files reformatted** (commit `50462db`). **No logic change** — gated by `eslint .`=0, `prettier --check`=clean, tests 202/15 unchanged. Added `.git-blame-ignore-revs` (configure via `git config blame.ignoreRevsFile .git-blame-ignore-revs`) so the reformat doesn't pollute `git blame`.
+
 ### Phase 67b — Dev-Tooling: Lint Cleanup to Zero Problems (2026-06-24)
 
 Resolves all 66 ESLint problems from the 67a baseline (11 errors + 55 `no-unused-vars` warnings) across 16 files. Executed as 15 parallel per-file agents under strict surgical rules, then gated by `eslint .` (0 problems) + the full test suite (no regression) + manual diff review of every under-tested content/options script. **Behavior-preserving** — net −176 lines, almost all dead code.
