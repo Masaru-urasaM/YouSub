@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-73 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-74 done.
 
 ---
 
@@ -81,7 +81,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **71** | **SPEC reconciliation + README + LICENSE** | DONE (2026-06-24) | M7 |
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | DONE (2026-06-24) | M7 |
 | **73** | **Repo hygiene cleanup** | DONE (2026-06-24) | M7 |
-| **74** | **Privacy / store compliance** | TODO | M7 |
+| **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | TODO | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | TODO | M7 |
 | **77** | **Transcript-button locale resilience (+ optional Japanese UI i18n)** | TODO | M7 |
@@ -181,12 +181,12 @@ Split into reviewable sub-phases (Rule 5):
 - **Verify**: `git status` clean; `npm run lint` 0; `npm test` 420/420 + gate; `npm run package` produces valid Chrome + Firefox ZIPs (the skip-list already excluded the junk, so the ZIPs are unchanged).
 
 ### Phase 74 — Privacy / store compliance
-**Status**: TODO · **Risk**: Low · **Group**: privacy
-- Create an in-repo `privacy-policy.md` (mirror the gist content) so the policy isn't solely an external gist.
-- Fix Firefox AMO `data_collection_permissions` — currently `["none"]`, but the extension sends transcript text to third-party LLMs (BYOK). Declare the correct category.
-- Verify whether `RoughTranslator` actually uses `translate.googleapis.com`; remove the host_permission if unused, otherwise document it.
-- Record the plaintext-API-key-storage tradeoff in `YOUSUB_DESIGN_DECISIONS.md`.
-- **Verify**: manifest valid; privacy doc complete.
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: privacy
+- Added in-repo `privacy-policy.md` mirroring the canonical published gist (`Masaru-urasaM/15f9846…`), with a header pointing back to the gist as the store-linked source of truth.
+- Fixed Firefox `data_collection_permissions`: `["none"]` → **`["websiteContent"]`** — the extension transmits the YouTube transcript (website content) to the user's chosen third-party LLM, so "none" was a false declaration. ⚠️ The `data_collection_permissions` schema is a newer/evolving Firefox feature — **verify the exact accepted category set against current AMO review guidance at submission time** (Rule 2: honest about uncertainty). Manifest re-validated as JSON; `npm run package` VERIFY OK.
+- `translate.googleapis.com` host_permission — **verified IN USE** by `rough-translator.js:66` (free Google-Translate `translate_a/single` endpoint for the rough-translation tier). **Kept**, not removed.
+- Recorded the plaintext-API-key-storage tradeoff as **Decision 14** (keep plaintext `chrome.storage.local`; encryption-at-rest adds UX cost for little gain against the real threat model).
+- **Verify**: manifest valid JSON + build VERIFY OK; `privacy-policy.md` present and consistent with the declared data flow.
 
 ### Phase 75 — [EPIC] Refactor `translator.js` (behavior-preserving)
 **Status**: TODO · **Risk**: **High** · **Group**: refactor · **Depends**: 68, 69

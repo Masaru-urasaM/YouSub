@@ -257,3 +257,21 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Tradeoff accepted**: the SPEC is now descriptive of the shipped code. If any of the three phantom features (a standalone toast component, a `tab-about.js` module, an SVG logo) is ever wanted, it is a **new** feature — not a "missing" one — and should be added deliberately.
 
 **References**: `YOUSUB_PROJECT_SPEC.md` §2.5–2.7; `src/content/loader.js`, `src/content/overlay.js` (`showStatus`), `src/options/options.html` (inline About tab); `README.md` (new, Phase 71); Phase 71 in `ROADMAP.md` / `CHANGELOG.md`.
+
+### Decision 14 — Phase 74: Store BYOK API Keys in Plaintext `chrome.storage.local`
+
+**Date**: 2026-06-24
+**Status**: RESOLVED (documents existing shipped behavior)
+
+**Problem**: YouSub is BYOK — users paste LLM API keys that are persisted in `chrome.storage.local` in plaintext. Should they be encrypted at rest?
+
+**Options considered**:
+1. **Plaintext in `chrome.storage.local`** (current) — Pros: zero UX friction; `chrome.storage.local` is sandboxed per-extension (isolated from web pages and other extensions); standard practice for BYOK extensions. Cons: a local attacker with filesystem/profile access can read the keys.
+2. **Encrypt with a user passphrase** — Pros: protects keys at rest from casual disk access. Cons: the user must enter a passphrase every session (heavy UX cost for a convenience tool); the derived key still lives in the extension's JS context while in use; an attacker who can read the profile can usually also keylog the passphrase — so the real-world gain against the actual threat model is small.
+3. **OS keychain / WebAuthn-backed storage** — Pros: strongest. Cons: no portable MV3 API; platform-specific; disproportionate for BYOK.
+
+**Resolution**: Option 1 — keep plaintext `chrome.storage.local`, and **document the tradeoff** (this decision + the privacy policy). Rationale: the threat model that encryption-at-rest would mitigate (an attacker with full local profile access) can defeat a session passphrase too, so option 2 adds real UX cost for little practical security. The keys are never transmitted to the developer — only to the user's own configured provider (see `privacy-policy.md`).
+
+**Tradeoff accepted**: keys are readable by anyone with local access to the browser profile. Users on shared/untrusted machines should remove keys after use. Revisit if a portable, low-friction secret-storage API becomes available in MV3.
+
+**References**: `src/background/api-manager.js`, `src/options/tab-translation.js` (key storage); `privacy-policy.md`; `manifest.json` `data_collection_permissions`; Phase 74 in `ROADMAP.md` / `CHANGELOG.md`.

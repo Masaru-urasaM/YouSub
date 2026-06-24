@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 74 — Privacy / Store Compliance (2026-06-24)
+
+**Added**
+- `privacy-policy.md` — in-repo mirror of the canonical published gist (`Masaru-urasaM/15f9846…`), with a header noting the gist is the store-linked source of truth. So the policy is now versioned in the repo, not solely an external gist.
+- `YOUSUB_DESIGN_DECISIONS.md` **Decision 14** — documents the plaintext BYOK-key storage tradeoff (keep plaintext `chrome.storage.local`; passphrase encryption adds UX cost for little real-world gain).
+
+**Changed — `manifest.json`**
+- `browser_specific_settings.gecko.data_collection_permissions.required`: `["none"]` → **`["websiteContent"]`**. The extension transmits the YouTube transcript (website content) to the user's chosen third-party LLM, so declaring "none" was inaccurate. ⚠️ This Firefox key is relatively new — the developer should confirm the exact accepted category set against current AMO review guidance when next submitting to AMO.
+
+**Verified (no change)**
+- `translate.googleapis.com` host_permission is **in use** (`rough-translator.js:66`, the rough-translation tier's Google-Translate `translate_a/single` call) → kept, not removed.
+
+**Verify**: `manifest.json` re-validated as JSON; `npm run package` builds Chrome + Firefox ZIPs with VERIFY OK.
+
 ### Phase 73 — Repo Hygiene Cleanup (2026-06-24)
 
 Stops tracking committed junk and removes dead tooling. No source/behavior change; build output is byte-identical (the packager already skip-listed these files).
