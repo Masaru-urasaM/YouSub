@@ -2,8 +2,11 @@ import { jest, describe, test, expect, beforeAll, afterAll } from '@jest/globals
 import { _internals } from '../../src/background/translator.js';
 
 const {
-  detectForeignScriptLines, sanitizeForeignScript, NON_LATIN_TARGETS,
-  detectUntranslatedLines, parseVerificationResponse
+  detectForeignScriptLines,
+  sanitizeForeignScript,
+  NON_LATIN_TARGETS,
+  detectUntranslatedLines,
+  parseVerificationResponse,
 } = _internals;
 
 beforeAll(() => {
@@ -193,7 +196,7 @@ describe('detectUntranslatedLines', () => {
       { text: 'Thank you', startMs: 0 },
       { text: 'Oh my God', startMs: 1000 },
       { text: 'Yes sir', startMs: 2000 },
-      { text: 'No no no', startMs: 3000 }
+      { text: 'No no no', startMs: 3000 },
     ];
     const lines = ['Thank you', 'Oh my God', 'Yes sir', 'No no no'];
     expect(detectUntranslatedLines(lines, segments, 'vi')).toEqual([]);
@@ -206,7 +209,9 @@ describe('detectUntranslatedLines', () => {
 
   test('returns empty for clean translation', () => {
     const segments = [{ text: 'Hello world how are you today', startMs: 0 }];
-    expect(detectUntranslatedLines(['Xin chao the gioi ban khoe khong'], segments, 'vi')).toEqual([]);
+    expect(detectUntranslatedLines(['Xin chao the gioi ban khoe khong'], segments, 'vi')).toEqual(
+      []
+    );
   });
 
   test('returns empty for non-Latin target', () => {
@@ -221,12 +226,12 @@ describe('detectUntranslatedLines', () => {
     const segments = [
       { text: 'This is a long sentence that was not translated', startMs: 0 },
       { text: 'Day la cau da dich', startMs: 1000 },
-      { text: 'Another long sentence that remains in English completely', startMs: 2000 }
+      { text: 'Another long sentence that remains in English completely', startMs: 2000 },
     ];
     const lines = [
       'This is a long sentence that was not translated',
       'Day la cau da dich roi',
-      'Another long sentence that remains in English completely'
+      'Another long sentence that remains in English completely',
     ];
     expect(detectUntranslatedLines(lines, segments, 'vi')).toEqual([0, 2]);
   });
@@ -235,7 +240,7 @@ describe('detectUntranslatedLines', () => {
     const segments = [
       { text: 'hello world how are you', startMs: 0 },
       { text: 'foo bar baz qux quux', startMs: 1000 },
-      null
+      null,
     ];
     expect(detectUntranslatedLines([null, undefined, 'ok'], segments, 'vi')).toEqual([]);
   });
@@ -266,13 +271,13 @@ describe('parseVerificationResponse', () => {
     const json = JSON.stringify({
       lines: [
         { n: 0, t: 'translated text', k: false },
-        { n: 1, t: 'Paris', k: true }
-      ]
+        { n: 1, t: 'Paris', k: true },
+      ],
     });
     const result = parseVerificationResponse(json, 2);
     expect(result).toEqual([
       { index: 0, text: 'translated text', keep: false },
-      { index: 1, text: 'Paris', keep: true }
+      { index: 1, text: 'Paris', keep: true },
     ]);
   });
 

@@ -3,20 +3,20 @@ import '../shared/libs/browser-polyfill.js';
 export const Constants = {
   APP_NAME: 'YouSub',
   VERSION: '0.2.2',
-  IS_PRODUCTION: false,        // Auto-switched to true during packaging
-  BUILD_DATE: null,            // Injected during packaging
-  BUILD_HASH: null,            // Injected during packaging (git short hash)
+  IS_PRODUCTION: false, // Auto-switched to true during packaging
+  BUILD_DATE: null, // Injected during packaging
+  BUILD_HASH: null, // Injected during packaging (git short hash)
   DEFAULT_TARGET_LANG: 'vi',
-  DEFAULT_SOURCE_LANG: 'auto'
+  DEFAULT_SOURCE_LANG: 'auto',
 };
 
 // Message types for chrome.runtime.sendMessage between content ↔ background
 export const MSG = {
-  TRANSLATE_REQUEST:  'YOUSUB_TRANSLATE_REQUEST',
+  TRANSLATE_REQUEST: 'YOUSUB_TRANSLATE_REQUEST',
   TRANSLATE_RESPONSE: 'YOUSUB_TRANSLATE_RESPONSE',
-  TEST_API_KEY:       'YOUSUB_TEST_API_KEY',
-  TEST_RESULT:        'YOUSUB_TEST_RESULT',
-  API_KEYS_UPDATED:   'YOUSUB_API_KEYS_UPDATED'
+  TEST_API_KEY: 'YOUSUB_TEST_API_KEY',
+  TEST_RESULT: 'YOUSUB_TEST_RESULT',
+  API_KEYS_UPDATED: 'YOUSUB_API_KEYS_UPDATED',
 };
 
 export function devLog(...args) {

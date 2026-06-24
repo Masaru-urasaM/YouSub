@@ -32,8 +32,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Phase 56: Populate language selector (exclude 'auto')
   YOUSUB_PROVIDERS.languages
-    .filter(l => l.code !== 'auto')
-    .forEach(l => {
+    .filter((l) => l.code !== 'auto')
+    .forEach((l) => {
       const opt = document.createElement('option');
       opt.value = l.code;
       opt.textContent = l.name;
@@ -48,45 +48,51 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // Load and apply initial states
-  browser.storage.local.get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled']).then(async function (res) {
-    // 1. Immediate UI Updates (No await)
-    updateLanguageUI(res.targetLang);
-    dualModeToggle.checked = !!res.yousub_dual_mode;
-    
-    // Clear timeout as we got data
-    clearTimeout(healthTimeout);
-    checkHealth(res.yousub_api_keys || []);
+  browser.storage.local
+    .get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled'])
+    .then(async function (res) {
+      // 1. Immediate UI Updates (No await)
+      updateLanguageUI(res.targetLang);
+      dualModeToggle.checked = !!res.yousub_dual_mode;
 
-    // 2. Async/Optional Updates (Wrapped in try-catch to prevent UI freeze)
-    try {
-      const videoId = await getCurrentVideoId();
-      if (videoId) {
-        clearPageCacheBtn.classList.remove('hidden');
-        loadExecutionStats(videoId);
+      // Clear timeout as we got data
+      clearTimeout(healthTimeout);
+      checkHealth(res.yousub_api_keys || []);
 
-        // Phase 35.16: Query real-time state from content script
-        browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-          if (tabs[0]) {
-            browser.tabs.sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
-              .then(res => {
-                if (res) {
-                  devLog('[YouSub] Popup: State received from Tab:', res);
-                  if (res.isTranslationActive) getSubBtn.classList.add('active');
-                  else getSubBtn.classList.remove('active');
-                  
-                  dualModeToggle.checked = !!res.isDualMode;
-                }
-              })
-              .catch(err => {
-                devWarn('[YouSub] Popup: Could not get state from Tab (likely script not loaded).', err);
-              });
-          }
-        });
+      // 2. Async/Optional Updates (Wrapped in try-catch to prevent UI freeze)
+      try {
+        const videoId = await getCurrentVideoId();
+        if (videoId) {
+          clearPageCacheBtn.classList.remove('hidden');
+          loadExecutionStats(videoId);
+
+          // Phase 35.16: Query real-time state from content script
+          browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+            if (tabs[0]) {
+              browser.tabs
+                .sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
+                .then((res) => {
+                  if (res) {
+                    devLog('[YouSub] Popup: State received from Tab:', res);
+                    if (res.isTranslationActive) getSubBtn.classList.add('active');
+                    else getSubBtn.classList.remove('active');
+
+                    dualModeToggle.checked = !!res.isDualMode;
+                  }
+                })
+                .catch((err) => {
+                  devWarn(
+                    '[YouSub] Popup: Could not get state from Tab (likely script not loaded).',
+                    err
+                  );
+                });
+            }
+          });
+        }
+      } catch (e) {
+        devWarn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
       }
-    } catch (e) {
-      devWarn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
-    }
-  });
+    });
 
   // Sync language changes from Options page in real-time
   browser.storage.onChanged.addListener((changes, area) => {
@@ -101,7 +107,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (langSelector.value !== currentLang) {
       langSelector.value = currentLang;
     }
-    const langObj = YOUSUB_PROVIDERS.languages.find(l => l.code === currentLang);
+    const langObj = YOUSUB_PROVIDERS.languages.find((l) => l.code === currentLang);
     const langName = langObj ? langObj.name.toUpperCase() : currentLang.toUpperCase();
     getSubBtn.textContent = `Translate to ${langName}`;
   }
@@ -117,13 +123,13 @@ document.addEventListener('DOMContentLoaded', function () {
           return url.pathname.split('/')[2];
         }
       }
-    } catch { }
+    } catch {}
     return null;
   }
 
   function checkHealth(keys) {
     const hasKeys = keys.length > 0;
-    const activeKeys = keys.filter(k => k.apiKey && k.apiKey.trim() !== '' && !k.disabled);
+    const activeKeys = keys.filter((k) => k.apiKey && k.apiKey.trim() !== '' && !k.disabled);
     const allDisabled = hasKeys && activeKeys.length === 0;
 
     healthStatus.classList.remove('hidden');
@@ -145,19 +151,22 @@ document.addEventListener('DOMContentLoaded', function () {
     healthText.textContent = 'Checking APIs...';
 
     // Fetch real-time health from background
-    browser.runtime.sendMessage({ type: 'YOUSUB_GET_HEALTH_SUMMARY' })
-      .then(res => {
+    browser.runtime
+      .sendMessage({ type: 'YOUSUB_GET_HEALTH_SUMMARY' })
+      .then((res) => {
         if (res && res.success && res.summary) {
           const summary = res.summary;
-          const healthy = summary.filter(s => s.status === 'healthy');
-          const broken = summary.filter(s => s.status === 'broken');
-          const poor = summary.filter(s => s.status === 'poor');
+          const healthy = summary.filter((s) => s.status === 'healthy');
+          const broken = summary.filter((s) => s.status === 'broken');
+          const poor = summary.filter((s) => s.status === 'poor');
 
           if (healthy.length > 0) {
             healthStatus.className = 'health-indicator';
-            const names = healthy.map(s => {
+            const names = healthy.map((s) => {
               const p = YOUSUB_PROVIDERS.getProvider(s.provider);
-              const m = p ? (p.models.find(m => m.id === s.model) || { name: s.model }) : { name: s.model };
+              const m = p
+                ? p.models.find((m) => m.id === s.model) || { name: s.model }
+                : { name: s.model };
               return `${m.name} (Online)`;
             });
             healthText.innerHTML = names.join('<br>');
@@ -173,10 +182,10 @@ document.addEventListener('DOMContentLoaded', function () {
           }
         }
       })
-      .catch(err => {
+      .catch((err) => {
         console.error('[YouSub] Popup: Health check error', err);
         // Fallback to basic storage-only check
-        const onlineKeys = activeKeys.filter(k => k.status === 'success' || !k.status);
+        const onlineKeys = activeKeys.filter((k) => k.status === 'success' || !k.status);
         if (onlineKeys.length > 0) {
           healthStatus.className = 'health-indicator';
           healthText.textContent = 'Service Ready (Cache Mode)';
@@ -190,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     sendMessageToActiveTab({
       type: 'YOUSUB_TOGGLE_DUAL_MODE',
-      enabled: isEnabled
+      enabled: isEnabled,
     });
   });
 
@@ -206,20 +215,19 @@ document.addEventListener('DOMContentLoaded', function () {
     const videoId = await getCurrentVideoId();
     if (!videoId) return;
 
-    showConfirmModal(
-      'Clear Cache',
-      'Delete translation cache for this video?',
-      () => {
-        clearPageCacheBtn.disabled = true;
-        clearPageCacheBtn.textContent = 'Clearing...';
+    showConfirmModal('Clear Cache', 'Delete translation cache for this video?', () => {
+      clearPageCacheBtn.disabled = true;
+      clearPageCacheBtn.textContent = 'Clearing...';
 
-        browser.runtime.sendMessage({
+      browser.runtime
+        .sendMessage({
           type: 'YOUSUB_CLEAR_VIDEO_CACHE',
-          videoId
-        }).then(res => {
+          videoId,
+        })
+        .then((res) => {
           if (res.success) {
             clearPageCacheBtn.textContent = 'Cache Cleared!';
-            
+
             // Hide stats when cache is cleared
             const statsContainer = document.getElementById('execution-stats');
             if (statsContainer) statsContainer.classList.add('hidden');
@@ -236,7 +244,7 @@ document.addEventListener('DOMContentLoaded', function () {
             sendMessageToActiveTab({
               type: 'YOUSUB_TOGGLE_TRANSLATION',
               enabled: false,
-              targetLang: currentLang
+              targetLang: currentLang,
             });
           } else {
             clearPageCacheBtn.textContent = 'Error clearing';
@@ -246,8 +254,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 2000);
           }
         });
-      }
-    );
+    });
   });
 
   getSubBtn.addEventListener('click', function () {
@@ -268,7 +275,7 @@ document.addEventListener('DOMContentLoaded', function () {
     sendMessageToActiveTab({
       type: 'YOUSUB_TOGGLE_TRANSLATION',
       enabled: newState,
-      targetLang: currentLang
+      targetLang: currentLang,
     });
   });
 
@@ -276,10 +283,10 @@ document.addEventListener('DOMContentLoaded', function () {
     browser.tabs.query({ active: true, currentWindow: true }).then(function (tabs) {
       if (!tabs[0] || !tabs[0].url) return;
       const url = tabs[0].url;
-      
+
       // Phase 50.1.4: Support both regular watch and shorts URLs
       if (url.includes('youtube.com/watch') || url.includes('youtube.com/shorts/')) {
-        browser.tabs.sendMessage(tabs[0].id, msg).catch(() => { });
+        browser.tabs.sendMessage(tabs[0].id, msg).catch(() => {});
       }
     });
   }
@@ -349,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function () {
     statsTitle.title = videoTitle; // Tooltip for full title
 
     const key = `yousub_stats_${videoId}`;
-    browser.storage.local.get([key]).then(res => {
+    browser.storage.local.get([key]).then((res) => {
       const stats = res[key];
       if (!stats) {
         statsContainer.classList.add('hidden');
@@ -357,7 +364,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       statsContainer.classList.remove('hidden');
-      
+
       if (stats.source === 'cache') {
         sourceBadge.textContent = 'Cache';
         sourceBadge.className = 'stats-badge cache';
@@ -370,12 +377,12 @@ document.addEventListener('DOMContentLoaded', function () {
         sourceBadge.textContent = 'API';
         sourceBadge.className = 'stats-badge';
         modelName.textContent = stats.model || 'Unknown model';
-        
+
         requestsVal.textContent = stats.batchCount || '0';
-        
+
         const seconds = (stats.durationMs / 1000).toFixed(1);
         durationVal.textContent = `${seconds}s`;
-        
+
         inputTokensVal.textContent = (stats.promptTokens || 0).toLocaleString();
         outputTokensVal.textContent = (stats.completionTokens || 0).toLocaleString();
       }

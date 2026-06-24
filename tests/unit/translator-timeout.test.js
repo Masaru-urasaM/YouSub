@@ -2,22 +2,26 @@ import { describe, test, expect } from '@jest/globals';
 import { _internals } from '../../src/background/translator.js';
 
 const {
-  computeForceTimeoutMs, soonestCooldownWaitMs, getCooldownKey,
-  BASE_FORCE_TIMEOUT_MS, MAX_FORCE_TIMEOUT_MS, SWEEP_MAX_WAIT_MS
+  computeForceTimeoutMs,
+  soonestCooldownWaitMs,
+  getCooldownKey,
+  BASE_FORCE_TIMEOUT_MS,
+  MAX_FORCE_TIMEOUT_MS,
+  SWEEP_MAX_WAIT_MS,
 } = _internals;
 
 // ─── Phase 64 (c): force-timeout scaling ──────────────────────────────
 
 describe('computeForceTimeoutMs', () => {
   test('uses the floor for short transcripts', () => {
-    expect(computeForceTimeoutMs(0)).toBe(BASE_FORCE_TIMEOUT_MS);   // 180000
-    expect(computeForceTimeoutMs(50)).toBe(BASE_FORCE_TIMEOUT_MS);  // 50*2500=125000 < floor
-    expect(computeForceTimeoutMs(72)).toBe(BASE_FORCE_TIMEOUT_MS);  // 72*2500=180000 == floor
+    expect(computeForceTimeoutMs(0)).toBe(BASE_FORCE_TIMEOUT_MS); // 180000
+    expect(computeForceTimeoutMs(50)).toBe(BASE_FORCE_TIMEOUT_MS); // 50*2500=125000 < floor
+    expect(computeForceTimeoutMs(72)).toBe(BASE_FORCE_TIMEOUT_MS); // 72*2500=180000 == floor
   });
 
   test('scales with line count above the floor', () => {
     expect(computeForceTimeoutMs(100)).toBe(250000); // 100*2500
-    expect(computeForceTimeoutMs(73)).toBe(182500);  // just above the floor
+    expect(computeForceTimeoutMs(73)).toBe(182500); // just above the floor
   });
 
   test('never exceeds the hard ceiling', () => {
@@ -35,7 +39,7 @@ describe('computeForceTimeoutMs', () => {
 describe('soonestCooldownWaitMs', () => {
   const keys = [
     { apiKey: 'k1', model: 'm1' },
-    { apiKey: 'k2', model: 'm2' }
+    { apiKey: 'k2', model: 'm2' },
   ];
   const NOW = 1_000_000;
 
@@ -57,7 +61,7 @@ describe('soonestCooldownWaitMs', () => {
   test('waits for the soonest expiry when all keys are cooled', () => {
     const m = cooldownMap([
       [getCooldownKey('k1', 'm1'), NOW + 8000],
-      [getCooldownKey('k2', 'm2'), NOW + 3000]
+      [getCooldownKey('k2', 'm2'), NOW + 3000],
     ]);
     expect(soonestCooldownWaitMs(keys, m, NOW)).toBe(3000); // soonest = k2
   });
@@ -65,7 +69,7 @@ describe('soonestCooldownWaitMs', () => {
   test('caps the wait at SWEEP_MAX_WAIT_MS', () => {
     const m = cooldownMap([
       [getCooldownKey('k1', 'm1'), NOW + 60000],
-      [getCooldownKey('k2', 'm2'), NOW + 45000]
+      [getCooldownKey('k2', 'm2'), NOW + 45000],
     ]);
     expect(soonestCooldownWaitMs(keys, m, NOW)).toBe(SWEEP_MAX_WAIT_MS); // 15000
   });

@@ -1,134 +1,137 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
+  <head>
     <title>Translator Unit Test</title>
-</head>
-<body>
+  </head>
+  <body>
     <h1>Translator Unit Test Results</h1>
     <div id="results">Running tests...</div>
 
     <script type="module">
-        // Mocking the environment
-        window.chrome = {
-            runtime: {
-                sendMessage: (msg, callback) => {
-                    console.log("Mock sendMessage:", msg);
-                    if (callback) callback({ success: true });
-                },
-                lastError: null
+      // Mocking the environment
+      window.chrome = {
+        runtime: {
+          sendMessage: (msg, callback) => {
+            console.log('Mock sendMessage:', msg);
+            if (callback) callback({ success: true });
+          },
+          lastError: null,
+        },
+        storage: {
+          local: {
+            get: (keys, callback) => {
+              console.log('Mock storage.get:', keys);
+              // Return dummy API keys
+              if (keys.includes('yousub_api_keys')) {
+                callback({
+                  yousub_api_keys: [
+                    { provider: 'Groq', model: 'llama3', apiKey: 'test-key', status: 'active' },
+                  ],
+                });
+              } else {
+                callback({});
+              }
             },
-            storage: {
-                local: {
-                    get: (keys, callback) => {
-                        console.log("Mock storage.get:", keys);
-                        // Return dummy API keys
-                        if (keys.includes('yousub_api_keys')) {
-                             callback({ yousub_api_keys: [{ provider: 'Groq', model: 'llama3', apiKey: 'test-key', status: 'active' }] });
-                        } else {
-                             callback({});
-                        }
-                    },
-                    set: (data, callback) => {
-                        console.log("Mock storage.set:", data);
-                        if (callback) callback();
-                    }
-                }
-            }
-        };
-        window.browser = window.chrome;
+            set: (data, callback) => {
+              console.log('Mock storage.set:', data);
+              if (callback) callback();
+            },
+          },
+        },
+      };
+      window.browser = window.chrome;
 
-        // Mocking Modules using dynamic path re-mapping if needed
-        // Since I'm in a browser, I can't easily overwrite imports in translator.js
-        // But I can try to use URL re-mapping or provide mocked versions of the files
-        
-        // This is getting complicated correctly. 
-        // Let's try a simpler approach. I'll test the core logic (regex/queue) directly in this script.
+      // Mocking Modules using dynamic path re-mapping if needed
+      // Since I'm in a browser, I can't easily overwrite imports in translator.js
+      // But I can try to use URL re-mapping or provide mocked versions of the files
 
-        function formatTimestamp(ms) {
-            const totalSeconds = Math.floor(ms / 1000);
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            const seconds = totalSeconds % 60;
-            const h = String(hours).padStart(2, '0');
-            const m = String(minutes).padStart(2, '0');
-            const s = String(seconds).padStart(2, '0');
-            return `[${h}:${m}:${s}]`;
-        }
+      // This is getting complicated correctly.
+      // Let's try a simpler approach. I'll test the core logic (regex/queue) directly in this script.
 
-        async function runTests() {
-            const results = document.getElementById('results');
-            results.innerHTML = '';
-            
-            try {
-                // Test 1: formatTimestamp
-                const t1 = formatTimestamp(1500) === '[00:00:01]';
-                const t2 = formatTimestamp(3661000) === '[01:01:01]';
-                logResult("formatTimestamp", t1 && t2);
+      function formatTimestamp(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const h = String(hours).padStart(2, '0');
+        const m = String(minutes).padStart(2, '0');
+        const s = String(seconds).padStart(2, '0');
+        return `[${h}:${m}:${s}]`;
+      }
 
-                // Test 2: Matching Logic (The core logic I implemented in translator.js)
-                const segments = [
-                    { startMs: 1000, text: "Line 1" },
-                    { startMs: 1500, text: "Line 2" }, // Duplicate second [00:00:01]
-                    { startMs: 3000, text: "Line 3" }
-                ];
-                
-                const mockResponse = `
+      async function runTests() {
+        const results = document.getElementById('results');
+        results.innerHTML = '';
+
+        try {
+          // Test 1: formatTimestamp
+          const t1 = formatTimestamp(1500) === '[00:00:01]';
+          const t2 = formatTimestamp(3661000) === '[01:01:01]';
+          logResult('formatTimestamp', t1 && t2);
+
+          // Test 2: Matching Logic (The core logic I implemented in translator.js)
+          const segments = [
+            { startMs: 1000, text: 'Line 1' },
+            { startMs: 1500, text: 'Line 2' }, // Duplicate second [00:00:01]
+            { startMs: 3000, text: 'Line 3' },
+          ];
+
+          const mockResponse = `
                     [00:00:01] Translated 1
                     [00:00:01] Translated 2
                     [00:00:03] Translated 3
                 `;
 
-                // Logic from translator.js
-                const regex = /\[(\d{1,2}:\d{2}:\d{2})\]\s*([\s\S]*?)(?=\s*\[\d{1,2}:\d{2}:\d{2}\]|$)/g;
-                const parsedQueues = {};
-                let match;
-                while ((match = regex.exec(mockResponse)) !== null) {
-                    const timestamp = match[1];
-                    const content = match[2].trim();
-                    if (!parsedQueues[timestamp]) parsedQueues[timestamp] = [];
-                    parsedQueues[timestamp].push(content);
-                }
+          // Logic from translator.js
+          const regex = /\[(\d{1,2}:\d{2}:\d{2})\]\s*([\s\S]*?)(?=\s*\[\d{1,2}:\d{2}:\d{2}\]|$)/g;
+          const parsedQueues = {};
+          let match;
+          while ((match = regex.exec(mockResponse)) !== null) {
+            const timestamp = match[1];
+            const content = match[2].trim();
+            if (!parsedQueues[timestamp]) parsedQueues[timestamp] = [];
+            parsedQueues[timestamp].push(content);
+          }
 
-                const resultLines = segments.map(s => {
-                    const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, '');
-                    if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
-                        return parsedQueues[ts].shift();
-                    }
-                    return s.text;
-                });
+          const resultLines = segments.map((s) => {
+            const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, '');
+            if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
+              return parsedQueues[ts].shift();
+            }
+            return s.text;
+          });
 
-                const expected = ["Translated 1", "Translated 2", "Translated 3"];
-                const matchTest = JSON.stringify(resultLines) === JSON.stringify(expected);
-                logResult("matchingLogic", matchTest);
+          const expected = ['Translated 1', 'Translated 2', 'Translated 3'];
+          const matchTest = JSON.stringify(resultLines) === JSON.stringify(expected);
+          logResult('matchingLogic', matchTest);
 
-                // Test 3: Fallback Logic
-                const mockResponseMismatch = `
+          // Test 3: Fallback Logic
+          const mockResponseMismatch = `
                     [00:00:05] Unknown
                 `;
-                const resultLinesFallback = segments.map(s => {
-                    const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, '');
-                    if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
-                        return parsedQueues[ts].shift();
-                    }
-                    return s.text;
-                });
-                // Since parsedQueues was partially emptied in Test 2, let's reset it or use new one
-                // Actually Test 2 emptied it completely if successful.
-                const fallbackTest = resultLinesFallback[0] === "Line 1"; // Should stay original
-                logResult("fallbackLogic", fallbackTest);
-
-            } catch (e) {
-                results.innerHTML += `<div style="color: red">Test crashed: ${e.message}</div>`;
+          const resultLinesFallback = segments.map((s) => {
+            const ts = formatTimestamp(s.startMs).replace(/[\[\]]/g, '');
+            if (parsedQueues[ts] && parsedQueues[ts].length > 0) {
+              return parsedQueues[ts].shift();
             }
+            return s.text;
+          });
+          // Since parsedQueues was partially emptied in Test 2, let's reset it or use new one
+          // Actually Test 2 emptied it completely if successful.
+          const fallbackTest = resultLinesFallback[0] === 'Line 1'; // Should stay original
+          logResult('fallbackLogic', fallbackTest);
+        } catch (e) {
+          results.innerHTML += `<div style="color: red">Test crashed: ${e.message}</div>`;
         }
+      }
 
-        function logResult(name, passed) {
-            const results = document.getElementById('results');
-            results.innerHTML += `<div>${name}: ${passed ? '<span style="color: green">PASS</span>' : '<span style="color: red">FAIL</span>'}</div>`;
-            console.log(name, passed ? "PASS" : "FAIL");
-        }
+      function logResult(name, passed) {
+        const results = document.getElementById('results');
+        results.innerHTML += `<div>${name}: ${passed ? '<span style="color: green">PASS</span>' : '<span style="color: red">FAIL</span>'}</div>`;
+        console.log(name, passed ? 'PASS' : 'FAIL');
+      }
 
-        runTests();
+      runTests();
     </script>
-</body>
+  </body>
 </html>

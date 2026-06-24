@@ -2,25 +2,30 @@
   position: absolute;
   --yousub-pos-bottom: 20px;
   --yousub-offset: 0px;
-  bottom: calc(var(--yousub-pos-bottom) + var(--yousub-offset) + 0px); /* Base bottom from settings + dynamic offset */
+  bottom: calc(
+    var(--yousub-pos-bottom) + var(--yousub-offset) + 0px
+  ); /* Base bottom from settings + dynamic offset */
   left: 50%;
   transform: translateX(-50%);
-  z-index: 60;             /* Above video, below controls */
-  pointer-events: none;    /* Don't interfere with click events */
-  width: max-content;      /* Expands according to text */
-  max-width: 80%;          /* Wide for readability, but fits video frame better */
+  z-index: 60; /* Above video, below controls */
+  pointer-events: none; /* Don't interfere with click events */
+  width: max-content; /* Expands according to text */
+  max-width: 80%; /* Wide for readability, but fits video frame better */
   min-width: 200px;
-  
+
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
 
-  opacity: 0;              /* Hidden by default */
+  opacity: 0; /* Hidden by default */
   visibility: hidden;
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), bottom 0.2s ease;
-  
+  transition:
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    bottom 0.2s ease;
+
   /* Glassmorphism Effect */
   background: rgba(15, 23, 42, 0.25); /* Slate-900 with user-specified alpha (0.25 default) */
   backdrop-filter: blur(12px) saturate(180%);
@@ -45,9 +50,9 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   /* Multi-layered shadow for hyper-readability */
-  text-shadow: 
-    0 2px 4px rgba(0,0,0,0.5),
-    0 0 1px rgba(0,0,0,0.8);
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    0 0 1px rgba(0, 0, 0, 0.8);
   letter-spacing: -0.01em;
 }
 
@@ -56,9 +61,9 @@
   font-weight: 700;
   color: #ffffff !important;
   /* Multi-layered drop shadow for hyper-visibility */
-  text-shadow: 
-    0 2px 4px rgba(0,0,0,0.8),
-    0 0 10px rgba(0,0,0,0.5);
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.8),
+    0 0 10px rgba(0, 0, 0, 0.5);
   animation: yousub-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -90,7 +95,7 @@
   font-weight: 500;
   color: #fff;
   animation: yousub-fade-in 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   pointer-events: auto; /* Enable click/hover for interactive messages (Phase 33) */
 }
 
@@ -105,24 +110,38 @@
   color: #e2e8f0;
 }
 
-.yousub-status-info { background: rgba(3, 169, 244, 0.9); }     /* Blue */
-.yousub-status-success { background: rgba(76, 175, 80, 0.9); }  /* Green */
-.yousub-status-warning { background: rgba(255, 152, 0, 0.9); }  /* Orange */
-.yousub-status-error { background: rgba(244, 67, 54, 0.9); }    /* Red */
+.yousub-status-info {
+  background: rgba(3, 169, 244, 0.9);
+} /* Blue */
+.yousub-status-success {
+  background: rgba(76, 175, 80, 0.9);
+} /* Green */
+.yousub-status-warning {
+  background: rgba(255, 152, 0, 0.9);
+} /* Orange */
+.yousub-status-error {
+  background: rgba(244, 67, 54, 0.9);
+} /* Red */
 
 @keyframes yousub-fade-in {
-  from { opacity: 0; transform: translateY(-10px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes yousub-slide-up {
-  from { 
-    opacity: 0; 
+  from {
+    opacity: 0;
     transform: translateY(15px);
     filter: blur(4px);
   }
-  to { 
-    opacity: 1; 
+  to {
+    opacity: 1;
     transform: translateY(0);
     filter: blur(0);
   }
@@ -149,8 +168,12 @@
 }
 
 @keyframes yousub-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 #movie_player:not(.ytp-autohide) #yousub-overlay {
@@ -159,10 +182,12 @@
 
 /* YouTube Shorts Adaptation */
 #yousub-overlay.yousub-shorts {
-  max-width: 90vw;           /* Take more width relative to the narrow player */
+  max-width: 90vw; /* Take more width relative to the narrow player */
   width: 90vw;
   min-width: 0;
-  bottom: calc(var(--yousub-pos-bottom) + var(--yousub-offset) + 120px); /* Lift higher on Shorts to avoid meta/actions */
+  bottom: calc(
+    var(--yousub-pos-bottom) + var(--yousub-offset) + 120px
+  ); /* Lift higher on Shorts to avoid meta/actions */
   padding: 8px 12px;
 }
 
@@ -200,10 +225,34 @@
   opacity: 1;
 }
 
-.yousub-handle-nw { top: -4px; left: -4px; width: 16px; height: 16px; cursor: nwse-resize; }
-.yousub-handle-ne { top: -4px; right: -4px; width: 16px; height: 16px; cursor: nesw-resize; }
-.yousub-handle-sw { bottom: -4px; left: -4px; width: 16px; height: 16px; cursor: nesw-resize; }
-.yousub-handle-se { bottom: -4px; right: -4px; width: 16px; height: 16px; cursor: nwse-resize; }
+.yousub-handle-nw {
+  top: -4px;
+  left: -4px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
+.yousub-handle-ne {
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  cursor: nesw-resize;
+}
+.yousub-handle-sw {
+  bottom: -4px;
+  left: -4px;
+  width: 16px;
+  height: 16px;
+  cursor: nesw-resize;
+}
+.yousub-handle-se {
+  bottom: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
 
 .yousub-handle-move {
   top: -6px;
@@ -225,8 +274,10 @@
   border-radius: 4px;
 }
 
-.yousub-handle-nw::after, .yousub-handle-ne::after,
-.yousub-handle-sw::after, .yousub-handle-se::after {
+.yousub-handle-nw::after,
+.yousub-handle-ne::after,
+.yousub-handle-sw::after,
+.yousub-handle-se::after {
   content: '';
   position: absolute;
   width: 6px;

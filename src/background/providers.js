@@ -11,7 +11,7 @@ export const Providers = {
    * Run a quick test request to verify API Key validity
    */
   async testApiKey(providerId, modelId, apiKey) {
-    const prompt = "Respond with only: OK";
+    const prompt = 'Respond with only: OK';
     const startTime = performance.now();
     const safeKey = sanitizeKey(apiKey);
 
@@ -22,9 +22,16 @@ export const Providers = {
       const suffix = safeKey.slice(-4);
       const maskedFormat = `${prefix}...${suffix}`;
 
-      Logger.info('Providers', `Testing key [${providerId}] - Length: ${keyLength}, Format: ${maskedFormat}`);
+      Logger.info(
+        'Providers',
+        `Testing key [${providerId}] - Length: ${keyLength}, Format: ${maskedFormat}`
+      );
 
-      const res = await this.chat(providerId, modelId, safeKey, prompt, { temperature: 0, maxTokens: 1000, timeoutMs: 30000 });
+      const res = await this.chat(providerId, modelId, safeKey, prompt, {
+        temperature: 0,
+        maxTokens: 1000,
+        timeoutMs: 30000,
+      });
       const duration = performance.now() - startTime;
 
       // Auto-thaw: reset full stats on success, report failure normally
@@ -39,8 +46,8 @@ export const Providers = {
         const items = await browser.storage.local.get(['yousub_api_keys']);
         const keys = items.yousub_api_keys || [];
         let modified = false;
-        
-        keys.forEach(k => {
+
+        keys.forEach((k) => {
           // If this is the key we just tested (using sanitized comparison)
           if (sanitizeKey(k.apiKey) === safeKey) {
             k.status = 'ok';
@@ -55,14 +62,17 @@ export const Providers = {
       }
 
       if (res.success) {
-        const resolvedProvider = providerId === 'auto'
-          ? YOUSUB_PROVIDERS.detectProviderFromKey(safeKey) || providerId
-          : providerId;
+        const resolvedProvider =
+          providerId === 'auto'
+            ? YOUSUB_PROVIDERS.detectProviderFromKey(safeKey) || providerId
+            : providerId;
         try {
           const quota = await this.fetchQuota(resolvedProvider, safeKey);
           if (quota) res.quota = quota;
         } catch (qe) {
-          Logger.warn('Providers', `Quota fetch failed for ${resolvedProvider}`, { error: qe.message });
+          Logger.warn('Providers', `Quota fetch failed for ${resolvedProvider}`, {
+            error: qe.message,
+          });
         }
       }
 
@@ -85,10 +95,10 @@ export const Providers = {
       const res = await fetch(provider.quotaEndpoint, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
-        signal: controller.signal
+        signal: controller.signal,
       });
       clearTimeout(timer);
 
@@ -100,11 +110,11 @@ export const Providers = {
         return {
           credits: {
             used: d.usage ?? null,
-            remaining: (d.limit != null && d.usage != null) ? d.limit - d.usage : null,
-            limit: d.limit ?? null
+            remaining: d.limit != null && d.usage != null ? d.limit - d.usage : null,
+            limit: d.limit ?? null,
           },
           currency: 'USD',
-          raw: data
+          raw: data,
         };
       }
 
@@ -114,11 +124,13 @@ export const Providers = {
         return {
           credits: {
             used: null,
-            remaining: isNaN(parseFloat(info.total_balance)) ? null : parseFloat(info.total_balance),
-            limit: null
+            remaining: isNaN(parseFloat(info.total_balance))
+              ? null
+              : parseFloat(info.total_balance),
+            limit: null,
           },
           currency: info.currency || 'CNY',
-          raw: data
+          raw: data,
         };
       }
 
@@ -144,7 +156,7 @@ export const Providers = {
       if (detectedId) {
         internalProviderId = detectedId;
         const providerInfo = YOUSUB_PROVIDERS.getProvider(detectedId);
-        internalModelId = modelId === 'auto' ? (providerInfo?.defaultModel || 'unknown') : modelId;
+        internalModelId = modelId === 'auto' ? providerInfo?.defaultModel || 'unknown' : modelId;
       }
     } else {
       const providerInfo = YOUSUB_PROVIDERS.getProvider(providerId);
@@ -173,11 +185,32 @@ export const Providers = {
       const streamOptions = { ...options, stream: true };
 
       if (style === 'openai') {
-        response = await this.callOpenAIStyle(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+        response = await this.callOpenAIStyle(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          streamOptions,
+          controller.signal
+        );
       } else if (style === 'anthropic') {
-        response = await this.callAnthropic(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+        response = await this.callAnthropic(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          streamOptions,
+          controller.signal
+        );
       } else if (style === 'gemini') {
-        response = await this.callGemini(endpoint, safeKey, internalModelId, prompt, streamOptions, controller.signal);
+        response = await this.callGemini(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          streamOptions,
+          controller.signal
+        );
       }
 
       clearTimeout(timeoutId);
@@ -274,9 +307,13 @@ export const Providers = {
       if (detectedId) {
         internalProviderId = detectedId;
         const providerInfo = YOUSUB_PROVIDERS.getProvider(detectedId);
-        internalModelId = modelId === 'auto' ? (providerInfo?.defaultModel || 'unknown') : modelId;
+        internalModelId = modelId === 'auto' ? providerInfo?.defaultModel || 'unknown' : modelId;
       } else {
-        return { success: false, message: 'Could not auto-detect provider from key prefix.', model: 'auto' };
+        return {
+          success: false,
+          message: 'Could not auto-detect provider from key prefix.',
+          model: 'auto',
+        };
       }
     } else {
       const providerInfo = YOUSUB_PROVIDERS.getProvider(providerId);
@@ -287,7 +324,11 @@ export const Providers = {
 
     const providerObj = YOUSUB_PROVIDERS.getProvider(internalProviderId);
     if (!providerObj) {
-      return { success: false, message: `Provider ${internalProviderId} not supported.`, model: internalModelId };
+      return {
+        success: false,
+        message: `Provider ${internalProviderId} not supported.`,
+        model: internalModelId,
+      };
     }
 
     const endpoint = providerObj.endpoint;
@@ -308,22 +349,49 @@ export const Providers = {
         }
       }
 
-      Logger.trace('Providers', `[FETCH_START] ${internalProviderId} (${internalModelId}) - Timeout: ${timeoutMs}ms`);
+      Logger.trace(
+        'Providers',
+        `[FETCH_START] ${internalProviderId} (${internalModelId}) - Timeout: ${timeoutMs}ms`
+      );
 
       let response;
       if (style === 'openai') {
-        response = await this.callOpenAIStyle(endpoint, safeKey, internalModelId, prompt, options, controller.signal);
+        response = await this.callOpenAIStyle(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          options,
+          controller.signal
+        );
       } else if (style === 'gemini') {
-        response = await this.callGemini(endpoint, safeKey, internalModelId, prompt, options, controller.signal);
+        response = await this.callGemini(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          options,
+          controller.signal
+        );
       } else if (style === 'anthropic') {
-        response = await this.callAnthropic(endpoint, safeKey, internalModelId, prompt, options, controller.signal);
+        response = await this.callAnthropic(
+          endpoint,
+          safeKey,
+          internalModelId,
+          prompt,
+          options,
+          controller.signal
+        );
       } else {
         clearTimeout(timeoutId);
         return { success: false, message: `Unknown API style: ${style}`, model: internalModelId };
       }
 
       clearTimeout(timeoutId);
-      Logger.trace('Providers', `[FETCH_END] ${internalProviderId} answered with status ${response.status}`);
+      Logger.trace(
+        'Providers',
+        `[FETCH_END] ${internalProviderId} answered with status ${response.status}`
+      );
       return this.handleResponse(response, internalModelId, style);
     } catch (err) {
       Logger.error('Providers', `Request failed for ${internalProviderId}`, { error: err.message });
@@ -338,12 +406,12 @@ export const Providers = {
     const payload = {
       model: model,
       messages: [
-        { role: 'system', content: options.systemPrompt || "You are a helpful assistant." },
-        { role: 'user', content: prompt }
+        { role: 'system', content: options.systemPrompt || 'You are a helpful assistant.' },
+        { role: 'user', content: prompt },
       ],
       max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3,
-      stream: !!options.stream // Enable streaming if requested
+      stream: !!options.stream, // Enable streaming if requested
     };
 
     if (options.responseFormat) {
@@ -352,7 +420,7 @@ export const Providers = {
 
     Logger.trace('Providers', `Requesting ${model} at ${endpoint}`, {
       keyLen: apiKey.length,
-      payloadKeys: Object.keys(payload)
+      payloadKeys: Object.keys(payload),
     });
 
     const headers = { 'Content-Type': 'application/json' };
@@ -364,31 +432,37 @@ export const Providers = {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal
+      signal,
     });
   },
 
   async callGemini(endpointPattern, apiKey, model, prompt, options, signal) {
     const action = options.stream ? 'streamGenerateContent' : 'generateContent';
-    const endpoint = endpointPattern.replace('{model}', model).replace('generateContent', action) + `?key=${apiKey}`;
-    const systemInstruction = options.systemPrompt ? { parts: [{ text: options.systemPrompt }] } : undefined;
+    const endpoint =
+      endpointPattern.replace('{model}', model).replace('generateContent', action) +
+      `?key=${apiKey}`;
+    const systemInstruction = options.systemPrompt
+      ? { parts: [{ text: options.systemPrompt }] }
+      : undefined;
     const payload = {
       systemInstruction: systemInstruction,
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         maxOutputTokens: options.maxTokens || 65000,
         temperature: options.temperature ?? 0.3,
-        ...(options.responseFormat ? {
-          responseMimeType: 'application/json',
-          responseSchema: options.responseSchema
-        } : {})
+        ...(options.responseFormat
+          ? {
+              responseMimeType: 'application/json',
+              responseSchema: options.responseSchema,
+            }
+          : {}),
       },
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-      ]
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      ],
     };
 
     Logger.trace('Providers', `Gemini Request (${model}, stream=${!!options.stream})`);
@@ -397,18 +471,18 @@ export const Providers = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal
+      signal,
     });
   },
 
   async callAnthropic(endpoint, apiKey, model, prompt, options, signal) {
     const payload = {
       model: model,
-      system: options.systemPrompt || "",
+      system: options.systemPrompt || '',
       max_tokens: options.maxTokens || 32768,
       temperature: options.temperature ?? 0.3,
       messages: [{ role: 'user', content: prompt }],
-      stream: !!options.stream
+      stream: !!options.stream,
     };
 
     Logger.trace('Providers', `Anthropic Request (${model}, stream=${!!options.stream})`);
@@ -419,10 +493,10 @@ export const Providers = {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(payload),
-      signal
+      signal,
     });
   },
 
@@ -487,7 +561,14 @@ export const Providers = {
               }
             }
           }
-          return { success: true, message: 'Success', model: modelId, text: text.trim(), usage, rateLimit };
+          return {
+            success: true,
+            message: 'Success',
+            model: modelId,
+            text: text.trim(),
+            usage,
+            rateLimit,
+          };
         } else {
           let errorMsg = 'Empty response text from provider';
           if (style === 'gemini' && data.candidates?.[0]?.finishReason) {
@@ -502,10 +583,18 @@ export const Providers = {
 
     let errorMessage = 'Unknown error';
     switch (response.status) {
-      case 401: errorMessage = 'Invalid API key'; break;
-      case 403: errorMessage = 'API key permissions/credits'; break;
-      case 404: errorMessage = 'Model not found'; break;
-      case 429: errorMessage = 'Rate limit exceeded'; break;
+      case 401:
+        errorMessage = 'Invalid API key';
+        break;
+      case 403:
+        errorMessage = 'API key permissions/credits';
+        break;
+      case 404:
+        errorMessage = 'Model not found';
+        break;
+      case 429:
+        errorMessage = 'Rate limit exceeded';
+        break;
       default:
         errorMessage = response.status >= 500 ? 'Server error' : `HTTP ${response.status}`;
     }
@@ -543,6 +632,13 @@ export const Providers = {
       Logger.warn('Providers', 'Could not parse error body as JSON');
     }
 
-    return { success: false, message: errorMessage, model: modelId, statusCode: response.status, retryAfterMs, quotaDetail };
-  }
+    return {
+      success: false,
+      message: errorMessage,
+      model: modelId,
+      statusCode: response.status,
+      retryAfterMs,
+      quotaDetail,
+    };
+  },
 };

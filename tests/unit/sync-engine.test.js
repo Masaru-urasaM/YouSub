@@ -18,12 +18,12 @@ describe('SyncEngine Module', () => {
     document.body.innerHTML = '';
     window.YouSub = {};
     YS = window.YouSub;
-    
+
     // Mock Overlay
     mockOverlay = {
       renderSubtitles: jest.fn(),
       show: jest.fn(),
-      hide: jest.fn()
+      hide: jest.fn(),
     };
     YS.Overlay = mockOverlay;
 
@@ -31,7 +31,7 @@ describe('SyncEngine Module', () => {
     mockVideo = {
       currentTime: 0,
       addEventListener: jest.fn(),
-      removeEventListener: jest.fn()
+      removeEventListener: jest.fn(),
     };
 
     // Execute the script in global context (JSDOM window)
@@ -41,7 +41,7 @@ describe('SyncEngine Module', () => {
   const subs = [
     { startMs: 1000, endMs: 2000, text: 'Hello' },
     { startMs: 3000, endMs: 4000, text: 'World' },
-    { startMs: 5000, endMs: 6000, text: 'Foo' }
+    { startMs: 5000, endMs: 6000, text: 'Foo' },
   ];
 
   test('should bind timeupdate listener on start', async () => {

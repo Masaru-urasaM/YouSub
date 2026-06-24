@@ -11,8 +11,8 @@ jest.unstable_mockModule('../../src/shared/constants.js', () => ({
   Constants: {
     APP_NAME: 'YouSub',
     VERSION: '0.2.0',
-    IS_PRODUCTION: false
-  }
+    IS_PRODUCTION: false,
+  },
 }));
 
 const { Logger } = await import('../../src/shared/logger.js');

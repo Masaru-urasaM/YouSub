@@ -1,6 +1,6 @@
 /**
  * cache.js — Translation Cache Module (ES Module)
- * 
+ *
  * Manages local storage of translated subtitles to minimize API calls and latency.
  * Strategy: LRU (Least Recently Used) with a 100-video limit and 30-day TTL.
  */
@@ -16,7 +16,7 @@ const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const Cache = {
   /**
    * Retrieve translated entries from cache.
-   * @param {string} videoId 
+   * @param {string} videoId
    * @param {string} sl Source Language
    * @param {string} tl Target Language
    * @returns {Promise<Array|null>}
@@ -53,10 +53,10 @@ export const Cache = {
 
   /**
    * Save translated entries to cache.
-   * @param {string} videoId 
-   * @param {string} sl 
-   * @param {string} tl 
-   * @param {Array} translated 
+   * @param {string} videoId
+   * @param {string} sl
+   * @param {string} tl
+   * @param {Array} translated
    */
   async set(videoId, sl, tl, translated) {
     if (!videoId || !translated || translated.length === 0) return;
@@ -68,7 +68,7 @@ export const Cache = {
       sl,
       tl,
       timestamp: now,
-      translated
+      translated,
     };
 
     try {
@@ -76,7 +76,7 @@ export const Cache = {
       let meta = res[META_KEY] || { keys: [] };
 
       // Phase 52.2: Inline metadata update — no separate _updateMetadata call
-      meta.keys = meta.keys.filter(k => k.key !== key);
+      meta.keys = meta.keys.filter((k) => k.key !== key);
       meta.keys.unshift({ key, videoId, sl, tl, lastUsed: now });
 
       // Phase 52.2: Atomic write — data + metadata in single storage.set()
@@ -85,7 +85,10 @@ export const Cache = {
       // Phase 52.2: Evict using same metadata snapshot (no re-read)
       await this._evictIfNeeded(meta);
 
-      Logger.info('Cache', `Cache SET for ${videoId} (${sl}->${tl}) - ${translated.length} entries`);
+      Logger.info(
+        'Cache',
+        `Cache SET for ${videoId} (${sl}->${tl}) - ${translated.length} entries`
+      );
     } catch (e) {
       Logger.error('Cache', `Error writing cache: ${e.message}`);
     }
@@ -101,19 +104,19 @@ export const Cache = {
     const res = await browser.storage.local.get([META_KEY]);
     let meta = res[META_KEY];
     if (meta && meta.keys) {
-      meta.keys = meta.keys.filter(k => k.key !== key);
+      meta.keys = meta.keys.filter((k) => k.key !== key);
       await browser.storage.local.set({ [META_KEY]: meta });
     }
   },
 
   /**
    * Clear all translation variants for a specific video.
-   * @param {string} videoId 
+   * @param {string} videoId
    */
   async removeByVideoId(videoId) {
     if (!videoId) return;
     const res = await browser.storage.local.get(null);
-    const keysToRemove = Object.keys(res).filter(k => k.startsWith(`${CACHE_PREFIX}${videoId}_`));
+    const keysToRemove = Object.keys(res).filter((k) => k.startsWith(`${CACHE_PREFIX}${videoId}_`));
 
     if (keysToRemove.length > 0) {
       await browser.storage.local.remove(keysToRemove);
@@ -121,7 +124,7 @@ export const Cache = {
       const metaRes = await browser.storage.local.get([META_KEY]);
       let meta = metaRes[META_KEY];
       if (meta && meta.keys) {
-        meta.keys = meta.keys.filter(k => !keysToRemove.includes(k.key));
+        meta.keys = meta.keys.filter((k) => !keysToRemove.includes(k.key));
         await browser.storage.local.set({ [META_KEY]: meta });
       }
       Logger.info('Cache', `Removed ${keysToRemove.length} cache items for video ${videoId}`);
@@ -134,7 +137,9 @@ export const Cache = {
    */
   async clearAll() {
     const res = await browser.storage.local.get(null);
-    const keysToRemove = Object.keys(res).filter(k => k.startsWith(CACHE_PREFIX) || k === META_KEY);
+    const keysToRemove = Object.keys(res).filter(
+      (k) => k.startsWith(CACHE_PREFIX) || k === META_KEY
+    );
     await browser.storage.local.remove(keysToRemove);
     Logger.info('Cache', `Cache CLEARED completely. Removed ${keysToRemove.length} items.`);
     return keysToRemove.length;
@@ -146,14 +151,14 @@ export const Cache = {
   async _updateMetadata(videoId, sl, tl, meta, key) {
     const now = Date.now();
     // Remove if exists
-    meta.keys = meta.keys.filter(k => k.key !== key);
+    meta.keys = meta.keys.filter((k) => k.key !== key);
     // Add to top (most recent)
     meta.keys.unshift({
       key,
       videoId,
       sl,
       tl,
-      lastUsed: now
+      lastUsed: now,
     });
 
     await browser.storage.local.set({ [META_KEY]: meta });
@@ -169,10 +174,10 @@ export const Cache = {
     const toRemove = meta.keys.slice(MAX_ENTRIES);
     meta.keys = meta.keys.slice(0, MAX_ENTRIES);
 
-    const keysToRemove = toRemove.map(k => k.key);
+    const keysToRemove = toRemove.map((k) => k.key);
     await browser.storage.local.remove(keysToRemove);
     await browser.storage.local.set({ [META_KEY]: meta });
 
     Logger.info('Cache', `LRU Eviction: Removed ${keysToRemove.length} oldest entries.`);
-  }
+  },
 };

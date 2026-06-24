@@ -3,10 +3,7 @@
   "name": "YouSub",
   "version": "0.2.2",
   "description": "Real-time subtitle translator for YouTube",
-  "permissions": [
-    "storage",
-    "activeTab"
-  ],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "*://*.youtube.com/*",
     "https://api.groq.com/*",
@@ -19,10 +16,7 @@
     "https://openrouter.ai/*",
     "https://translate.googleapis.com/*"
   ],
-  "optional_host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*"
-  ],
+  "optional_host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "scripts": ["src/background/service-worker.js"],
@@ -30,15 +24,9 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "*://*.youtube.com/*"
-      ],
-      "js": [
-        "src/content/loader.js"
-      ],
-      "css": [
-        "src/content/overlay.css"
-      ],
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["src/content/loader.js"],
+      "css": ["src/content/overlay.css"],
       "run_at": "document_idle"
     }
   ],
@@ -81,9 +69,7 @@
         "src/content/main-world-extractor.js",
         "src/content/main-world-fetcher.js"
       ],
-      "matches": [
-        "*://*.youtube.com/*"
-      ]
+      "matches": ["*://*.youtube.com/*"]
     }
   ],
   "browser_specific_settings": {

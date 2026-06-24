@@ -38,7 +38,7 @@ export const HealthManager = {
           consecutiveFails: 0,
           avgTime: 0,
           lastFailureTime: 0,
-          circuitBreakerUntil: 0
+          circuitBreakerUntil: 0,
         };
 
         if (success) {
@@ -49,7 +49,7 @@ export const HealthManager = {
           if (entry.avgTime === 0) {
             entry.avgTime = duration;
           } else {
-            entry.avgTime = (entry.avgTime * 0.8) + (duration * 0.2);
+            entry.avgTime = entry.avgTime * 0.8 + duration * 0.2;
           }
         } else {
           entry.failCount++;
@@ -57,14 +57,20 @@ export const HealthManager = {
 
           if (options.isTransient) {
             // Transient errors (e.g., 429 rate limit) — track but don't escalate circuit breaker
-            Logger.debug('Health', `Transient failure for ${providerId} (not counting toward circuit breaker)`);
+            Logger.debug(
+              'Health',
+              `Transient failure for ${providerId} (not counting toward circuit breaker)`
+            );
           } else {
             entry.consecutiveFails++;
 
             // Open circuit breaker if 10 consecutive fails (Relaxed from 5)
             if (entry.consecutiveFails >= 10) {
               entry.circuitBreakerUntil = Date.now() + this.COOLDOWN_MS;
-              Logger.warn('Health', `Circuit breaker OPEN for ${providerId} until ${new Date(entry.circuitBreakerUntil).toLocaleTimeString()}`);
+              Logger.warn(
+                'Health',
+                `Circuit breaker OPEN for ${providerId} until ${new Date(entry.circuitBreakerUntil).toLocaleTimeString()}`
+              );
             }
           }
         }
@@ -84,7 +90,10 @@ export const HealthManager = {
   async isCircuitOpen(providerId, apiKey, preFetchedStats = null) {
     const hash = this.getHash(providerId, apiKey);
     try {
-      const stats = preFetchedStats || (await browser.storage.local.get(['yousub_health_stats'])).yousub_health_stats || {};
+      const stats =
+        preFetchedStats ||
+        (await browser.storage.local.get(['yousub_health_stats'])).yousub_health_stats ||
+        {};
       const entry = stats[hash];
 
       if (!entry || !entry.circuitBreakerUntil) return false;
@@ -107,7 +116,7 @@ export const HealthManager = {
         const stats = res.yousub_health_stats || {};
         const entry = stats[hash];
 
-        if (!entry || (entry.successCount + entry.failCount) === 0) {
+        if (!entry || entry.successCount + entry.failCount === 0) {
           return resolve(0.5); // Default neutral score
         }
 
@@ -117,7 +126,7 @@ export const HealthManager = {
         // Speed score (bonus for fast providers, e.g., < 1000ms is good)
         let speedMult = 1.0;
         if (entry.avgTime > 0) {
-          speedMult = Math.max(0.1, 1 - (entry.avgTime / 5000)); // Cap at 5s
+          speedMult = Math.max(0.1, 1 - entry.avgTime / 5000); // Cap at 5s
         }
 
         resolve(successRate * speedMult);
@@ -132,12 +141,12 @@ export const HealthManager = {
     const res = await browser.storage.local.get(['yousub_health_stats']);
     const stats = res.yousub_health_stats || {};
 
-    return keys.map(k => {
+    return keys.map((k) => {
       const hash = this.getHash(k.provider, k.apiKey);
       const entry = stats[hash];
       const isOpen = entry ? Date.now() < entry.circuitBreakerUntil : false;
-      const total = entry ? (entry.successCount + entry.failCount) : 0;
-      const rate = total > 0 ? (entry.successCount / total) : 1;
+      const total = entry ? entry.successCount + entry.failCount : 0;
+      const rate = total > 0 ? entry.successCount / total : 1;
 
       return {
         provider: k.provider,
@@ -145,7 +154,7 @@ export const HealthManager = {
         isOpen: isOpen,
         successRate: rate,
         consecutiveFails: entry ? entry.consecutiveFails : 0,
-        status: isOpen ? 'broken' : (rate < 0.5 ? 'poor' : 'healthy')
+        status: isOpen ? 'broken' : rate < 0.5 ? 'poor' : 'healthy',
       };
     });
   },
@@ -166,10 +175,10 @@ export const HealthManager = {
         consecutiveFails: 0,
         avgTime: stats[hash].avgTime || 0,
         lastFailureTime: 0,
-        circuitBreakerUntil: 0
+        circuitBreakerUntil: 0,
       };
       await browser.storage.local.set({ yousub_health_stats: stats });
       Logger.info('Health', `Stats reset for ${providerId} after successful test`);
     }
-  }
+  },
 };

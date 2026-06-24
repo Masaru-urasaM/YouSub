@@ -20,7 +20,9 @@ function buildQuotaDisplay(response, providerId) {
     const pct = Math.round((rem / lim) * 100);
     const cls = pct < 3 ? 'quota-danger' : pct < 10 ? 'quota-warn' : '';
     const wrap = cls ? `<span class="${cls}">` : '<span>';
-    parts.push(`${wrap}Remaining: ${rem.toLocaleString()}/${lim.toLocaleString()} tok/min (${pct}%)</span>`);
+    parts.push(
+      `${wrap}Remaining: ${rem.toLocaleString()}/${lim.toLocaleString()} tok/min (${pct}%)</span>`
+    );
   }
 
   if (rl?.limitRequests) {
@@ -31,7 +33,9 @@ function buildQuotaDisplay(response, providerId) {
   if (providerId === 'anthropic' && rl?.inputTokensLimit) {
     const inRem = rl.inputTokensRemaining ?? 0;
     const outRem = rl.outputTokensRemaining ?? 0;
-    parts.push(`In: ${inRem.toLocaleString()}/${rl.inputTokensLimit.toLocaleString()} · Out: ${outRem.toLocaleString()}/${rl.outputTokensLimit.toLocaleString()}`);
+    parts.push(
+      `In: ${inRem.toLocaleString()}/${rl.inputTokensLimit.toLocaleString()} · Out: ${outRem.toLocaleString()}/${rl.outputTokensLimit.toLocaleString()}`
+    );
   }
 
   const q = response.quota;
@@ -41,7 +45,9 @@ function buildQuotaDisplay(response, providerId) {
       const pct = Math.round((q.credits.used / q.credits.limit) * 100);
       const cls = pct > 90 ? 'quota-danger' : pct > 80 ? 'quota-warn' : '';
       const wrap = cls ? `<span class="${cls}">` : '<span>';
-      parts.push(`${wrap}Credits: ${sym}${q.credits.used.toFixed(2)}/${sym}${q.credits.limit.toFixed(2)} used (${pct}%)</span>`);
+      parts.push(
+        `${wrap}Credits: ${sym}${q.credits.used.toFixed(2)}/${sym}${q.credits.limit.toFixed(2)} used (${pct}%)</span>`
+      );
     } else if (q.credits.used != null && q.credits.limit == null) {
       parts.push(`Used: ${sym}${q.credits.used.toFixed(2)} (free tier)`);
     } else if (q.credits.remaining != null) {
@@ -70,7 +76,16 @@ const sanitizeKey = (key) => {
 };
 
 // DOM Elements
-let container, template, addBackupBtn, deleteAllBtn, failoverCheckbox, rotationCheckbox, streamingModeCheckbox, noKeysAlert, targetLangSelect, clearCacheBtn;
+let container,
+  template,
+  addBackupBtn,
+  deleteAllBtn,
+  failoverCheckbox,
+  rotationCheckbox,
+  streamingModeCheckbox,
+  noKeysAlert,
+  targetLangSelect,
+  clearCacheBtn;
 let triggerSaveCallback = null;
 let saveTimeout = null;
 
@@ -115,40 +130,42 @@ export function initTranslationTab(saveIndicatorCallback) {
 }
 
 function loadSettings() {
-  browser.storage.local.get([
-    'targetLang',
-    'yousub_api_keys',
-    'yousub_failover_enabled',
-    'yousub_model_rotation',
-    'yousub_streaming_mode',
-    'yousub_custom_models',
-    'yousub_hidden_models',
-    'yousub_health_stats'
-  ]).then((items) => {
-    // 1. Target Language
-    targetLangSelect.value = items.targetLang || 'vi';
+  browser.storage.local
+    .get([
+      'targetLang',
+      'yousub_api_keys',
+      'yousub_failover_enabled',
+      'yousub_model_rotation',
+      'yousub_streaming_mode',
+      'yousub_custom_models',
+      'yousub_hidden_models',
+      'yousub_health_stats',
+    ])
+    .then((items) => {
+      // 1. Target Language
+      targetLangSelect.value = items.targetLang || 'vi';
 
-    // 2. Default data
-    apiKeys = items.yousub_api_keys || [];
-    if (apiKeys.length === 0) {
-      // Create empty primary key entry
-      apiKeys.push(createEmptyKey());
-    }
+      // 2. Default data
+      apiKeys = items.yousub_api_keys || [];
+      if (apiKeys.length === 0) {
+        // Create empty primary key entry
+        apiKeys.push(createEmptyKey());
+      }
 
-    failoverEnabled = items.yousub_failover_enabled !== false; // default true
-    modelRotation = items.yousub_model_rotation !== false;
-    customModelsRegistry = items.yousub_custom_models || {};
-    hiddenModelsRegistry = items.yousub_hidden_models || {};
+      failoverEnabled = items.yousub_failover_enabled !== false; // default true
+      modelRotation = items.yousub_model_rotation !== false;
+      customModelsRegistry = items.yousub_custom_models || {};
+      hiddenModelsRegistry = items.yousub_hidden_models || {};
 
-    failoverCheckbox.checked = failoverEnabled;
-    rotationCheckbox.checked = modelRotation;
-    if (streamingModeCheckbox) {
-      streamingModeCheckbox.checked = items.yousub_streaming_mode || false;
-    }
+      failoverCheckbox.checked = failoverEnabled;
+      rotationCheckbox.checked = modelRotation;
+      if (streamingModeCheckbox) {
+        streamingModeCheckbox.checked = items.yousub_streaming_mode || false;
+      }
 
-    const healthStats = items.yousub_health_stats || {};
-    renderKeysUI(healthStats);
-  });
+      const healthStats = items.yousub_health_stats || {};
+      renderKeysUI(healthStats);
+    });
 }
 
 function createEmptyKey() {
@@ -158,7 +175,7 @@ function createEmptyKey() {
     apiKey: '',
     status: 'untested',
     statusMessage: '',
-    testedAt: 0
+    testedAt: 0,
   };
 }
 
@@ -209,9 +226,9 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const connectOllamaBtn = clone.querySelector('.connect-ollama-btn');
   const fetchOllamaBtn = clone.querySelector('.fetch-ollama-models-btn');
 
-  const isPrimary = (index === 0);
+  const isPrimary = index === 0;
   rowDev.setAttribute('data-index', index);
-  title.textContent = isPrimary ? "Primary Key:" : `Backup Key ${index}:`;
+  title.textContent = isPrimary ? 'Primary Key:' : `Backup Key ${index}:`;
 
   if (keyData.disabled) {
     rowDev.style.opacity = '0.5';
@@ -234,7 +251,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   });
 
   resetBtn.addEventListener('click', () => {
-    browser.storage.local.get(['yousub_health_stats']).then(res => {
+    browser.storage.local.get(['yousub_health_stats']).then((res) => {
       const stats = res.yousub_health_stats || {};
       const cleanKey = sanitizeKey(keyData.apiKey);
       const keyHash = `${keyData.provider}_${cleanKey.slice(-6)}`;
@@ -246,10 +263,12 @@ function renderSingleRow(keyData, index, healthStats = {}) {
           keyData.statusMessage = '';
           debouncedSave();
           // Load updated stats and re-render
-          browser.storage.local.get(['yousub_health_stats']).then(r => renderKeysUI(r.yousub_health_stats));
+          browser.storage.local
+            .get(['yousub_health_stats'])
+            .then((r) => renderKeysUI(r.yousub_health_stats));
         });
       } else {
-        alert("This key is already completely clean. No stats to reset.");
+        alert('This key is already completely clean. No stats to reset.');
       }
     });
   });
@@ -273,7 +292,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const cleanKeyForRow = sanitizeKey(keyData.apiKey);
   const keyHash = `${keyData.provider}_${cleanKeyForRow.slice(-6)}`;
   const stats = healthStats[keyHash];
-  if (stats && (stats.successCount + stats.failCount) > 0) {
+  if (stats && stats.successCount + stats.failCount > 0) {
     healthIndicator.classList.remove('hidden');
     const total = stats.successCount + stats.failCount;
     const rate = Math.round((stats.successCount / total) * 100);
@@ -296,7 +315,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   }
 
   providerSelect.innerHTML = `<option value="auto">-- Auto-Detect --</option>`;
-  YOUSUB_PROVIDERS.providers.forEach(p => {
+  YOUSUB_PROVIDERS.providers.forEach((p) => {
     const opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.name;
@@ -322,7 +341,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       if (provId === 'ollama') {
         const ollamaModels = keyData.ollamaModels || [];
         if (ollamaModels.length > 0) {
-          ollamaModels.forEach(m => {
+          ollamaModels.forEach((m) => {
             const opt = document.createElement('option');
             opt.value = m.name;
             opt.textContent = `${m.name} (Local)`;
@@ -332,7 +351,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
         }
       }
 
-      models.forEach(m => {
+      models.forEach((m) => {
         if (!hidden.includes(m.id)) {
           const opt = document.createElement('option');
           opt.value = m.id;
@@ -342,7 +361,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       });
       // Append Custom Models
       if (customModelsRegistry[provId]) {
-        customModelsRegistry[provId].forEach(cm => {
+        customModelsRegistry[provId].forEach((cm) => {
           if (!hidden.includes(cm)) {
             const opt = document.createElement('option');
             opt.value = cm;
@@ -411,35 +430,41 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   });
 
   connectOllamaBtn.addEventListener('click', () => {
-    chrome.permissions.request({
-      origins: ['http://localhost/*']
-    }, (granted) => {
-      if (granted) {
-        updateOllamaUI();
-        alert('Permission granted! YouSub can now connect to your local Ollama instance.');
+    chrome.permissions.request(
+      {
+        origins: ['http://localhost/*'],
+      },
+      (granted) => {
+        if (granted) {
+          updateOllamaUI();
+          alert('Permission granted! YouSub can now connect to your local Ollama instance.');
+        }
       }
-    });
+    );
   });
 
   fetchOllamaBtn.addEventListener('click', () => {
     fetchOllamaBtn.textContent = 'Fetching...';
-    chrome.runtime.sendMessage({
-      type: 'YOUSUB_FETCH_OLLAMA_MODELS',
-      endpoint: 'http://localhost:11434/api/tags'
-    }).then(res => {
-      fetchOllamaBtn.textContent = 'Refresh Models';
-      if (res && res.success && res.models) {
-        keyData.ollamaModels = res.models;
-        populateModels();
-        debouncedSave();
-        alert(`Successfully found ${res.models.length} local models!`);
-      } else {
-        alert('Failed to reach Ollama. Make sure Ollama is running at http://localhost:11434');
-      }
-    }).catch(err => {
-      fetchOllamaBtn.textContent = 'Refresh Models';
-      alert('Error: ' + err.message);
-    });
+    chrome.runtime
+      .sendMessage({
+        type: 'YOUSUB_FETCH_OLLAMA_MODELS',
+        endpoint: 'http://localhost:11434/api/tags',
+      })
+      .then((res) => {
+        fetchOllamaBtn.textContent = 'Refresh Models';
+        if (res && res.success && res.models) {
+          keyData.ollamaModels = res.models;
+          populateModels();
+          debouncedSave();
+          alert(`Successfully found ${res.models.length} local models!`);
+        } else {
+          alert('Failed to reach Ollama. Make sure Ollama is running at http://localhost:11434');
+        }
+      })
+      .catch((err) => {
+        fetchOllamaBtn.textContent = 'Refresh Models';
+        alert('Error: ' + err.message);
+      });
   });
 
   deleteCustomBtn.addEventListener('click', () => {
@@ -453,12 +478,12 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       () => {
         // If it exists in custom, remove it
         if (customModelsRegistry[provId]) {
-          customModelsRegistry[provId] = customModelsRegistry[provId].filter(m => m !== val);
+          customModelsRegistry[provId] = customModelsRegistry[provId].filter((m) => m !== val);
         }
 
         // If it is built-in, add to hidden registry
         const models = YOUSUB_PROVIDERS.getModelsForProvider(provId);
-        const isBuiltin = models.some(m => m.id === val);
+        const isBuiltin = models.some((m) => m.id === val);
         if (isBuiltin) {
           if (!hiddenModelsRegistry[provId]) hiddenModelsRegistry[provId] = [];
           if (!hiddenModelsRegistry[provId].includes(val)) {
@@ -487,7 +512,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       }
     }
     debouncedSave();
-    const hasKeys = apiKeys.some(k => k.apiKey && k.apiKey.length > 0);
+    const hasKeys = apiKeys.some((k) => k.apiKey && k.apiKey.length > 0);
     noKeysAlert.classList.toggle('hidden', hasKeys);
   });
 
@@ -516,65 +541,69 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     statusText.className = 'status-text';
     statusText.textContent = 'Testing connection...';
 
-    browser.runtime.sendMessage({
-      type: 'YOUSUB_TEST_API_KEY',
-      provider: keyData.provider,
-      model: keyData.model,
-      apiKey: keyData.apiKey
-    }).then((response) => {
-      if (response) {
-        if (response.success) {
-          statusText.classList.add('ok');
-          const dateStr = new Date().toISOString().split('T')[0];
-          statusText.textContent = `OK (tested ${dateStr})`;
-          keyData.status = 'ok';
-          keyData.statusMessage = `Tested ${dateStr}`;
+    browser.runtime
+      .sendMessage({
+        type: 'YOUSUB_TEST_API_KEY',
+        provider: keyData.provider,
+        model: keyData.model,
+        apiKey: keyData.apiKey,
+      })
+      .then((response) => {
+        if (response) {
+          if (response.success) {
+            statusText.classList.add('ok');
+            const dateStr = new Date().toISOString().split('T')[0];
+            statusText.textContent = `OK (tested ${dateStr})`;
+            keyData.status = 'ok';
+            keyData.statusMessage = `Tested ${dateStr}`;
 
-          // Show quota/usage details after test
-          let existingQuota = rowDev.querySelector('.quota-detail');
-          if (!existingQuota) {
-            existingQuota = document.createElement('span');
-            existingQuota.className = 'quota-detail';
-            statusText.parentNode.appendChild(existingQuota);
-          }
-          const resolvedProvider = keyData.provider === 'auto'
-            ? YOUSUB_PROVIDERS.detectProviderFromKey(keyData.apiKey) || 'unknown'
-            : keyData.provider;
-          existingQuota.innerHTML = buildQuotaDisplay(response, resolvedProvider);
+            // Show quota/usage details after test
+            let existingQuota = rowDev.querySelector('.quota-detail');
+            if (!existingQuota) {
+              existingQuota = document.createElement('span');
+              existingQuota.className = 'quota-detail';
+              statusText.parentNode.appendChild(existingQuota);
+            }
+            const resolvedProvider =
+              keyData.provider === 'auto'
+                ? YOUSUB_PROVIDERS.detectProviderFromKey(keyData.apiKey) || 'unknown'
+                : keyData.provider;
+            existingQuota.innerHTML = buildQuotaDisplay(response, resolvedProvider);
 
-          // If custom model tested successfully, save it!
-          const provId = keyData.provider;
-          const currentModel = keyData.model;
-          if (provId && provId !== 'auto' && currentModel && currentModel !== 'auto') {
-            const builtinModels = YOUSUB_PROVIDERS.getModelsForProvider(provId);
-            const isBuiltin = builtinModels.some(m => m.id === currentModel);
-            if (!isBuiltin) {
-              if (!customModelsRegistry[provId]) customModelsRegistry[provId] = [];
-              if (!customModelsRegistry[provId].includes(currentModel)) {
-                customModelsRegistry[provId].push(currentModel);
-                populateModels();
-                checkCustomModelStatus();
+            // If custom model tested successfully, save it!
+            const provId = keyData.provider;
+            const currentModel = keyData.model;
+            if (provId && provId !== 'auto' && currentModel && currentModel !== 'auto') {
+              const builtinModels = YOUSUB_PROVIDERS.getModelsForProvider(provId);
+              const isBuiltin = builtinModels.some((m) => m.id === currentModel);
+              if (!isBuiltin) {
+                if (!customModelsRegistry[provId]) customModelsRegistry[provId] = [];
+                if (!customModelsRegistry[provId].includes(currentModel)) {
+                  customModelsRegistry[provId].push(currentModel);
+                  populateModels();
+                  checkCustomModelStatus();
+                }
               }
             }
+          } else {
+            statusText.classList.add('failed');
+            statusText.textContent = `Failed: ${response.message}`;
+            keyData.status = 'failed';
+            keyData.statusMessage = response.message;
           }
-        } else {
-          statusText.classList.add('failed');
-          statusText.textContent = `Failed: ${response.message}`;
-          keyData.status = 'failed';
-          keyData.statusMessage = response.message;
         }
-      }
-      keyData.testedAt = Date.now();
-      testBtn.textContent = 'Test';
-      testBtn.disabled = false;
-      debouncedSave();
-    }).catch((_err) => {
-      statusText.classList.add('failed');
-      statusText.textContent = 'Failed: Extension error';
-      keyData.status = 'failed';
-      testBtn.textContent = 'Test';
-      testBtn.disabled = false;
-    });
+        keyData.testedAt = Date.now();
+        testBtn.textContent = 'Test';
+        testBtn.disabled = false;
+        debouncedSave();
+      })
+      .catch((_err) => {
+        statusText.classList.add('failed');
+        statusText.textContent = 'Failed: Extension error';
+        keyData.status = 'failed';
+        testBtn.textContent = 'Test';
+        testBtn.disabled = false;
+      });
   });
 
   if (keyData.status === 'ok') {
@@ -619,7 +648,9 @@ function updateRealtimeStatuses() {
         } else if (keyData.status === 'failed') {
           statusText.classList.add('failed');
           statusText.classList.add('pulse-red');
-          statusText.textContent = keyData.statusMessage ? `Failed: ${keyData.statusMessage}` : 'Failed';
+          statusText.textContent = keyData.statusMessage
+            ? `Failed: ${keyData.statusMessage}`
+            : 'Failed';
         } else {
           statusText.classList.add('untested');
           statusText.textContent = '-- Not tested --';
@@ -632,7 +663,7 @@ function updateRealtimeStatuses() {
       const cleanKeyForUpdate = sanitizeKey(keyData.apiKey);
       const keyHash = `${keyData.provider}_${cleanKeyForUpdate.slice(-6)}`;
       const stats = healthStats[keyHash];
-      
+
       // Phase 41: Special Sync - If stats show healthy, override 'failed' status in UI
       if (stats && stats.successCount > 0 && Date.now() > (stats.circuitBreakerUntil || 0)) {
         if (keyData.status === 'failed') {
@@ -642,7 +673,7 @@ function updateRealtimeStatuses() {
       }
 
       if (healthIndicator) {
-        if (stats && (stats.successCount + stats.failCount) > 0) {
+        if (stats && stats.successCount + stats.failCount > 0) {
           healthIndicator.classList.remove('hidden');
           const total = stats.successCount + stats.failCount;
           const rate = Math.round((stats.successCount / total) * 100);
@@ -650,7 +681,7 @@ function updateRealtimeStatuses() {
 
           healthStatsText.textContent = `Success: ${rate}% • ${speed}ms`;
           healthIndicator.className = 'health-indicator';
-          
+
           if (Date.now() < (stats.circuitBreakerUntil || 0)) {
             healthIndicator.classList.add('broken');
             healthStatsText.textContent = `BROKEN (Cooldown until ${new Date(stats.circuitBreakerUntil).toLocaleTimeString()})`;
@@ -669,7 +700,10 @@ function updateRealtimeStatuses() {
 
     // Update the local apiKeys reference if the user is NOT actively typing
     // We check if any input has focus
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+    if (
+      document.activeElement &&
+      (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')
+    ) {
       // Don't merge data yet to avoid overwriting current input
     } else {
       apiKeys = keys;
@@ -778,7 +812,7 @@ function performSave() {
     yousub_model_rotation: modelRotation,
     yousub_streaming_mode: streamingModeCheckbox ? streamingModeCheckbox.checked : false,
     yousub_custom_models: customModelsRegistry,
-    yousub_hidden_models: hiddenModelsRegistry
+    yousub_hidden_models: hiddenModelsRegistry,
   };
   browser.storage.local.set(settings).then(() => {
     if (triggerSaveCallback) triggerSaveCallback();

@@ -10,9 +10,9 @@ function injectScriptFile(file) {
   try {
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL(file);
-    script.onload = function () { 
+    script.onload = function () {
       devLog('[YouSub] SubtitleExtractor: Script loaded and removed from DOM:', file);
-      this.remove(); 
+      this.remove();
     };
     script.onerror = function (e) {
       console.error('[YouSub] SubtitleExtractor: Script injection FAILED:', file, e);
@@ -50,9 +50,17 @@ export const SubtitleExtractor = {
       }
 
       if (parsedEntries && parsedEntries.length > 0) {
-        devLog('[YouSub] SubtitleExtractor: Received', parsedEntries.length, 'parsed entries from transcript DOM.');
+        devLog(
+          '[YouSub] SubtitleExtractor: Received',
+          parsedEntries.length,
+          'parsed entries from transcript DOM.'
+        );
       } else if (tracks && tracks.length > 0) {
-        devLog('[YouSub] SubtitleExtractor: Found', tracks.length, 'track(s) but no parsed entries.');
+        devLog(
+          '[YouSub] SubtitleExtractor: Found',
+          tracks.length,
+          'track(s) but no parsed entries.'
+        );
         tracks.forEach(function (t, i) {
           devLog(
             '  [' + i + ']',
@@ -86,7 +94,7 @@ export const SubtitleExtractor = {
       window.removeEventListener('message', messageHandler);
       messageHandler = null;
     }
-  }
+  },
 };
 
 // Compatibility for legacy global access

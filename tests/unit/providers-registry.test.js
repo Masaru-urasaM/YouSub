@@ -31,7 +31,7 @@ describe('Providers Registry Module', () => {
 
   test('should have a valid language list', () => {
     expect(YOUSUB_PROVIDERS.languages.length).toBeGreaterThan(10);
-    const vi = YOUSUB_PROVIDERS.languages.find(l => l.code === 'vi');
+    const vi = YOUSUB_PROVIDERS.languages.find((l) => l.code === 'vi');
     expect(vi.name).toBe('Vietnamese');
   });
 });

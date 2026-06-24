@@ -1,7 +1,7 @@
 import { devLog, devWarn } from '../shared/constants.js';
 
 let fetcherInjected = false;
-const pendingFetches = {};      // requestId → { resolve, reject }
+const pendingFetches = {}; // requestId → { resolve, reject }
 let fetchIdCounter = 0;
 
 /**
@@ -38,7 +38,9 @@ function ensureFetcherInjected() {
 
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('src/content/main-world-fetcher.js');
-  script.onload = function () { this.remove(); };
+  script.onload = function () {
+    this.remove();
+  };
   (document.head || document.documentElement).appendChild(script);
 
   // Listen for fetch responses from main world
@@ -70,7 +72,7 @@ function fetchText(url) {
   ensureFetcherInjected();
 
   return new Promise(function (resolve, reject) {
-    const requestId = 'yousub_fetch_' + (++fetchIdCounter);
+    const requestId = 'yousub_fetch_' + ++fetchIdCounter;
 
     // Timeout: 10 seconds
     const timer = setTimeout(function () {
@@ -86,15 +88,18 @@ function fetchText(url) {
       reject: function (err) {
         clearTimeout(timer);
         reject(err);
-      }
+      },
     };
 
     setTimeout(function () {
-      window.postMessage({
-        type: 'YOUSUB_FETCH_REQUEST',
-        requestId: requestId,
-        url: url
-      }, '*');
+      window.postMessage(
+        {
+          type: 'YOUSUB_FETCH_REQUEST',
+          requestId: requestId,
+          url: url,
+        },
+        '*'
+      );
     }, 50);
   });
 }
@@ -136,7 +141,9 @@ export const SubtitleParser = {
 
         if (json3Text && json3Text.trim().length > 0) {
           let jsonData;
-          try { jsonData = JSON.parse(json3Text); } catch (parseErr) {
+          try {
+            jsonData = JSON.parse(json3Text);
+          } catch (parseErr) {
             throw new Error('JSON3 parse error: ' + parseErr.message);
           }
           const json3Result = this.parseJson3(jsonData);
@@ -170,12 +177,18 @@ export const SubtitleParser = {
         const bgText = await fetchFromBackground(json3Url);
         if (bgText && bgText.trim().length > 0) {
           let bgData;
-          try { bgData = JSON.parse(bgText); } catch (parseErr) {
+          try {
+            bgData = JSON.parse(bgText);
+          } catch (parseErr) {
             throw new Error('Background JSON3 parse error: ' + parseErr.message);
           }
           const bgResult = this.parseJson3(bgData);
           if (bgResult.length > 0) {
-            devLog('[YouSub] SubtitleParser: Background JSON3 success,', bgResult.length, 'entries.');
+            devLog(
+              '[YouSub] SubtitleParser: Background JSON3 success,',
+              bgResult.length,
+              'entries.'
+            );
             return bgResult;
           }
         }
@@ -249,7 +262,7 @@ export const SubtitleParser = {
       console.error('[YouSub] SubtitleParser: Failed to parse XML', e);
     }
     return sortTracks(output);
-  }
+  },
 };
 
 // Compatibility for legacy global access

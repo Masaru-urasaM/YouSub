@@ -10,8 +10,17 @@ import AdmZip from 'adm-zip';
 const includeList = ['manifest.json', 'src', 'assets'];
 
 const excludeList = [
-  '.DS_Store', 'node_modules', 'tests', 'scripts', '.git', '.gemini',
-  '.claude', '.env', 'coverage', 'dist', 'jest.config.cjs'
+  '.DS_Store',
+  'node_modules',
+  'tests',
+  'scripts',
+  '.git',
+  '.gemini',
+  '.claude',
+  '.env',
+  'coverage',
+  'dist',
+  'jest.config.cjs',
 ];
 
 const assetExcludePatterns = [/\.zip$/i, /-original\./i, /\.docx$/i, /\.doc$/i];
@@ -30,11 +39,14 @@ function validate(manifest, pkg, constantsContent) {
   const cVer = cMatch ? cMatch[1] : null;
 
   if (mVer !== pVer) errors.push(`Version mismatch: manifest.json=${mVer}, package.json=${pVer}`);
-  if (cVer && mVer !== cVer) errors.push(`Version mismatch: manifest.json=${mVer}, constants.js=${cVer}`);
+  if (cVer && mVer !== cVer)
+    errors.push(`Version mismatch: manifest.json=${mVer}, constants.js=${cVer}`);
 
   // 2. IS_PRODUCTION must be false in source
   if (!constantsContent.includes('IS_PRODUCTION: false')) {
-    errors.push('constants.js does not contain "IS_PRODUCTION: false" — build replacement will silently fail');
+    errors.push(
+      'constants.js does not contain "IS_PRODUCTION: false" — build replacement will silently fail'
+    );
   }
 
   // 3. Verify referenced files exist
@@ -42,29 +54,31 @@ function validate(manifest, pkg, constantsContent) {
 
   if (manifest.background) {
     if (manifest.background.service_worker) filesToCheck.push(manifest.background.service_worker);
-    if (manifest.background.scripts) manifest.background.scripts.forEach(s => filesToCheck.push(s));
+    if (manifest.background.scripts)
+      manifest.background.scripts.forEach((s) => filesToCheck.push(s));
   }
 
   if (manifest.content_scripts) {
-    manifest.content_scripts.forEach(cs => {
-      (cs.js || []).forEach(f => filesToCheck.push(f));
-      (cs.css || []).forEach(f => filesToCheck.push(f));
+    manifest.content_scripts.forEach((cs) => {
+      (cs.js || []).forEach((f) => filesToCheck.push(f));
+      (cs.css || []).forEach((f) => filesToCheck.push(f));
     });
   }
 
-  if (manifest.action && manifest.action.default_popup) filesToCheck.push(manifest.action.default_popup);
+  if (manifest.action && manifest.action.default_popup)
+    filesToCheck.push(manifest.action.default_popup);
   if (manifest.options_page) filesToCheck.push(manifest.options_page);
 
   const iconSets = [manifest.icons, manifest.action?.default_icon].filter(Boolean);
-  iconSets.forEach(icons => Object.values(icons).forEach(f => filesToCheck.push(f)));
+  iconSets.forEach((icons) => Object.values(icons).forEach((f) => filesToCheck.push(f)));
 
   if (manifest.web_accessible_resources) {
-    manifest.web_accessible_resources.forEach(war => {
-      (war.resources || []).forEach(f => filesToCheck.push(f));
+    manifest.web_accessible_resources.forEach((war) => {
+      (war.resources || []).forEach((f) => filesToCheck.push(f));
     });
   }
 
-  const missing = [...new Set(filesToCheck)].filter(f => !fs.existsSync(f));
+  const missing = [...new Set(filesToCheck)].filter((f) => !fs.existsSync(f));
   if (missing.length > 0) {
     errors.push(`Missing files referenced in manifest.json:\n    ${missing.join('\n    ')}`);
   }
@@ -92,7 +106,7 @@ function getBuildMetadata() {
 function cleanDist(distDir, name) {
   if (!fs.existsSync(distDir)) return;
   const pattern = new RegExp(`^${name}-v.*\\.zip$`, 'i');
-  fs.readdirSync(distDir).forEach(file => {
+  fs.readdirSync(distDir).forEach((file) => {
     if (pattern.test(file)) {
       fs.unlinkSync(path.join(distDir, file));
       console.log(`  [clean] Removed stale: ${file}`);
@@ -106,13 +120,13 @@ function cleanDist(distDir, name) {
 
 function shouldExcludeAsset(filePath) {
   const basename = path.basename(filePath);
-  return assetExcludePatterns.some(p => p.test(basename));
+  return assetExcludePatterns.some((p) => p.test(basename));
 }
 
 function addRecursive(zip, srcPath, manifestTransform, constantsTransform) {
   const stat = fs.statSync(srcPath);
   if (stat.isDirectory()) {
-    fs.readdirSync(srcPath).forEach(file => {
+    fs.readdirSync(srcPath).forEach((file) => {
       if (!excludeList.includes(file)) {
         addRecursive(zip, path.join(srcPath, file), manifestTransform, constantsTransform);
       }
@@ -153,7 +167,7 @@ function verifyZip(outputPath, platform) {
   }
 
   // Check manifest.json exists and is valid
-  const manifestEntry = entries.find(e => e.entryName === 'manifest.json');
+  const manifestEntry = entries.find((e) => e.entryName === 'manifest.json');
   if (!manifestEntry) {
     errors.push('manifest.json not found in ZIP');
   } else {
@@ -174,7 +188,7 @@ function verifyZip(outputPath, platform) {
   }
 
   // Check IS_PRODUCTION is true
-  const constEntry = entries.find(e => e.entryName === 'src/shared/constants.js');
+  const constEntry = entries.find((e) => e.entryName === 'src/shared/constants.js');
   if (!constEntry) {
     errors.push('src/shared/constants.js not found in ZIP');
   } else {
@@ -188,7 +202,7 @@ function verifyZip(outputPath, platform) {
   }
 
   // Check no excluded assets leaked in
-  entries.forEach(e => {
+  entries.forEach((e) => {
     if (shouldExcludeAsset(e.entryName)) {
       errors.push(`Excluded asset leaked into ZIP: ${e.entryName}`);
     }
@@ -222,7 +236,7 @@ function buildForPlatform(platform, manifest, constantsTransform) {
   console.log(`  Building ${name} v${version} [${platform}]`);
   console.log(`[${'='.repeat(50)}]`);
 
-  includeList.forEach(item => {
+  includeList.forEach((item) => {
     if (fs.existsSync(item)) {
       addRecursive(zip, item, manifestTransform, constantsTransform);
     }
@@ -240,7 +254,7 @@ function buildForPlatform(platform, manifest, constantsTransform) {
   const verifyErrors = verifyZip(outputPath, platform);
   if (verifyErrors.length > 0) {
     console.error(`\n  [VERIFY FAILED] ${platform}:`);
-    verifyErrors.forEach(e => console.error(`    - ${e}`));
+    verifyErrors.forEach((e) => console.error(`    - ${e}`));
     process.exit(1);
   }
   console.log(`  [VERIFY OK] All checks passed for ${platform}`);
@@ -250,9 +264,7 @@ function buildForPlatform(platform, manifest, constantsTransform) {
 // Main
 // ---------------------------------------------------------------------------
 
-const platforms = process.argv[2] === 'all'
-  ? ['chrome', 'firefox']
-  : [process.argv[2] || 'all'];
+const platforms = process.argv[2] === 'all' ? ['chrome', 'firefox'] : [process.argv[2] || 'all'];
 
 if (platforms[0] === 'all') {
   platforms.length = 0;
@@ -272,7 +284,7 @@ console.log('\n[PRE-BUILD VALIDATION]');
 const validationErrors = validate(manifest, pkg, constantsContent);
 if (validationErrors.length > 0) {
   console.error('\nBuild FAILED — validation errors:');
-  validationErrors.forEach(e => console.error(`  ✗ ${e}`));
+  validationErrors.forEach((e) => console.error(`  ✗ ${e}`));
   process.exit(1);
 }
 console.log('  All checks passed.');
@@ -297,6 +309,6 @@ if (!fs.existsSync('dist')) fs.mkdirSync('dist');
 cleanDist('dist', name);
 
 // Build
-platforms.forEach(p => buildForPlatform(p, manifest, constantsTransform));
+platforms.forEach((p) => buildForPlatform(p, manifest, constantsTransform));
 
 console.log(`\nBuild complete.`);

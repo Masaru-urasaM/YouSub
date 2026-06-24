@@ -17,15 +17,23 @@
       try {
         // Registers the named Trusted Types policy with the browser (side effect).
         window.trustedTypes.createPolicy('yousub-fetcher-policy', {
-          createHTML: function(html) { return html; },
-          createScript: function(s) { return s; },
-          createScriptURL: function(u) { return u; }
+          createHTML: function (html) {
+            return html;
+          },
+          createScript: function (s) {
+            return s;
+          },
+          createScriptURL: function (u) {
+            return u;
+          },
         });
       } catch {}
     }
 
     var _isProd = window.YouSub && window.YouSub.Constants && window.YouSub.Constants.IS_PRODUCTION;
-    function _devLog() { if (!_isProd) console.log.apply(console, arguments); }
+    function _devLog() {
+      if (!_isProd) console.log.apply(console, arguments);
+    }
 
     window.addEventListener('message', function (event) {
       if (event.source !== window) return;
@@ -51,21 +59,32 @@
       xhr.onload = function () {
         if (responded) return;
         responded = true;
-        _devLog('[YouSub] MainWorldFetcher: XHR status:', xhr.status, 'length:', xhr.responseText.length);
+        _devLog(
+          '[YouSub] MainWorldFetcher: XHR status:',
+          xhr.status,
+          'length:',
+          xhr.responseText.length
+        );
         if (xhr.status >= 200 && xhr.status < 300) {
-          window.postMessage({
-            type: 'YOUSUB_FETCH_RESPONSE',
-            requestId: requestId,
-            success: true,
-            text: xhr.responseText
-          }, '*');
+          window.postMessage(
+            {
+              type: 'YOUSUB_FETCH_RESPONSE',
+              requestId: requestId,
+              success: true,
+              text: xhr.responseText,
+            },
+            '*'
+          );
         } else {
-          window.postMessage({
-            type: 'YOUSUB_FETCH_RESPONSE',
-            requestId: requestId,
-            success: false,
-            error: 'HTTP ' + xhr.status + ' ' + xhr.statusText
-          }, '*');
+          window.postMessage(
+            {
+              type: 'YOUSUB_FETCH_RESPONSE',
+              requestId: requestId,
+              success: false,
+              error: 'HTTP ' + xhr.status + ' ' + xhr.statusText,
+            },
+            '*'
+          );
         }
       };
 
@@ -73,24 +92,30 @@
         if (responded) return;
         responded = true;
         console.error('[YouSub] MainWorldFetcher: XHR network error');
-        window.postMessage({
-          type: 'YOUSUB_FETCH_RESPONSE',
-          requestId: requestId,
-          success: false,
-          error: 'Network error'
-        }, '*');
+        window.postMessage(
+          {
+            type: 'YOUSUB_FETCH_RESPONSE',
+            requestId: requestId,
+            success: false,
+            error: 'Network error',
+          },
+          '*'
+        );
       };
 
       xhr.ontimeout = function () {
         if (responded) return;
         responded = true;
         console.error('[YouSub] MainWorldFetcher: XHR timed out');
-        window.postMessage({
-          type: 'YOUSUB_FETCH_RESPONSE',
-          requestId: requestId,
-          success: false,
-          error: 'Request timed out'
-        }, '*');
+        window.postMessage(
+          {
+            type: 'YOUSUB_FETCH_RESPONSE',
+            requestId: requestId,
+            success: false,
+            error: 'Request timed out',
+          },
+          '*'
+        );
       };
 
       xhr.send();
@@ -100,13 +125,18 @@
         if (responded) return;
         responded = true;
         console.error('[YouSub] MainWorldFetcher: Safety timeout (20s). Aborting XHR.');
-        try { xhr.abort(); } catch {}
-        window.postMessage({
-          type: 'YOUSUB_FETCH_RESPONSE',
-          requestId: requestId,
-          success: false,
-          error: 'Safety timeout (20s)'
-        }, '*');
+        try {
+          xhr.abort();
+        } catch {}
+        window.postMessage(
+          {
+            type: 'YOUSUB_FETCH_RESPONSE',
+            requestId: requestId,
+            success: false,
+            error: 'Safety timeout (20s)',
+          },
+          '*'
+        );
       }, 20000);
     });
 

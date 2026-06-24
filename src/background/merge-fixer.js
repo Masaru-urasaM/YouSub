@@ -33,17 +33,24 @@ function wordCount(text) {
 
   if (CJK_REGEX.test(trimmed)) {
     const cjkChars = (trimmed.match(/[぀-ゟ゠-ヿ一-鿿가-힯]/g) || []).length;
-    const nonCjk = trimmed.replace(/[぀-ゟ゠-ヿ一-鿿가-힯]/g, ' ')
-      .trim().split(/\s+/).filter(w => w).length;
+    const nonCjk = trimmed
+      .replace(/[぀-ゟ゠-ヿ一-鿿가-힯]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w).length;
     return Math.max(1, Math.ceil(cjkChars / 2) + nonCjk);
   }
 
-  return trimmed.split(/\s+/).filter(w => w).length;
+  return trimmed.split(/\s+/).filter((w) => w).length;
 }
 
 function extractAnchorWords(roughText, count) {
   if (!roughText) return [];
-  return roughText.trim().split(/\s+/).filter(w => w.length >= MIN_ANCHOR_WORD_LEN).slice(0, count);
+  return roughText
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length >= MIN_ANCHOR_WORD_LEN)
+    .slice(0, count);
 }
 
 function findAnchorInText(text, anchorWords, startFrom) {
@@ -60,7 +67,10 @@ function findAnchorInText(text, anchorWords, startFrom) {
 }
 
 function proportionalSplit(text, inputWordCounts) {
-  const words = text.trim().split(/\s+/).filter(w => w);
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w);
   const totalInput = inputWordCounts.reduce((a, b) => a + b, 0);
   if (totalInput === 0) return inputWordCounts.map(() => '');
 
@@ -83,12 +93,18 @@ function proportionalSplit(text, inputWordCounts) {
 
 function detectInternalRepetition(text) {
   if (!text) return false;
-  const words = text.trim().split(/\s+/).filter(w => w);
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w);
   if (words.length < TAIL_NGRAM_SIZE * 2) return false;
 
   const ngrams = new Map();
   for (let i = 0; i <= words.length - TAIL_NGRAM_SIZE; i++) {
-    const gram = words.slice(i, i + TAIL_NGRAM_SIZE).join(' ').toLowerCase();
+    const gram = words
+      .slice(i, i + TAIL_NGRAM_SIZE)
+      .join(' ')
+      .toLowerCase();
     ngrams.set(gram, (ngrams.get(gram) || 0) + 1);
     if (ngrams.get(gram) >= 2) return true;
   }
@@ -97,8 +113,20 @@ function detectInternalRepetition(text) {
 
 function computeWordOverlap(a, b) {
   if (!a || !b) return 0;
-  const setA = new Set(a.trim().toLowerCase().split(/\s+/).filter(w => w.length >= 2));
-  const setB = new Set(b.trim().toLowerCase().split(/\s+/).filter(w => w.length >= 2));
+  const setA = new Set(
+    a
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length >= 2)
+  );
+  const setB = new Set(
+    b
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length >= 2)
+  );
   if (setA.size === 0 || setB.size === 0) return 0;
 
   let intersection = 0;
@@ -155,9 +183,7 @@ function computeMedianRatio(segments, outputLines) {
   }
   ratios.sort((a, b) => a - b);
   const mid = Math.floor(ratios.length / 2);
-  return ratios.length % 2 === 0
-    ? (ratios[mid - 1] + ratios[mid]) / 2
-    : ratios[mid];
+  return ratios.length % 2 === 0 ? (ratios[mid - 1] + ratios[mid]) / 2 : ratios[mid];
 }
 
 function _computeLineCascadeScore(i, segments, outputLines, medianRatio) {
@@ -168,7 +194,9 @@ function _computeLineCascadeScore(i, segments, outputLines, medianRatio) {
   const tokenScore = computeTokenAnchorScore(inputTokens, outputLines[i], prevOutput, nextOutput);
   const boundaryScore = computeBoundaryAlignmentScore(segments[i].text, outputLines[i]);
   const lengthScore = computeLengthOutlierScore(
-    wordCount(segments[i].text), wordCount(outputLines[i]), medianRatio
+    wordCount(segments[i].text),
+    wordCount(outputLines[i]),
+    medianRatio
   );
 
   let totalWeight = 0;
@@ -209,7 +237,8 @@ function detectCascadeShifts(segments, outputLines) {
       if (inputTokens.length > 0) {
         const prevLower = (i > 0 ? outputLines[i - 1] : '').toLowerCase();
         const nextLower = (i < outputLines.length - 1 ? outputLines[i + 1] : '').toLowerCase();
-        let inPrev = 0, inNext = 0;
+        let inPrev = 0,
+          inNext = 0;
         for (const token of inputTokens) {
           const tLower = token.toLowerCase();
           if (prevLower.includes(tLower)) inPrev++;
@@ -232,10 +261,11 @@ function detectTailAnomalies(outputLines) {
     const isShort = wordCount(line) <= GARBAGE_WORD_THRESHOLD;
     const hasInternalRepetition = detectInternalRepetition(line);
     const isDuplicate = line && line === outputLines[i - 1];
-    const overlapNext = i < outputLines.length - 1 &&
+    const overlapNext =
+      i < outputLines.length - 1 &&
       computeWordOverlap(line, outputLines[i + 1]) > TAIL_OVERLAP_THRESHOLD;
-    const overlapPrev = i > 1 &&
-      computeWordOverlap(line, outputLines[i - 1]) > TAIL_OVERLAP_THRESHOLD;
+    const overlapPrev =
+      i > 1 && computeWordOverlap(line, outputLines[i - 1]) > TAIL_OVERLAP_THRESHOLD;
 
     if (isShort || hasInternalRepetition || isDuplicate || overlapNext || overlapPrev) {
       count += 1 + gaps;
@@ -289,7 +319,15 @@ function buildRealignment(outputLines, confirmedMerges, N) {
   return { lines: corrected.slice(0, N), pendingIndices };
 }
 
-async function verifyAndRefineMerge(position, initialAbsorbed, maxScan, segments, mergedText, src, tgt) {
+async function verifyAndRefineMerge(
+  position,
+  initialAbsorbed,
+  maxScan,
+  segments,
+  mergedText,
+  src,
+  tgt
+) {
   const textsToTranslate = [];
   for (let j = 0; j <= maxScan; j++) {
     textsToTranslate.push(segments[position + j].text);
@@ -298,7 +336,12 @@ async function verifyAndRefineMerge(position, initialAbsorbed, maxScan, segments
 
   const roughCurrent = roughAll[0];
   if (!roughCurrent) {
-    return { verified: true, absorbed: initialAbsorbed, roughTranslations: roughAll.slice(1, initialAbsorbed + 1), fallback: true };
+    return {
+      verified: true,
+      absorbed: initialAbsorbed,
+      roughTranslations: roughAll.slice(1, initialAbsorbed + 1),
+      fallback: true,
+    };
   }
 
   const googleLen = wordCount(roughCurrent);
@@ -306,7 +349,10 @@ async function verifyAndRefineMerge(position, initialAbsorbed, maxScan, segments
   const verifyRatio = llmLen / Math.max(googleLen, 1);
 
   if (verifyRatio < VERIFY_THRESHOLD) {
-    Logger.debug('MergeFixer', `[VERIFY] False alarm at ${position}: ratio=${verifyRatio.toFixed(2)} < ${VERIFY_THRESHOLD}`);
+    Logger.debug(
+      'MergeFixer',
+      `[VERIFY] False alarm at ${position}: ratio=${verifyRatio.toFixed(2)} < ${VERIFY_THRESHOLD}`
+    );
     return { verified: false };
   }
 
@@ -332,20 +378,30 @@ async function verifyAndRefineMerge(position, initialAbsorbed, maxScan, segments
   }
 
   if (bestDiff > MAX_BEST_FIT_DIFF || bestAbsorbed === 0) {
-    Logger.debug('MergeFixer', `[BESTFIT] No fit at ${position}: bestDiff=${bestDiff.toFixed(2)}, bestAbsorbed=${bestAbsorbed}`);
+    Logger.debug(
+      'MergeFixer',
+      `[BESTFIT] No fit at ${position}: bestDiff=${bestDiff.toFixed(2)}, bestAbsorbed=${bestAbsorbed}`
+    );
     return { verified: false };
   }
 
-  Logger.debug('MergeFixer', `[BESTFIT] Merge at ${position}: initial=${initialAbsorbed} -> refined=${bestAbsorbed} (diff=${bestDiff.toFixed(2)})`);
-  return { verified: true, absorbed: bestAbsorbed, roughTranslations: roughAll.slice(1, bestAbsorbed + 1) };
+  Logger.debug(
+    'MergeFixer',
+    `[BESTFIT] Merge at ${position}: initial=${initialAbsorbed} -> refined=${bestAbsorbed} (diff=${bestDiff.toFixed(2)})`
+  );
+  return {
+    verified: true,
+    absorbed: bestAbsorbed,
+    roughTranslations: roughAll.slice(1, bestAbsorbed + 1),
+  };
 }
 
 export const MergeFixer = {
   detectMerges(segments, outputLines) {
     const merges = [];
     let i = 0;
-    const medianRatio = segments.length >= CASCADE_MIN_BATCH_SIZE
-      ? computeMedianRatio(segments, outputLines) : 0;
+    const medianRatio =
+      segments.length >= CASCADE_MIN_BATCH_SIZE ? computeMedianRatio(segments, outputLines) : 0;
 
     while (i < segments.length) {
       const inWc = wordCount(segments[i].text);
@@ -356,18 +412,29 @@ export const MergeFixer = {
       const mediumRatio = !highRatio && ratio > MERGE_RATIO_MEDIUM && medianRatio > 0;
       let cascadeConfirmed = false;
       if (mediumRatio && inWc >= MIN_WORDS_FOR_RATIO_CHECK) {
-        const { score, signalCount } = _computeLineCascadeScore(i, segments, outputLines, medianRatio);
+        const { score, signalCount } = _computeLineCascadeScore(
+          i,
+          segments,
+          outputLines,
+          medianRatio
+        );
         cascadeConfirmed = score >= CASCADE_SCORE_THRESHOLD && signalCount >= 2;
       }
 
-      if ((highRatio || cascadeConfirmed) && inWc >= MIN_WORDS_FOR_RATIO_CHECK && i < segments.length - 1) {
+      if (
+        (highRatio || cascadeConfirmed) &&
+        inWc >= MIN_WORDS_FOR_RATIO_CHECK &&
+        i < segments.length - 1
+      ) {
         let absorbed = 0;
         for (let j = i + 1; j < segments.length; j++) {
           const jInWc = wordCount(segments[j].text);
           const jOutWc = wordCount(outputLines[j]);
           const jRatio = jOutWc / Math.max(jInWc, 1);
           const isShort = jRatio < MERGE_RATIO_LOW || jOutWc === 0;
-          const isCascade = outputLines[i] && outputLines[j] &&
+          const isCascade =
+            outputLines[i] &&
+            outputLines[j] &&
             outputLines[j].length > 10 &&
             outputLines[i].includes(outputLines[j]);
           if (isShort || isCascade) {
@@ -403,7 +470,13 @@ export const MergeFixer = {
         for (const { position } of candidates) {
           const maxScan = Math.min(SHIFT_MAX_SCAN, N - position - 1);
           const verifyResult = await verifyAndRefineMerge(
-            position, 1, maxScan, segments, lines[position], src, tgt
+            position,
+            1,
+            maxScan,
+            segments,
+            lines[position],
+            src,
+            tgt
           );
           if (verifyResult.verified) {
             confirmedMerges.set(position, verifyResult.absorbed);
@@ -411,7 +484,10 @@ export const MergeFixer = {
         }
         if (confirmedMerges.size > 0) {
           const totalAbsorbed = [...confirmedMerges.values()].reduce((a, b) => a + b, 0);
-          Logger.debug('MergeFixer', `[SHIFT] ${confirmedMerges.size} merge(s), ${totalAbsorbed} absorbed (tail=${tailInfo.count})`);
+          Logger.debug(
+            'MergeFixer',
+            `[SHIFT] ${confirmedMerges.size} merge(s), ${totalAbsorbed} absorbed (tail=${tailInfo.count})`
+          );
           return buildRealignment(lines, confirmedMerges, N);
         }
       }
@@ -419,7 +495,10 @@ export const MergeFixer = {
 
     const cascades = detectCascadeShifts(segments, lines);
     if (cascades.length > 0) {
-      Logger.debug('MergeFixer', `[CASCADE] ${cascades.length} cascade shift(s) detected via offline signals`);
+      Logger.debug(
+        'MergeFixer',
+        `[CASCADE] ${cascades.length} cascade shift(s) detected via offline signals`
+      );
       const cascadeMerges = new Map();
       for (const { position } of cascades) {
         cascadeMerges.set(position, 1);
@@ -431,7 +510,10 @@ export const MergeFixer = {
       const merges = this.detectMerges(segments, lines);
       if (merges.length === 0) break;
 
-      Logger.debug('MergeFixer', `[Pass ${pass + 1}] Detected ${merges.length} merge(s). Fixing...`);
+      Logger.debug(
+        'MergeFixer',
+        `[Pass ${pass + 1}] Detected ${merges.length} merge(s). Fixing...`
+      );
 
       for (let m = merges.length - 1; m >= 0; m--) {
         const { position, absorbed: initialAbsorbed } = merges[m];
@@ -445,14 +527,20 @@ export const MergeFixer = {
         );
 
         const verifyResult = await verifyAndRefineMerge(
-          position, initialAbsorbed, maxScan, segments, mergedText, src, tgt
+          position,
+          initialAbsorbed,
+          maxScan,
+          segments,
+          mergedText,
+          src,
+          tgt
         );
 
         if (!verifyResult.verified) continue;
 
         const absorbed = verifyResult.absorbed;
         const roughTranslations = verifyResult.roughTranslations;
-        const allRoughsFailed = roughTranslations.every(r => r === null);
+        const allRoughsFailed = roughTranslations.every((r) => r === null);
 
         let pieces;
 
@@ -462,7 +550,10 @@ export const MergeFixer = {
             inputWordCounts.push(wordCount(segments[position + j].text));
           }
           pieces = proportionalSplit(mergedText, inputWordCounts);
-          Logger.debug('MergeFixer', `[FALLBACK] Proportional split at ${position} (${absorbed + 1} pieces)`);
+          Logger.debug(
+            'MergeFixer',
+            `[FALLBACK] Proportional split at ${position} (${absorbed + 1} pieces)`
+          );
         } else {
           const anchorPositions = [0];
           let cursor = 0;
@@ -495,13 +586,19 @@ export const MergeFixer = {
               inputWordCounts.push(wordCount(segments[position + j].text));
             }
             pieces = proportionalSplit(mergedText, inputWordCounts);
-            Logger.debug('MergeFixer', `[FALLBACK] All anchors failed at ${position}, using proportional`);
+            Logger.debug(
+              'MergeFixer',
+              `[FALLBACK] All anchors failed at ${position}, using proportional`
+            );
           } else if (failedCount === 0) {
             pieces = [];
             for (let j = 0; j < anchorPositions.length - 1; j++) {
               pieces.push(mergedText.substring(anchorPositions[j], anchorPositions[j + 1]).trim());
             }
-            Logger.debug('MergeFixer', `[ANCHOR] Split at ${position} into ${pieces.length} pieces`);
+            Logger.debug(
+              'MergeFixer',
+              `[ANCHOR] Split at ${position} into ${pieces.length} pieces`
+            );
           } else {
             pieces = [];
             let rangeStart = 0;
@@ -528,7 +625,10 @@ export const MergeFixer = {
                 rangeStartIdx = j;
               }
             }
-            Logger.debug('MergeFixer', `[PARTIAL] Split at ${position}: ${failedCount} anchor(s) failed, used proportional for gaps`);
+            Logger.debug(
+              'MergeFixer',
+              `[PARTIAL] Split at ${position}: ${failedCount} anchor(s) failed, used proportional for gaps`
+            );
           }
         }
 
@@ -551,17 +651,31 @@ export const MergeFixer = {
         else break;
       }
       if (tailGarbage === 0) break;
-      Logger.debug('MergeFixer', `[Pass ${pass + 1}] ${tailGarbage} garbage tail lines remain, continuing...`);
+      Logger.debug(
+        'MergeFixer',
+        `[Pass ${pass + 1}] ${tailGarbage} garbage tail lines remain, continuing...`
+      );
     }
 
     return { lines, pendingIndices: [] };
-  }
+  },
 };
 
 export const _internals = {
-  wordCount, extractAnchorWords, findAnchorInText, proportionalSplit,
-  verifyAndRefineMerge, detectInternalRepetition, computeWordOverlap,
-  detectTailAnomalies, findShiftCandidates, buildRealignment,
-  extractPreservedTokens, computeTokenAnchorScore, computeBoundaryAlignmentScore,
-  computeLengthOutlierScore, computeMedianRatio, detectCascadeShifts
+  wordCount,
+  extractAnchorWords,
+  findAnchorInText,
+  proportionalSplit,
+  verifyAndRefineMerge,
+  detectInternalRepetition,
+  computeWordOverlap,
+  detectTailAnomalies,
+  findShiftCandidates,
+  buildRealignment,
+  extractPreservedTokens,
+  computeTokenAnchorScore,
+  computeBoundaryAlignmentScore,
+  computeLengthOutlierScore,
+  computeMedianRatio,
+  detectCascadeShifts,
 };

@@ -35,7 +35,7 @@ function onTimeUpdate() {
   // Phase 50.7: Safety check - if video element became invisible or detached,
   // we might be bound to a stale element (especially on Shorts swiping).
   if (videoElement.offsetWidth === 0 && videoElement.offsetHeight === 0) {
-    // We don't stop, but we skip rendering to avoid sticking a UI element 
+    // We don't stop, but we skip rendering to avoid sticking a UI element
     // to a hidden video's timestamp.
     return;
   }
@@ -49,7 +49,7 @@ function onTimeUpdate() {
     const current = subtitles[currentIndex];
     if (timeMs >= current.startMs && timeMs < current.endMs) {
       foundIndex = currentIndex;
-    } 
+    }
     // Check if it's the next subtitle (most common case during playback)
     else if (currentIndex + 1 < subtitles.length) {
       const next = subtitles[currentIndex + 1];
@@ -69,7 +69,12 @@ function onTimeUpdate() {
     if (currentIndex !== -1) {
       const entry = subtitles[currentIndex];
       const isTranslated = translatedIndices.has(currentIndex);
-      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode, isTranslated);
+      Overlay.renderSubtitles(
+        entry.text || entry.original,
+        entry.original,
+        isDualMode,
+        isTranslated
+      );
       Overlay.show();
     } else {
       Overlay.hide();
@@ -79,7 +84,7 @@ function onTimeUpdate() {
 
 export const SyncEngine = {
   start: function (subs, video) {
-    this.stop(); 
+    this.stop();
 
     subtitles = subs || [];
     videoElement = video;
@@ -134,7 +139,12 @@ export const SyncEngine = {
     if (isRunning && currentIndex !== -1) {
       const entry = subtitles[currentIndex];
       const isTranslated = translatedIndices.has(currentIndex);
-      Overlay.renderSubtitles(entry.text || entry.original, entry.original, isDualMode, isTranslated);
+      Overlay.renderSubtitles(
+        entry.text || entry.original,
+        entry.original,
+        isDualMode,
+        isTranslated
+      );
     }
   },
 
@@ -167,7 +177,7 @@ export const SyncEngine = {
       }
     }
     devLog('[YouSub] SyncEngine: Full subtitles updated. Count: ' + subtitles.length);
-    
+
     if (isRunning && onTimeUpdateBound) {
       onTimeUpdateBound();
     }
@@ -210,7 +220,7 @@ export const SyncEngine = {
         }
       }
     }
-    
+
     devLog(`[YouSub] SyncEngine: Merged partial batch of ${batch.length} at index ${startIndex}`);
 
     if (isRunning && onTimeUpdateBound) {
@@ -235,7 +245,7 @@ export const SyncEngine = {
 
   isDualModeActive: function () {
     return isDualMode;
-  }
+  },
 };
 
 // Compatibility for legacy global access

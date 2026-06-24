@@ -12,7 +12,7 @@ function checkPage() {
   const pathname = window.location.pathname;
   const isWatchPage = pathname === '/watch';
   const isShortsPage = pathname.startsWith('/shorts/');
-  
+
   let videoId = null;
   if (isWatchPage) {
     videoId = new URLSearchParams(window.location.search).get('v');
@@ -26,7 +26,10 @@ function checkPage() {
       if (onLeaveCallback) onLeaveCallback();
     }
     currentVideoId = videoId;
-    devLog('[YouSub] PageDetector: ' + (isShortsPage ? 'Shorts' : 'Watch') + ' page detected. Video ID:', videoId);
+    devLog(
+      '[YouSub] PageDetector: ' + (isShortsPage ? 'Shorts' : 'Watch') + ' page detected. Video ID:',
+      videoId
+    );
     if (onEnterCallback) onEnterCallback(videoId);
   } else if (!isWatchPage && !isShortsPage && currentVideoId) {
     devLog('[YouSub] PageDetector: Left video page.');
@@ -46,10 +49,10 @@ export const PageDetector = {
     onLeaveCallback = onLeave;
 
     devLog('[YouSub] PageDetector: Initializing and checking current page...');
-    
+
     // Add listener for future navigations
     document.addEventListener('yt-navigate-finish', checkPage);
-    
+
     // Run immediate check for the current page
     checkPage();
 
@@ -73,7 +76,7 @@ export const PageDetector = {
    */
   getCurrentVideoId: function () {
     return currentVideoId;
-  }
+  },
 };
 
 // Compatibility for legacy global access

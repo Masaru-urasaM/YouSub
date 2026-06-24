@@ -4,7 +4,6 @@ import { HealthManager } from './health.js';
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { sanitizeKey } from '../shared/utils.js';
 
-
 function extractModelSizeB(modelId) {
   const match = modelId.match(/(\d+)b/i);
   return match ? parseInt(match[1]) : null;
@@ -13,10 +12,10 @@ function extractModelSizeB(modelId) {
 function getGroqMaxLines(modelId, defaultMax) {
   const sizeB = extractModelSizeB(modelId);
   if (sizeB === null) return defaultMax;
-  if (sizeB >= 70) return Math.round(defaultMax * 2 / 3);
-  if (sizeB >= 32) return Math.round(defaultMax * 1 / 3);
-  if (sizeB >= 17) return Math.round(defaultMax * 0.5 / 3);
-  return Math.round(defaultMax * 0.25 / 3);
+  if (sizeB >= 70) return Math.round((defaultMax * 2) / 3);
+  if (sizeB >= 32) return Math.round((defaultMax * 1) / 3);
+  if (sizeB >= 17) return Math.round((defaultMax * 0.5) / 3);
+  return Math.round((defaultMax * 0.25) / 3);
 }
 
 const DEFAULT_MAX_LINES = 50;
@@ -32,7 +31,9 @@ export const APIManager = {
   async _storageGet(keys, timeoutMs = 5000) {
     return await Promise.race([
       browser.storage.local.get(keys),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`StorageTimeout: ${JSON.stringify(keys)}`)), timeoutMs))
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`StorageTimeout: ${JSON.stringify(keys)}`)), timeoutMs)
+      ),
     ]);
   },
 
@@ -48,7 +49,7 @@ export const APIManager = {
         'yousub_failover_enabled',
         'yousub_model_rotation',
         'yousub_custom_models',
-        'yousub_hidden_models'
+        'yousub_hidden_models',
       ]);
 
       const keys = res.yousub_api_keys || [];
@@ -58,21 +59,23 @@ export const APIManager = {
       const hiddens = res.yousub_hidden_models || {};
 
       // 1. Initial Filtering & Sanitization
-      const configKeys = keys.map((k, index) => {
-        const cleanKey = sanitizeKey(k.apiKey);
-        const name = `Key #${index + 1} (${k.provider})`;
-        
-        if (!k.apiKey || cleanKey.length === 0) {
-          Logger.debug('APIManager', `Skipped ${name}: Key is empty.`);
-          return null;
-        }
-        if (k.disabled) {
-          Logger.debug('APIManager', `Skipped ${name}: Disabled by user.`);
-          return null;
-        }
-        return { ...k, apiKey: cleanKey };
-      }).filter(Boolean);
-      
+      const configKeys = keys
+        .map((k, index) => {
+          const cleanKey = sanitizeKey(k.apiKey);
+          const name = `Key #${index + 1} (${k.provider})`;
+
+          if (!k.apiKey || cleanKey.length === 0) {
+            Logger.debug('APIManager', `Skipped ${name}: Key is empty.`);
+            return null;
+          }
+          if (k.disabled) {
+            Logger.debug('APIManager', `Skipped ${name}: Disabled by user.`);
+            return null;
+          }
+          return { ...k, apiKey: cleanKey };
+        })
+        .filter(Boolean);
+
       if (configKeys.length === 0) {
         Logger.warn('APIManager', 'No active API keys found (all empty or disabled).');
         return [];
@@ -83,37 +86,40 @@ export const APIManager = {
       const stats = statsRes.yousub_health_stats || {};
 
       // 3. Filter by circuit breaker
-      const healthResults = await Promise.all(configKeys.map(async (k) => {
-        const hash = HealthManager.getHash(k.provider, k.apiKey);
-        const entry = stats[hash];
-        
-        const isOpen = await HealthManager.isCircuitOpen(k.provider, k.apiKey, stats);
-        
-        if (isOpen && entry) {
-          const resumeTime = new Date(entry.circuitBreakerUntil).toLocaleTimeString();
-          Logger.warn('APIManager', `Skipped ${k.provider}_${k.apiKey.slice(-4)}: Circuit OPEN until ${resumeTime}.`);
-        }
-        
-        // Defensive scoring: default to 1.0 if no fails, or penalize only if results exist
-        if (!entry || (entry.successCount + entry.failCount) === 0) {
-          k.score = 0.5; // Neutral
-        } else {
-          const total = entry.successCount + entry.failCount;
-          const successRate = entry.successCount / total;
-          let speedMult = 1.0;
-          if (entry.avgTime > 0) {
-            speedMult = Math.max(0.1, 1 - (entry.avgTime / 10000)); // Cap at 10s
+      const healthResults = await Promise.all(
+        configKeys.map(async (k) => {
+          const hash = HealthManager.getHash(k.provider, k.apiKey);
+          const entry = stats[hash];
+
+          const isOpen = await HealthManager.isCircuitOpen(k.provider, k.apiKey, stats);
+
+          if (isOpen && entry) {
+            const resumeTime = new Date(entry.circuitBreakerUntil).toLocaleTimeString();
+            Logger.warn(
+              'APIManager',
+              `Skipped ${k.provider}_${k.apiKey.slice(-4)}: Circuit OPEN until ${resumeTime}.`
+            );
           }
-          k.score = successRate * speedMult;
-        }
 
-        k.isCircuitOpen = isOpen;
-        return { key: k, isOpen };
-      }));
+          // Defensive scoring: default to 1.0 if no fails, or penalize only if results exist
+          if (!entry || entry.successCount + entry.failCount === 0) {
+            k.score = 0.5; // Neutral
+          } else {
+            const total = entry.successCount + entry.failCount;
+            const successRate = entry.successCount / total;
+            let speedMult = 1.0;
+            if (entry.avgTime > 0) {
+              speedMult = Math.max(0.1, 1 - entry.avgTime / 10000); // Cap at 10s
+            }
+            k.score = successRate * speedMult;
+          }
 
-      const activeKeys = healthResults
-        .filter(r => !r.isOpen)
-        .map(r => r.key);
+          k.isCircuitOpen = isOpen;
+          return { key: k, isOpen };
+        })
+      );
+
+      const activeKeys = healthResults.filter((r) => !r.isOpen).map((r) => r.key);
 
       if (activeKeys.length === 0) {
         Logger.warn('APIManager', 'All configured keys are in cooldown (Circuit Open).');
@@ -121,7 +127,7 @@ export const APIManager = {
       }
 
       let finalKeys = [];
-      
+
       if (activeKeys.length <= 1 || !failoverEnabled) {
         finalKeys = activeKeys.slice(0, 1);
       } else {
@@ -135,49 +141,53 @@ export const APIManager = {
 
       // Intra-Key Model Rotation
       if (modelRotation) {
-         const expanded = [];
-         for (const k of finalKeys) {
-           const prov = YOUSUB_PROVIDERS.getProvider(k.provider);
+        const expanded = [];
+        for (const k of finalKeys) {
+          const prov = YOUSUB_PROVIDERS.getProvider(k.provider);
 
-           if (k.provider === 'groq') {
-             const resolvedModel = k.model === 'auto' ? (prov?.defaultModel || k.model) : k.model;
-             k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
-           }
+          if (k.provider === 'groq') {
+            const resolvedModel = k.model === 'auto' ? prov?.defaultModel || k.model : k.model;
+            k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
+          }
 
-           expanded.push(k);
-           if (!prov) continue;
+          expanded.push(k);
+          if (!prov) continue;
 
-           const builtinIds = prov.models.map(m => m.id);
-           const customIds = customs[k.provider] || [];
-           const hiddenIds = hiddens[k.provider] || [];
+          const builtinIds = prov.models.map((m) => m.id);
+          const customIds = customs[k.provider] || [];
+          const hiddenIds = hiddens[k.provider] || [];
 
-           const allModels = [...builtinIds, ...customIds].filter(m => !hiddenIds.includes(m));
-           const currentModel = k.model === 'auto' ? prov.defaultModel : k.model;
+          const allModels = [...builtinIds, ...customIds].filter((m) => !hiddenIds.includes(m));
+          const currentModel = k.model === 'auto' ? prov.defaultModel : k.model;
 
-           const clones = [];
-           for (const m of allModels) {
-              if (m !== currentModel) {
-                 const clone = { ...k, model: m, isRotationClone: true };
-                 if (k.provider === 'groq') {
-                   clone.maxLinesPerBatch = getGroqMaxLines(m, DEFAULT_MAX_LINES);
-                 }
-                 clones.push(clone);
+          const clones = [];
+          for (const m of allModels) {
+            if (m !== currentModel) {
+              const clone = { ...k, model: m, isRotationClone: true };
+              if (k.provider === 'groq') {
+                clone.maxLinesPerBatch = getGroqMaxLines(m, DEFAULT_MAX_LINES);
               }
-           }
+              clones.push(clone);
+            }
+          }
 
-           if (k.provider === 'groq') {
-             clones.sort((a, b) => (b.maxLinesPerBatch || DEFAULT_MAX_LINES) - (a.maxLinesPerBatch || DEFAULT_MAX_LINES));
-           }
-           expanded.push(...clones);
-         }
-         finalKeys = expanded;
+          if (k.provider === 'groq') {
+            clones.sort(
+              (a, b) =>
+                (b.maxLinesPerBatch || DEFAULT_MAX_LINES) -
+                (a.maxLinesPerBatch || DEFAULT_MAX_LINES)
+            );
+          }
+          expanded.push(...clones);
+        }
+        finalKeys = expanded;
       }
 
       // Stamp maxLinesPerBatch on Groq keys even when rotation is off
       for (const k of finalKeys) {
         if (k.provider === 'groq' && !k.maxLinesPerBatch) {
           const prov = YOUSUB_PROVIDERS.getProvider('groq');
-          const resolvedModel = k.model === 'auto' ? (prov?.defaultModel || k.model) : k.model;
+          const resolvedModel = k.model === 'auto' ? prov?.defaultModel || k.model : k.model;
           k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
         }
       }
@@ -199,14 +209,14 @@ export const APIManager = {
         const keys = res.yousub_api_keys || [];
         let updated = false;
 
-        const newKeys = keys.map(k => {
+        const newKeys = keys.map((k) => {
           if (k.provider === providerId && k.apiKey === apiKey) {
             updated = true;
             return {
               ...k,
               status: 'failed',
               statusMessage: reason,
-              testedAt: Date.now()
+              testedAt: Date.now(),
             };
           }
           return k;
@@ -222,5 +232,5 @@ export const APIManager = {
         }
       });
     });
-  }
+  },
 };

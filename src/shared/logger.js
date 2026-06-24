@@ -20,7 +20,7 @@ export const Logger = {
       level,
       tag,
       msg,
-      ...data
+      ...data,
     };
 
     const isProd = Constants && Constants.IS_PRODUCTION;
@@ -41,11 +41,21 @@ export const Logger = {
     this._bufferEntry(output, level);
   },
 
-  info(tag, msg, data) { this.log('INFO', tag, msg, data); },
-  warn(tag, msg, data) { this.log('WARN', tag, msg, data); },
-  error(tag, msg, data) { this.log('ERROR', tag, msg, data); },
-  debug(tag, msg, data) { this.log('DEBUG', tag, msg, data); },
-  trace(tag, msg, data) { this.log('TRACE', tag, msg, data); },
+  info(tag, msg, data) {
+    this.log('INFO', tag, msg, data);
+  },
+  warn(tag, msg, data) {
+    this.log('WARN', tag, msg, data);
+  },
+  error(tag, msg, data) {
+    this.log('ERROR', tag, msg, data);
+  },
+  debug(tag, msg, data) {
+    this.log('DEBUG', tag, msg, data);
+  },
+  trace(tag, msg, data) {
+    this.log('TRACE', tag, msg, data);
+  },
 
   _bufferEntry(jsonStr, level) {
     this._buffer.push(jsonStr);
@@ -105,12 +115,12 @@ export const Logger = {
   },
 
   _getStorageApi() {
-    const root = typeof browser !== 'undefined' ? browser
-      : (typeof chrome !== 'undefined' ? chrome : null);
+    const root =
+      typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
     if (!root || !root.storage) return null;
     return {
       session: root.storage.session || null,
-      local: root.storage.local || null
+      local: root.storage.local || null,
     };
   },
 
@@ -119,14 +129,21 @@ export const Logger = {
     const sliced = logs.slice(-n);
 
     console.group(`YouSub Logs (Last ${n})`);
-    sliced.forEach(l => {
+    sliced.forEach((l) => {
       try {
         const p = JSON.parse(l);
-        const color = p.level === 'ERROR' ? '#ef4444'
-          : (p.level === 'WARN' ? '#f59e0b'
-          : (p.level === 'TRACE' ? '#06b6d4' : '#3b82f6'));
+        const color =
+          p.level === 'ERROR'
+            ? '#ef4444'
+            : p.level === 'WARN'
+              ? '#f59e0b'
+              : p.level === 'TRACE'
+                ? '#06b6d4'
+                : '#3b82f6';
         console.log(`%c[${p.level}] [${p.tag}] ${p.msg}`, `color: ${color}`, p);
-      } catch { console.log(l); }
+      } catch {
+        console.log(l);
+      }
     });
     console.groupEnd();
   },
@@ -181,8 +198,8 @@ export const Logger = {
     MAX_ERROR_LOGS,
     FLUSH_INTERVAL_MS,
     STORAGE_KEY_SESSION,
-    STORAGE_KEY_ERRORS
-  }
+    STORAGE_KEY_ERRORS,
+  },
 };
 
 // Universal Attachment

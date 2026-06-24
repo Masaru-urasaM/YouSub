@@ -18,9 +18,9 @@ describe('SyncEngine.getTranslatedCount (Phase 64b)', () => {
 
   test('counts only lines whose text differs from the original', () => {
     SyncEngine.updateSubtitles([
-      { startMs: 0, endMs: 1000, original: 'a', text: 'a' },          // untranslated
+      { startMs: 0, endMs: 1000, original: 'a', text: 'a' }, // untranslated
       { startMs: 1000, endMs: 2000, original: 'b', text: 'translated-b' },
-      { startMs: 2000, endMs: 3000, original: 'c', text: 'translated-c' }
+      { startMs: 2000, endMs: 3000, original: 'c', text: 'translated-c' },
     ]);
     expect(SyncEngine.getTranslatedCount()).toBe(2);
   });
@@ -28,7 +28,7 @@ describe('SyncEngine.getTranslatedCount (Phase 64b)', () => {
   test('updatePartial increments the translated count for streamed batches', () => {
     SyncEngine.updateSubtitles([
       { startMs: 0, endMs: 1000, original: 'a', text: 'a' },
-      { startMs: 1000, endMs: 2000, original: 'b', text: 'b' }
+      { startMs: 1000, endMs: 2000, original: 'b', text: 'b' },
     ]);
     expect(SyncEngine.getTranslatedCount()).toBe(0);
 
@@ -40,9 +40,7 @@ describe('SyncEngine.getTranslatedCount (Phase 64b)', () => {
   });
 
   test('count is reset to 0 after stop()', () => {
-    SyncEngine.updateSubtitles([
-      { startMs: 0, endMs: 1000, original: 'a', text: 'translated-a' }
-    ]);
+    SyncEngine.updateSubtitles([{ startMs: 0, endMs: 1000, original: 'a', text: 'translated-a' }]);
     expect(SyncEngine.getTranslatedCount()).toBe(1);
     SyncEngine.stop();
     expect(SyncEngine.getTranslatedCount()).toBe(0);

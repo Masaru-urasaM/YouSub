@@ -27,7 +27,7 @@ describe('Tier 1: Chrome Translator API', () => {
     const mockTranslator = { translate: jest.fn(async () => 'Xin chao') };
     self.translation = {
       canTranslate: jest.fn(async () => 'readily'),
-      createTranslator: jest.fn(async () => mockTranslator)
+      createTranslator: jest.fn(async () => mockTranslator),
     };
     globalThis.fetch = jest.fn();
 
@@ -43,10 +43,10 @@ describe('Tier 1: Chrome Translator API', () => {
     self.ai = {
       translator: {
         capabilities: jest.fn(async () => ({
-          languagePairAvailable: jest.fn(() => 'readily')
+          languagePairAvailable: jest.fn(() => 'readily'),
         })),
-        create: jest.fn(async () => mockTranslator)
-      }
+        create: jest.fn(async () => mockTranslator),
+      },
     };
     globalThis.fetch = jest.fn();
 
@@ -60,7 +60,7 @@ describe('Tier 1: Chrome Translator API', () => {
     const mockTranslator = { translate: jest.fn(async () => 'Hola') };
     self.translation = {
       canTranslate: jest.fn(async () => 'after-download'),
-      createTranslator: jest.fn(async () => mockTranslator)
+      createTranslator: jest.fn(async () => mockTranslator),
     };
     globalThis.fetch = jest.fn();
 
@@ -75,7 +75,7 @@ describe('Tier 1: Chrome Translator API', () => {
     const mockTranslator = { translate: jest.fn(async () => 'OK') };
     self.translation = {
       canTranslate,
-      createTranslator: jest.fn(async () => mockTranslator)
+      createTranslator: jest.fn(async () => mockTranslator),
     };
     globalThis.fetch = jest.fn();
 
@@ -90,7 +90,7 @@ describe('Tier 1: Chrome Translator API', () => {
     const createTranslator = jest.fn(async () => mockTranslator);
     self.translation = {
       canTranslate: jest.fn(async () => 'readily'),
-      createTranslator
+      createTranslator,
     };
     globalThis.fetch = jest.fn();
 
@@ -101,14 +101,18 @@ describe('Tier 1: Chrome Translator API', () => {
   });
 
   test('falls back to Google when Chrome Translator fails for a text', async () => {
-    const mockTranslator = { translate: jest.fn(async () => { throw new Error('model error'); }) };
+    const mockTranslator = {
+      translate: jest.fn(async () => {
+        throw new Error('model error');
+      }),
+    };
     self.translation = {
       canTranslate: jest.fn(async () => 'readily'),
-      createTranslator: jest.fn(async () => mockTranslator)
+      createTranslator: jest.fn(async () => mockTranslator),
     };
     globalThis.fetch = jest.fn(async () => ({
       ok: true,
-      json: async () => [[['Xin chao']]]
+      json: async () => [[['Xin chao']]],
     }));
 
     const result = await RoughTranslator.translate('Hello', 'en', 'vi');
@@ -124,7 +128,7 @@ describe('Tier 2: Google Translate fallback', () => {
   test('uses Google when Chrome Translator unavailable', async () => {
     globalThis.fetch = jest.fn(async () => ({
       ok: true,
-      json: async () => [[['Xin chao']]]
+      json: async () => [[['Xin chao']]],
     }));
 
     const result = await RoughTranslator.translate('Hello', 'en', 'vi');
@@ -136,11 +140,11 @@ describe('Tier 2: Google Translate fallback', () => {
   test('uses Google when canTranslate returns no', async () => {
     self.translation = {
       canTranslate: jest.fn(async () => 'no'),
-      createTranslator: jest.fn()
+      createTranslator: jest.fn(),
     };
     globalThis.fetch = jest.fn(async () => ({
       ok: true,
-      json: async () => [[['Hola']]]
+      json: async () => [[['Hola']]],
     }));
 
     const result = await RoughTranslator.translate('Hello', 'en', 'es');
@@ -162,12 +166,18 @@ describe('Tier 2: Google Translate fallback', () => {
 
 describe('Tier 3: both tiers fail', () => {
   test('returns null when both Chrome and Google fail', async () => {
-    const mockTranslator = { translate: jest.fn(async () => { throw new Error('fail'); }) };
+    const mockTranslator = {
+      translate: jest.fn(async () => {
+        throw new Error('fail');
+      }),
+    };
     self.translation = {
       canTranslate: jest.fn(async () => 'readily'),
-      createTranslator: jest.fn(async () => mockTranslator)
+      createTranslator: jest.fn(async () => mockTranslator),
     };
-    globalThis.fetch = jest.fn(async () => { throw new Error('network error'); });
+    globalThis.fetch = jest.fn(async () => {
+      throw new Error('network error');
+    });
 
     const result = await RoughTranslator.translate('Hello', 'en', 'vi');
 
@@ -192,9 +202,7 @@ describe('translateBatch', () => {
       return { ok: true, json: async () => [[['result']]] };
     });
 
-    const results = await RoughTranslator.translateBatch(
-      ['Hello', 'World', 'Test'], 'en', 'vi'
-    );
+    const results = await RoughTranslator.translateBatch(['Hello', 'World', 'Test'], 'en', 'vi');
 
     expect(results).toHaveLength(3);
     expect(results[0]).toBe('result');
@@ -203,11 +211,11 @@ describe('translateBatch', () => {
   });
 
   test('returns all nulls when all translations fail', async () => {
-    globalThis.fetch = jest.fn(async () => { throw new Error('fail'); });
+    globalThis.fetch = jest.fn(async () => {
+      throw new Error('fail');
+    });
 
-    const results = await RoughTranslator.translateBatch(
-      ['A', 'B'], 'en', 'vi'
-    );
+    const results = await RoughTranslator.translateBatch(['A', 'B'], 'en', 'vi');
 
     expect(results).toEqual([null, null]);
   });

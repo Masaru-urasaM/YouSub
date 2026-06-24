@@ -26,7 +26,7 @@ TrustedTypes.init();
 function clampPosition(left, top, width, height, playerW, playerH) {
   return {
     left: Math.max(0, Math.min(left, playerW - width)),
-    top: Math.max(0, Math.min(top, playerH - height))
+    top: Math.max(0, Math.min(top, playerH - height)),
   };
 }
 
@@ -44,9 +44,9 @@ function enterCustomMode() {
   const containerRect = container.getBoundingClientRect();
   if (playerRect.width === 0 || playerRect.height === 0) return;
 
-  const leftPct = (containerRect.left - playerRect.left) / playerRect.width * 100;
-  const topPct = (containerRect.top - playerRect.top) / playerRect.height * 100;
-  const widthPct = containerRect.width / playerRect.width * 100;
+  const leftPct = ((containerRect.left - playerRect.left) / playerRect.width) * 100;
+  const topPct = ((containerRect.top - playerRect.top) / playerRect.height) * 100;
+  const widthPct = (containerRect.width / playerRect.width) * 100;
 
   container.classList.add('yousub-custom-position');
   container.style.left = leftPct + '%';
@@ -65,7 +65,13 @@ function exitCustomMode() {
   container.style.width = '';
   container.style.minHeight = '';
   container.style.bottom = '';
-  currentLayout = { customMode: false, leftPct: null, topPct: null, widthPct: null, minHeightPx: null };
+  currentLayout = {
+    customMode: false,
+    leftPct: null,
+    topPct: null,
+    widthPct: null,
+    minHeightPx: null,
+  };
 }
 
 function applyLayout() {
@@ -85,18 +91,20 @@ function reclampToPlayer() {
   const ph = playerElement.clientHeight;
   if (pw === 0 || ph === 0) return;
 
-  const left = currentLayout.leftPct / 100 * pw;
-  const top = currentLayout.topPct / 100 * ph;
-  const width = currentLayout.widthPct ? currentLayout.widthPct / 100 * pw : container.offsetWidth;
+  const left = (currentLayout.leftPct / 100) * pw;
+  const top = (currentLayout.topPct / 100) * ph;
+  const width = currentLayout.widthPct
+    ? (currentLayout.widthPct / 100) * pw
+    : container.offsetWidth;
   const height = container.offsetHeight;
 
   const clamped = clampRect(left, top, width, height, pw, ph);
-  container.style.left = (clamped.left / pw * 100) + '%';
-  container.style.top = (clamped.top / ph * 100) + '%';
-  if (currentLayout.widthPct) container.style.width = (clamped.width / pw * 100) + '%';
-  currentLayout.leftPct = clamped.left / pw * 100;
-  currentLayout.topPct = clamped.top / ph * 100;
-  if (currentLayout.widthPct) currentLayout.widthPct = clamped.width / pw * 100;
+  container.style.left = (clamped.left / pw) * 100 + '%';
+  container.style.top = (clamped.top / ph) * 100 + '%';
+  if (currentLayout.widthPct) container.style.width = (clamped.width / pw) * 100 + '%';
+  currentLayout.leftPct = (clamped.left / pw) * 100;
+  currentLayout.topPct = (clamped.top / ph) * 100;
+  if (currentLayout.widthPct) currentLayout.widthPct = (clamped.width / pw) * 100;
 }
 
 function loadLayout() {
@@ -109,7 +117,13 @@ function loadLayout() {
       currentLayout = { ...layout };
       applyLayout();
     } else {
-      currentLayout = { customMode: false, leftPct: null, topPct: null, widthPct: null, minHeightPx: null };
+      currentLayout = {
+        customMode: false,
+        leftPct: null,
+        topPct: null,
+        widthPct: null,
+        minHeightPx: null,
+      };
     }
   });
 }
@@ -142,10 +156,17 @@ function attachMoveHandler(handleEl) {
     const onMove = (ev) => {
       const newLeft = ev.clientX - playerRect.left - offsetX;
       const newTop = ev.clientY - playerRect.top - offsetY;
-      const clamped = clampPosition(newLeft, newTop, container.offsetWidth, container.offsetHeight, playerRect.width, playerRect.height);
+      const clamped = clampPosition(
+        newLeft,
+        newTop,
+        container.offsetWidth,
+        container.offsetHeight,
+        playerRect.width,
+        playerRect.height
+      );
 
-      const leftPct = clamped.left / playerRect.width * 100;
-      const topPct = clamped.top / playerRect.height * 100;
+      const leftPct = (clamped.left / playerRect.width) * 100;
+      const topPct = (clamped.top / playerRect.height) * 100;
       container.style.left = leftPct + '%';
       container.style.top = topPct + '%';
       currentLayout.leftPct = leftPct;
@@ -190,13 +211,21 @@ function attachResizeHandler(handleEl, corner) {
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      let newLeft = startLeft, newTop = startTop;
-      let newWidth = startWidth, newHeight = startHeight;
+      let newLeft = startLeft,
+        newTop = startTop;
+      let newWidth = startWidth,
+        newHeight = startHeight;
 
       if (corner.includes('e')) newWidth = startWidth + dx;
-      if (corner.includes('w')) { newWidth = startWidth - dx; newLeft = startLeft + dx; }
+      if (corner.includes('w')) {
+        newWidth = startWidth - dx;
+        newLeft = startLeft + dx;
+      }
       if (corner.includes('s')) newHeight = startHeight + dy;
-      if (corner.includes('n')) { newHeight = startHeight - dy; newTop = startTop + dy; }
+      if (corner.includes('n')) {
+        newHeight = startHeight - dy;
+        newTop = startTop + dy;
+      }
 
       if (newWidth < LAYOUT_MIN_WIDTH) {
         if (corner.includes('w')) newLeft = startLeft + startWidth - LAYOUT_MIN_WIDTH;
@@ -207,10 +236,17 @@ function attachResizeHandler(handleEl, corner) {
         newHeight = LAYOUT_MIN_HEIGHT;
       }
 
-      const clamped = clampRect(newLeft, newTop, newWidth, newHeight, playerRect.width, playerRect.height);
-      const leftPct = clamped.left / playerRect.width * 100;
-      const topPct = clamped.top / playerRect.height * 100;
-      const widthPct = clamped.width / playerRect.width * 100;
+      const clamped = clampRect(
+        newLeft,
+        newTop,
+        newWidth,
+        newHeight,
+        playerRect.width,
+        playerRect.height
+      );
+      const leftPct = (clamped.left / playerRect.width) * 100;
+      const topPct = (clamped.top / playerRect.height) * 100;
+      const widthPct = (clamped.width / playerRect.width) * 100;
 
       container.style.left = leftPct + '%';
       container.style.top = topPct + '%';
@@ -250,14 +286,14 @@ function attachResetHandler(handleEl) {
 
 function createHandles() {
   const types = ['nw', 'ne', 'sw', 'se', 'move', 'reset'];
-  types.forEach(type => {
+  types.forEach((type) => {
     const el = document.createElement('div');
     el.className = 'yousub-handle yousub-handle-' + type;
     container.appendChild(el);
     handles[type] = el;
   });
 
-  ['nw', 'ne', 'sw', 'se'].forEach(corner => {
+  ['nw', 'ne', 'sw', 'se'].forEach((corner) => {
     attachResizeHandler(handles[corner], corner);
   });
   attachMoveHandler(handles.move);
@@ -277,16 +313,18 @@ function createOverlay() {
   if (container) return; // Already created
 
   const isShorts = window.location.pathname.startsWith('/shorts/');
-  
+
   if (isShorts) {
     // Phase 50.5: Multiple selectors for Shorts active player
-    playerElement = document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
-                    document.querySelector('ytd-shorts .html5-video-player') ||
-                    document.querySelector('.ytd-reel-video-renderer[is-active] .html5-video-player');
+    playerElement =
+      document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
+      document.querySelector('ytd-shorts .html5-video-player') ||
+      document.querySelector('.ytd-reel-video-renderer[is-active] .html5-video-player');
   } else {
-    playerElement = document.getElementById('movie_player') || 
-                    document.querySelector('.html5-video-player') ||
-                    document.querySelector('#ytd-player .html5-video-player');
+    playerElement =
+      document.getElementById('movie_player') ||
+      document.querySelector('.html5-video-player') ||
+      document.querySelector('#ytd-player .html5-video-player');
   }
 
   if (!playerElement) {
@@ -347,7 +385,8 @@ export const Overlay = {
     // Phase 52.2: Verify playerElement is still valid before showing
     if (container && playerElement) {
       const isShorts = window.location.pathname.startsWith('/shorts/');
-      const isStale = !playerElement.isConnected ||
+      const isStale =
+        !playerElement.isConnected ||
         (isShorts && !playerElement.closest('ytd-reel-video-renderer[is-active]'));
       if (isStale) {
         this.destroy();
@@ -400,7 +439,7 @@ export const Overlay = {
     const validTypes = ['info', 'success', 'warning', 'error'];
     const safeType = validTypes.includes(type) ? type : 'info';
     msgEl.className = 'yousub-status-msg yousub-status-' + safeType;
-    
+
     // Phase 36: Use TrustedTypes for security compliance on YouTube
     msgEl.innerHTML = TrustedTypes.toSafeHTML(message);
 
@@ -419,7 +458,7 @@ export const Overlay = {
 
     statusContainer.appendChild(msgEl);
 
-    setTimeout(function() {
+    setTimeout(function () {
       if (msgEl.parentNode) {
         msgEl.parentNode.removeChild(msgEl);
       }
@@ -476,7 +515,7 @@ export const Overlay = {
 
     if (styles.fontSize !== undefined && currentStyles.fontSize !== styles.fontSize) {
       translatedElement.style.fontSize = styles.fontSize + 'em';
-      originalElement.style.fontSize = (styles.fontSize * 0.7) + 'em';
+      originalElement.style.fontSize = styles.fontSize * 0.7 + 'em';
       currentStyles.fontSize = styles.fontSize;
     }
 
@@ -502,7 +541,10 @@ export const Overlay = {
   },
 
   destroy: function () {
-    if (playerObserver) { playerObserver.disconnect(); playerObserver = null; }
+    if (playerObserver) {
+      playerObserver.disconnect();
+      playerObserver = null;
+    }
     // Phase 53.1: Remove storage listener to prevent accumulation
     if (storageListener) {
       chrome.storage.onChanged.removeListener(storageListener);
@@ -522,7 +564,7 @@ export const Overlay = {
     currentStyles = {};
     _translationInProgress = false;
     devLog('[YouSub] Overlay: Destroyed.');
-  }
+  },
 };
 
 // Compatibility for legacy global access

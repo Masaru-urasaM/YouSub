@@ -14,20 +14,20 @@ const exportLogsBtn = document.getElementById('export-logs-btn');
 
 function init() {
   setupTabs();
-  
+
   // Initialize Tabs
   initTranslationTab(showSaveIndicator);
   initAppearanceTab(showSaveIndicator);
-  
+
   attachGlobalEventListeners();
 }
 
 function setupTabs() {
-  tabBtns.forEach(btn => {
+  tabBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       // Remove active class from all
-      tabBtns.forEach(b => b.classList.remove('active'));
-      tabPanes.forEach(p => p.classList.remove('active'));
+      tabBtns.forEach((b) => b.classList.remove('active'));
+      tabPanes.forEach((p) => p.classList.remove('active'));
 
       // Add active class to clicked tab and its content
       btn.classList.add('active');
@@ -38,13 +38,13 @@ function setupTabs() {
 }
 
 export function showSaveIndicator() {
-  saveStatus.textContent = "Saved";
+  saveStatus.textContent = 'Saved';
   saveStatus.classList.add('show-saved');
-  
+
   if (saveTimeout) clearTimeout(saveTimeout);
-  
+
   saveTimeout = setTimeout(() => {
-    saveStatus.textContent = "All changes saved automatically.";
+    saveStatus.textContent = 'All changes saved automatically.';
     saveStatus.classList.remove('show-saved');
   }, 2000);
 }
@@ -69,19 +69,19 @@ function attachGlobalEventListeners() {
 }
 
 async function exportLogs() {
-  saveStatus.textContent = "Exporting logs...";
+  saveStatus.textContent = 'Exporting logs...';
 
   try {
     const count = await Logger.export();
     if (count === null) {
-      saveStatus.textContent = "No logs to export.";
+      saveStatus.textContent = 'No logs to export.';
     } else {
       saveStatus.textContent = `Exported ${count} log entries.`;
       setTimeout(() => showSaveIndicator(), 2000);
     }
   } catch (e) {
     Logger.error('Options', 'Export failed', { error: e.message });
-    saveStatus.textContent = "Failed to export logs.";
+    saveStatus.textContent = 'Failed to export logs.';
   }
 }
 

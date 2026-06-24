@@ -8,11 +8,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const logs = data.yousub_debug_history || [];
 
     if (logs.length === 0) {
-      debugList.innerHTML = '<div class="empty-state">No batches recorded yet. Start a translation to see data here.</div>';
+      debugList.innerHTML =
+        '<div class="empty-state">No batches recorded yet. Start a translation to see data here.</div>';
       return;
     }
 
-    debugList.innerHTML = logs.map(log => `
+    debugList.innerHTML = logs
+      .map(
+        (log) => `
       <div class="batch-card">
         <div class="batch-header">
           <div class="batch-info">
@@ -47,7 +50,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="code-block" style="max-height: 100px; font-size: 11px; opacity: 0.7;">${escapeHtml(log.systemPrompt)}</div>
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
   }
 
   // Copy All button
@@ -75,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const btn = e.target;
       const block = btn.parentElement.nextElementSibling;
       const text = block.textContent;
-      
+
       navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
         btn.textContent = 'Copied!';
@@ -106,14 +111,16 @@ function formatAllLogs(logs) {
     '=== YouSub Batch Debug Log ===',
     `Exported: ${new Date().toISOString()}`,
     `Total entries: ${logs.length}`,
-    ''
+    '',
   ];
 
   logs.forEach((log, i) => {
     lines.push(`--- Entry ${i + 1}/${logs.length} ---`);
     lines.push(`Timestamp: ${log.timestamp}`);
     lines.push(`Provider: ${log.provider} | Model: ${log.model}`);
-    lines.push(`Status: ${log.success ? 'SUCCESS' : 'FAILED'} | Duration: ${log.duration || 'N/A'}`);
+    lines.push(
+      `Status: ${log.success ? 'SUCCESS' : 'FAILED'} | Duration: ${log.duration || 'N/A'}`
+    );
     lines.push('');
     lines.push('[INPUT]');
     lines.push(log.input || '');
@@ -130,7 +137,7 @@ function formatAllLogs(logs) {
 }
 
 function escapeHtml(text) {
-  if (!text) return "";
+  if (!text) return '';
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;

@@ -22,8 +22,8 @@ describe('SubtitleParser Module', () => {
     const mockData = {
       events: [
         { tStartMs: 100, dDurationMs: 500, segs: [{ utf8: 'Hello' }] },
-        { tStartMs: 700, dDurationMs: 300, segs: [{ utf8: 'World' }] }
-      ]
+        { tStartMs: 700, dDurationMs: 300, segs: [{ utf8: 'World' }] },
+      ],
     };
 
     const result = YS.SubtitleParser.parseJson3(mockData);
@@ -35,12 +35,12 @@ describe('SubtitleParser Module', () => {
   test('should handle JSON3 with multiple segments', () => {
     const mockData = {
       events: [
-        { 
-          tStartMs: 0, 
-          dDurationMs: 1000, 
-          segs: [{ utf8: 'Hello ' }, { utf8: 'there!' }] 
-        }
-      ]
+        {
+          tStartMs: 0,
+          dDurationMs: 1000,
+          segs: [{ utf8: 'Hello ' }, { utf8: 'there!' }],
+        },
+      ],
     };
 
     const result = YS.SubtitleParser.parseJson3(mockData);
@@ -81,8 +81,8 @@ describe('SubtitleParser Module', () => {
     const mockData = {
       events: [
         { tStartMs: 500, dDurationMs: 100, segs: [{ utf8: 'Late' }] },
-        { tStartMs: 100, dDurationMs: 100, segs: [{ utf8: 'Early' }] }
-      ]
+        { tStartMs: 100, dDurationMs: 100, segs: [{ utf8: 'Early' }] },
+      ],
     };
 
     const result = YS.SubtitleParser.parseJson3(mockData);

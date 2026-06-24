@@ -1,4 +1,12 @@
-let fontSizeInput, fontSizeVal, fontColorInput, fontColorHex, bgOpacityInput, bgOpacityVal, posBottomInput, posBottomVal, previewOverlay;
+let fontSizeInput,
+  fontSizeVal,
+  fontColorInput,
+  fontColorHex,
+  bgOpacityInput,
+  bgOpacityVal,
+  posBottomInput,
+  posBottomVal,
+  previewOverlay;
 let triggerSaveCallback = null;
 let saveTimeout = null;
 
@@ -28,7 +36,7 @@ function loadSettings() {
       fontSize: 1.5,
       fontColor: '#ffffff',
       bgOpacity: 0.25,
-      posBottom: 20
+      posBottom: 20,
     };
 
     // Update Inputs
@@ -45,7 +53,7 @@ function loadSettings() {
 function attachEventListeners() {
   const inputs = [fontSizeInput, fontColorInput, bgOpacityInput, posBottomInput];
 
-  inputs.forEach(input => {
+  inputs.forEach((input) => {
     input.addEventListener('input', () => {
       updateUIStrings();
       updatePreview();
@@ -68,7 +76,7 @@ function updatePreview() {
     fontSize: fontSizeInput.value + 'em',
     color: fontColorInput.value,
     backgroundColor: `rgba(0, 0, 0, ${bgOpacityInput.value})`,
-    bottom: (posBottomInput.value / 10) + '%' // Scale offset for preview container
+    bottom: posBottomInput.value / 10 + '%', // Scale offset for preview container
   };
 
   Object.assign(previewOverlay.style, styles);
@@ -84,7 +92,7 @@ function saveAppearance() {
     fontSize: parseFloat(fontSizeInput.value),
     fontColor: fontColorInput.value,
     bgOpacity: parseFloat(bgOpacityInput.value),
-    posBottom: parseInt(posBottomInput.value, 10)
+    posBottom: parseInt(posBottomInput.value, 10),
   };
 
   browser.storage.local.set({ yousub_appearance: appearance }).then(() => {

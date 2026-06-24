@@ -3,11 +3,22 @@ import { MergeFixer, _internals } from '../../src/background/merge-fixer.js';
 import { RoughTranslator } from '../../src/background/rough-translator.js';
 
 const {
-  wordCount, extractAnchorWords, findAnchorInText, proportionalSplit,
-  verifyAndRefineMerge, detectInternalRepetition, computeWordOverlap,
-  detectTailAnomalies, findShiftCandidates, buildRealignment,
-  extractPreservedTokens, computeTokenAnchorScore, computeBoundaryAlignmentScore,
-  computeLengthOutlierScore, computeMedianRatio, detectCascadeShifts
+  wordCount,
+  extractAnchorWords,
+  findAnchorInText,
+  proportionalSplit,
+  verifyAndRefineMerge,
+  detectInternalRepetition,
+  computeWordOverlap,
+  detectTailAnomalies,
+  findShiftCandidates,
+  buildRealignment,
+  extractPreservedTokens,
+  computeTokenAnchorScore,
+  computeBoundaryAlignmentScore,
+  computeLengthOutlierScore,
+  computeMedianRatio,
+  detectCascadeShifts,
 } = _internals;
 
 let originalTranslateBatch;
@@ -149,12 +160,12 @@ describe('detectMerges', () => {
     const segments = [
       { text: 'I need to go to the store today' },
       { text: 'Can you help me with this task' },
-      { text: 'Thanks for your time and help' }
+      { text: 'Thanks for your time and help' },
     ];
     const outputLines = [
       'Toi can phai di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong',
       '',
-      'Cam on vi thoi gian va su giup do cua ban'
+      'Cam on vi thoi gian va su giup do cua ban',
     ];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(1);
@@ -166,13 +177,13 @@ describe('detectMerges', () => {
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
       { text: 'Third sentence as well today' },
-      { text: 'Fourth one is separate and fine' }
+      { text: 'Fourth one is separate and fine' },
     ];
     const outputLines = [
       'Cau mot dai Cau hai o day Cau ba nua hom nay mot cau rat dai de test merge detection',
       '',
       '',
-      'Cau bon rieng va tot dep hom nay'
+      'Cau bon rieng va tot dep hom nay',
     ];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(1);
@@ -183,41 +194,27 @@ describe('detectMerges', () => {
     const segments = [
       { text: 'I really want to go to the movies tonight' },
       { text: 'I think that would be a great idea' },
-      { text: 'Let me check my calendar for today' }
+      { text: 'Let me check my calendar for today' },
     ];
     const outputLines = [
       'Toi thuc su muon di xem phim toi nay rat la vui khi duoc di xem phim toi nay cung ban be cua toi vi da lau roi khong di',
       'Toi nghi do la mot y tuong tuyet voi',
-      'De toi kiem tra lich cua toi cho hom nay'
+      'De toi kiem tra lich cua toi cho hom nay',
     ];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(0);
   });
 
   test('Bug 2 regression: does NOT flag short input with high ratio', () => {
-    const segments = [
-      { text: 'Hi' },
-      { text: 'OK' },
-      { text: 'Sure thing' }
-    ];
-    const outputLines = [
-      'Xin chao ban nha',
-      'Duoc roi ban nha',
-      'Duoc chua chac roi day'
-    ];
+    const segments = [{ text: 'Hi' }, { text: 'OK' }, { text: 'Sure thing' }];
+    const outputLines = ['Xin chao ban nha', 'Duoc roi ban nha', 'Duoc chua chac roi day'];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(0);
   });
 
   test('Bug 2 regression: does NOT flag 1-3 word inputs regardless of ratio', () => {
-    const segments = [
-      { text: 'Yeah' },
-      { text: 'Not really sure about it' }
-    ];
-    const outputLines = [
-      'U duoc roi thoi',
-      'Khong chac lam ve dieu do'
-    ];
+    const segments = [{ text: 'Yeah' }, { text: 'Not really sure about it' }];
+    const outputLines = ['U duoc roi thoi', 'Khong chac lam ve dieu do'];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(0);
   });
@@ -225,12 +222,9 @@ describe('detectMerges', () => {
   test('Bug 3 regression: CJK text does not false-positive', () => {
     const segments = [
       { text: 'This is a test sentence for translation' },
-      { text: 'Another sentence here today' }
+      { text: 'Another sentence here today' },
     ];
-    const outputLines = [
-      'これは翻訳のためのテスト文です',
-      'ここにもう一つの文があります'
-    ];
+    const outputLines = ['これは翻訳のためのテスト文です', 'ここにもう一つの文があります'];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(0);
   });
@@ -238,12 +232,9 @@ describe('detectMerges', () => {
   test('returns empty array when no merges exist', () => {
     const segments = [
       { text: 'Hello there my good friend' },
-      { text: 'How are you doing this fine day' }
+      { text: 'How are you doing this fine day' },
     ];
-    const outputLines = [
-      'Xin chao ban tot cua toi',
-      'Hom nay ban co khoe khong nhi'
-    ];
+    const outputLines = ['Xin chao ban tot cua toi', 'Hom nay ban co khoe khong nhi'];
     const merges = MergeFixer.detectMerges(segments, outputLines);
     expect(merges).toHaveLength(0);
   });
@@ -255,7 +246,7 @@ describe('verifyAndRefineMerge', () => {
   test('confirms real merge when Google baseline is much shorter than LLM', async () => {
     const segments = [
       { text: 'I need to go to the store today' },
-      { text: 'Can you help me with this task' }
+      { text: 'Can you help me with this task' },
     ];
     const mergedText = 'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong';
     // mergedText = 15 words
@@ -264,7 +255,7 @@ describe('verifyAndRefineMerge', () => {
     // accumulated after j=1: 8 + 5 = 13, diff = |13/15 - 1| = 0.133
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Toi can di den cua hang hom nay',
-      'Ban co the giup toi'
+      'Ban co the giup toi',
     ]);
 
     const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi');
@@ -276,7 +267,7 @@ describe('verifyAndRefineMerge', () => {
   test('rejects false alarm when Google baseline is similar to LLM', async () => {
     const segments = [
       { text: 'I really want to go to the movies tonight' },
-      { text: 'Can you help me with something' }
+      { text: 'Can you help me with something' },
     ];
     const mergedText = 'Toi thuc su muon di xem phim toi nay';
     // mergedText = 9 words
@@ -284,7 +275,7 @@ describe('verifyAndRefineMerge', () => {
     // Google of seg[0] = 8 words → ratio = 9/8 = 1.125 < 1.3
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Toi that su muon di xem phim nay',
-      'Ban co the giup toi'
+      'Ban co the giup toi',
     ]);
 
     const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi');
@@ -296,7 +287,7 @@ describe('verifyAndRefineMerge', () => {
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
       { text: 'Third sentence as well today' },
-      { text: 'Fourth is separate completely' }
+      { text: 'Fourth is separate completely' },
     ];
     // 18 words merged
     const mergedText = 'Cau mot dai Cau hai o day Cau ba nua hom nay ban oi dep lam nhe ban';
@@ -315,7 +306,7 @@ describe('verifyAndRefineMerge', () => {
       'Cau mot dai nhat nhe ban',
       'Cau hai o day nua nhe',
       'Cau ba nua hom nay nhe',
-      'Cau bon rieng hoan toan'
+      'Cau bon rieng hoan toan',
     ]);
 
     const result = await verifyAndRefineMerge(0, 2, 3, segments, mergedText, 'en', 'vi');
@@ -327,7 +318,7 @@ describe('verifyAndRefineMerge', () => {
     const segments = [
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
-      { text: 'Third sentence as well today' }
+      { text: 'Third sentence as well today' },
     ];
     const mergedText = 'Cau mot Cau hai Cau ba nua hom nay ban dep lam nhe ban oi';
     // 14 words
@@ -338,7 +329,7 @@ describe('verifyAndRefineMerge', () => {
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Cau mot dai nhat',
       'Cau hai o day nua',
-      'Cau ba nua hom nay'
+      'Cau ba nua hom nay',
     ]);
 
     // initialAbsorbed=1 but best-fit should find absorbed=2
@@ -351,7 +342,7 @@ describe('verifyAndRefineMerge', () => {
     const segments = [
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
-      { text: 'Third sentence as well today' }
+      { text: 'Third sentence as well today' },
     ];
     const mergedText = 'Cau mot dai nhat Cau hai o day nua nhe ban';
     // 11 words
@@ -362,7 +353,7 @@ describe('verifyAndRefineMerge', () => {
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Cau mot dai nhat nhe',
       'Cau hai o day nua',
-      'Cau ba nua hom nay'
+      'Cau ba nua hom nay',
     ]);
 
     // initialAbsorbed=2 but best-fit should find absorbed=1
@@ -374,7 +365,7 @@ describe('verifyAndRefineMerge', () => {
   test('Google failure for current segment returns fallback', async () => {
     const segments = [
       { text: 'First sentence is quite long enough' },
-      { text: 'Second sentence here too now' }
+      { text: 'Second sentence here too now' },
     ];
     const mergedText = 'Cau mot dai Cau hai o day nua hom nay';
 
@@ -390,7 +381,7 @@ describe('verifyAndRefineMerge', () => {
     const segments = [
       { text: 'First sentence is quite long enough' },
       { text: 'Second here' },
-      { text: 'Third sentence as well today' }
+      { text: 'Third sentence as well today' },
     ];
     const mergedText = 'Cau mot dai nhat Cau hai Cau ba nua hom nay dep lam';
     // 12 words
@@ -401,7 +392,7 @@ describe('verifyAndRefineMerge', () => {
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Cau mot dai nhat nhe',
       null,
-      'Cau ba nua hom nay'
+      'Cau ba nua hom nay',
     ]);
 
     const result = await verifyAndRefineMerge(0, 2, 2, segments, mergedText, 'en', 'vi');
@@ -416,16 +407,16 @@ describe('fix', () => {
   test('splits merged text using anchor words from rough translations', async () => {
     const segments = [
       { text: 'I need to go to the store today' },
-      { text: 'Can you help me with this task' }
+      { text: 'Can you help me with this task' },
     ];
     const outputLines = [
       'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong',
-      ''
+      '',
     ];
 
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Toi can di den cua hang hom nay',
-      'Ban co the giup toi'
+      'Ban co the giup toi',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -438,12 +429,9 @@ describe('fix', () => {
   test('falls back to proportional split when all roughs fail', async () => {
     const segments = [
       { text: 'Hello there my good friend today' },
-      { text: 'How are you doing this fine day' }
+      { text: 'How are you doing this fine day' },
     ];
-    const outputLines = [
-      'Xin chao ban tot cua toi hom nay Ban co khoe khong hom nay tot dep',
-      ''
-    ];
+    const outputLines = ['Xin chao ban tot cua toi hom nay Ban co khoe khong hom nay tot dep', ''];
 
     RoughTranslator.translateBatch = jest.fn(async () => [null, null]);
 
@@ -458,18 +446,18 @@ describe('fix', () => {
     const segments = [
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
-      { text: 'Third sentence as well today' }
+      { text: 'Third sentence as well today' },
     ];
     const outputLines = [
       'Cau mot rat dai Cau hai o day Cau ba nua hom nay ban oi ban dep lam',
       '',
-      ''
+      '',
     ];
 
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Cau mot rat dai nhe',
       'Cau hai o day',
-      null
+      null,
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -481,16 +469,8 @@ describe('fix', () => {
   });
 
   test('does not corrupt valid translations of short segments', async () => {
-    const segments = [
-      { text: 'Hi' },
-      { text: 'OK' },
-      { text: 'Sure' }
-    ];
-    const outputLines = [
-      'Xin chao ban',
-      'Duoc roi nhe',
-      'Chac chan roi'
-    ];
+    const segments = [{ text: 'Hi' }, { text: 'OK' }, { text: 'Sure' }];
+    const outputLines = ['Xin chao ban', 'Duoc roi nhe', 'Chac chan roi'];
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
     expect(result.lines).toEqual(['Xin chao ban', 'Duoc roi nhe', 'Chac chan roi']);
@@ -500,12 +480,9 @@ describe('fix', () => {
   test('returns unchanged lines when no merges detected', async () => {
     const segments = [
       { text: 'Hello there my good friend' },
-      { text: 'How are you doing this fine day' }
+      { text: 'How are you doing this fine day' },
     ];
-    const outputLines = [
-      'Xin chao ban tot cua toi',
-      'Hom nay ban co khoe khong nhi'
-    ];
+    const outputLines = ['Xin chao ban tot cua toi', 'Hom nay ban co khoe khong nhi'];
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
     expect(result.lines).toEqual(outputLines);
@@ -516,17 +493,17 @@ describe('fix', () => {
     const segments = [
       { text: 'This is a normal sentence here' },
       { text: 'This is the second one for testing' },
-      { text: 'And this is the third sentence now' }
+      { text: 'And this is the third sentence now' },
     ];
     const outputLines = [
       'Day la mot cau binh thuong o day',
       'Day la cau thu hai de test thu nhe va day la cau thu ba hom nay nua',
-      ''
+      '',
     ];
 
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Day la cau thu hai de test',
-      'va day la cau thu ba'
+      'va day la cau thu ba',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -541,19 +518,19 @@ describe('fix', () => {
     const segments = [
       { text: 'I really want to go to the movies tonight' },
       { text: 'Can you help me find a good one' },
-      { text: 'Let me check the schedule now' }
+      { text: 'Let me check the schedule now' },
     ];
     const outputLines = [
       'Toi thuc su muon di xem phim toi nay rat la vui khi duoc xem phim toi nay voi ban',
       '',
-      'De toi kiem tra lich chieu ngay hom nay'
+      'De toi kiem tra lich chieu ngay hom nay',
     ];
 
     // Google translates current segment to nearly same length as LLM → verifyRatio < 1.3
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Toi that su muon di xem phim toi nay vui khi duoc xem phim nay ban',
       'Ban co the giup toi tim phim',
-      'De toi kiem tra lich'
+      'De toi kiem tra lich',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -566,13 +543,13 @@ describe('fix', () => {
       { text: 'First sentence is quite long enough' },
       { text: 'Second sentence here too now' },
       { text: 'Third sentence as well today' },
-      { text: 'Fourth one is separate and fine' }
+      { text: 'Fourth one is separate and fine' },
     ];
     const outputLines = [
       'Cau mot dai nhat Cau hai o day nua nhe ban oi toi dep lam',
       '',
       '',
-      'Cau bon rieng va tot dep hom nay'
+      'Cau bon rieng va tot dep hom nay',
     ];
     // mergedText = 15 words, input = 6 words, ratio = 2.5 > 2.0
     // detectMerges sees absorbed=2 (lines 1,2 empty)
@@ -584,7 +561,7 @@ describe('fix', () => {
       'Cau mot dai nhat nhe ban oi',
       'Cau hai o day nua nhe ban',
       'Cau ba nua hom nay',
-      'Cau bon rieng tot dep'
+      'Cau bon rieng tot dep',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -599,7 +576,8 @@ describe('fix', () => {
 
 describe('detectInternalRepetition', () => {
   test('returns true when a 4-gram appears twice', () => {
-    const text = 'I think they should allow you to bring more mechs I think they should allow you to bring more mechs';
+    const text =
+      'I think they should allow you to bring more mechs I think they should allow you to bring more mechs';
     expect(detectInternalRepetition(text)).toBe(true);
   });
 
@@ -633,7 +611,7 @@ describe('detectTailAnomalies', () => {
       'Normal translation here for this line',
       'Another good translation for testing',
       'ok',
-      ''
+      '',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(2);
@@ -644,7 +622,7 @@ describe('detectTailAnomalies', () => {
     const lines = [
       'Normal translation of the first line here',
       'Normal translation of the second line here',
-      'I think they should allow more mechs I think they should allow more mechs'
+      'I think they should allow more mechs I think they should allow more mechs',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(1);
@@ -656,7 +634,7 @@ describe('detectTailAnomalies', () => {
       'Normal unique content here for the first line today',
       'Another unique line with totally different words and meaning',
       'they should allow you to bring more mechs and more power today',
-      'they should allow you to bring more mechs they should allow you to bring more mechs'
+      'they should allow you to bring more mechs they should allow you to bring more mechs',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBeGreaterThanOrEqual(2);
@@ -666,7 +644,7 @@ describe('detectTailAnomalies', () => {
     const lines = [
       'First translated line has unique content here today',
       'Second translated line is also different and unique',
-      'Third translated line completes the set of translations'
+      'Third translated line completes the set of translations',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(0);
@@ -679,7 +657,7 @@ describe('detectTailAnomalies', () => {
       'Another good translation for the second line here',
       'ok',
       'This line is actually normal and fine for testing purposes here',
-      ''
+      '',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(3);
@@ -692,7 +670,7 @@ describe('detectTailAnomalies', () => {
       'ok',
       'This line is actually normal and fine for testing purposes here',
       'Another normal line that should be bridged through for testing',
-      ''
+      '',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(4);
@@ -705,7 +683,7 @@ describe('detectTailAnomalies', () => {
       'Another good translation for the second line here',
       'Third good translation that is normal and unique too',
       'Fourth good translation that is completely different here',
-      'ok'
+      'ok',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBe(1);
@@ -716,7 +694,7 @@ describe('detectTailAnomalies', () => {
     const lines = [
       'Normal unique content here for the first line today',
       'they should allow you to bring more mechs and more power today',
-      'they should allow you to bring more mechs they should allow more'
+      'they should allow you to bring more mechs they should allow more',
     ];
     const result = detectTailAnomalies(lines);
     expect(result.count).toBeGreaterThanOrEqual(2);
@@ -729,11 +707,11 @@ describe('findShiftCandidates', () => {
   test('finds candidates with ratio >= 1.8', () => {
     const segments = [
       { text: 'Short input line here today' },
-      { text: 'Another normal line for test' }
+      { text: 'Another normal line for test' },
     ];
     const outputLines = [
       'Mot dong dich rat dai vi no gop hai dong lai voi nhau thanh mot dong dich rat dai',
-      'Dong thu hai binh thuong day nhe'
+      'Dong thu hai binh thuong day nhe',
     ];
     const candidates = findShiftCandidates(segments, outputLines);
     expect(candidates.length).toBe(1);
@@ -741,13 +719,10 @@ describe('findShiftCandidates', () => {
   });
 
   test('skips lines with fewer than MIN_WORDS_FOR_RATIO_CHECK input words', () => {
-    const segments = [
-      { text: 'Hi there' },
-      { text: 'Normal line for testing here' }
-    ];
+    const segments = [{ text: 'Hi there' }, { text: 'Normal line for testing here' }];
     const outputLines = [
       'Xin chao ban nha hom nay ban co khoe khong nhi ban',
-      'Dong binh thuong de test o day'
+      'Dong binh thuong de test o day',
     ];
     const candidates = findShiftCandidates(segments, outputLines);
     expect(candidates.length).toBe(0);
@@ -758,7 +733,9 @@ describe('findShiftCandidates', () => {
     const outputLines = [];
     for (let i = 0; i < 10; i++) {
       segments.push({ text: 'Normal input line here now' });
-      outputLines.push('Dong dich rat dai vi gop lai voi nhau thanh mot dong dich cuc ky dai luon nhe ban oi');
+      outputLines.push(
+        'Dong dich rat dai vi gop lai voi nhau thanh mot dong dich cuc ky dai luon nhe ban oi'
+      );
     }
     const candidates = findShiftCandidates(segments, outputLines);
     expect(candidates.length).toBeLessThanOrEqual(6);
@@ -778,10 +755,18 @@ describe('buildRealignment', () => {
 
   test('multiple merges: correct cumulative realignment', () => {
     const outputLines = [
-      'merged_0_1', 'content_2', 'content_3',
-      'merged_4_5', 'content_6', 'garbage_7', 'garbage_8'
+      'merged_0_1',
+      'content_2',
+      'content_3',
+      'merged_4_5',
+      'content_6',
+      'garbage_7',
+      'garbage_8',
     ];
-    const merges = new Map([[0, 1], [3, 1]]);
+    const merges = new Map([
+      [0, 1],
+      [3, 1],
+    ]);
     const result = buildRealignment(outputLines, merges, 7);
     expect(result.pendingIndices).toEqual([0, 1, 4, 5]);
     expect(result.lines[2]).toBe('content_2');
@@ -812,17 +797,17 @@ describe('fix (shift-aware)', () => {
     const segments = [
       { text: 'First input line here for testing today' },
       { text: 'Second input line here for testing now' },
-      { text: 'Third input line is separate and fine' }
+      { text: 'Third input line is separate and fine' },
     ];
     const outputLines = [
       'Dong mot va dong hai gop lai thanh mot dong dich rat dai luon nhe ban oi hom nay',
       'Dong ba rieng biet va tot dep nhe',
-      'noi'
+      'noi',
     ];
 
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Dong dau tien o day de test hom nay',
-      'Dong thu hai o day de test bay gio'
+      'Dong thu hai o day de test bay gio',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -836,17 +821,17 @@ describe('fix (shift-aware)', () => {
     const segments = [
       { text: 'I really want to go to the movies tonight now' },
       { text: 'Can you help me find a good movie here' },
-      { text: 'ok'  }
+      { text: 'ok' },
     ];
     const outputLines = [
       'Toi thuc su muon di xem phim toi nay rat vui khi duoc xem phim ban',
       'Ban co the giup toi tim mot bo phim hay',
-      'ok'
+      'ok',
     ];
 
     RoughTranslator.translateBatch = jest.fn(async () => [
       'Toi that su muon di xem phim toi nay vui khi duoc xem phim',
-      'Ban co the giup toi tim phim'
+      'Ban co the giup toi tim phim',
     ]);
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -866,22 +851,18 @@ describe('fix (shift-aware)', () => {
     outputLines[3] = 'Dong bon va dong nam gop lai thanh cuc ky dai luon nhe ban oi hom nay';
     outputLines[4] = 'Dong sau binh thuong nhe ban';
     outputLines[5] = 'Dong bay binh thuong nhe ban';
-    outputLines[6] = 'Toi nghi rang ho nen cho phep mang nhieu mech Toi nghi rang ho nen cho phep mang nhieu mech';
-    outputLines[7] = 'Toi nghi rang ho nen cho phep mang nhieu mech Toi nghi rang ho nen cho phep mang nhieu mech';
+    outputLines[6] =
+      'Toi nghi rang ho nen cho phep mang nhieu mech Toi nghi rang ho nen cho phep mang nhieu mech';
+    outputLines[7] =
+      'Toi nghi rang ho nen cho phep mang nhieu mech Toi nghi rang ho nen cho phep mang nhieu mech';
 
     let callCount = 0;
     RoughTranslator.translateBatch = jest.fn(async (_texts) => {
       callCount++;
       if (callCount === 1) {
-        return [
-          'Cau nhap so khong de thu nghiem',
-          'Cau nhap so mot de thu nghiem'
-        ];
+        return ['Cau nhap so khong de thu nghiem', 'Cau nhap so mot de thu nghiem'];
       }
-      return [
-        'Cau nhap so bon de thu nghiem',
-        'Cau nhap so nam de thu nghiem'
-      ];
+      return ['Cau nhap so bon de thu nghiem', 'Cau nhap so nam de thu nghiem'];
     });
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -891,11 +872,11 @@ describe('fix (shift-aware)', () => {
   test('no tail anomalies: classic path used', async () => {
     const segments = [
       { text: 'Hello there my good friend today' },
-      { text: 'How are you doing this fine day now' }
+      { text: 'How are you doing this fine day now' },
     ];
     const outputLines = [
       'Xin chao ban tot cua toi hom nay',
-      'Hom nay ban co khoe khong nhi bay gio'
+      'Hom nay ban co khoe khong nhi bay gio',
     ];
 
     const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
@@ -936,7 +917,7 @@ describe('extractPreservedTokens', () => {
 
   test('deduplicates tokens', () => {
     const tokens = extractPreservedTokens('NASA sent NASA to space in 2024');
-    const nasaCount = tokens.filter(t => t === 'NASA').length;
+    const nasaCount = tokens.filter((t) => t === 'NASA').length;
     expect(nasaCount).toBe(1);
   });
 });
@@ -980,12 +961,7 @@ describe('computeTokenAnchorScore', () => {
   });
 
   test('handles null prev/next outputs', () => {
-    const score = computeTokenAnchorScore(
-      ['NASA'],
-      'Some other text',
-      null,
-      null
-    );
+    const score = computeTokenAnchorScore(['NASA'], 'Some other text', null, null);
     expect(score).toBe(0);
   });
 });
@@ -1045,26 +1021,16 @@ describe('computeMedianRatio', () => {
     const segments = [
       { text: 'one two three' },
       { text: 'four five' },
-      { text: 'six seven eight nine' }
+      { text: 'six seven eight nine' },
     ];
-    const outputs = [
-      'mot hai ba',
-      'bon nam',
-      'sau bay tam chin'
-    ];
+    const outputs = ['mot hai ba', 'bon nam', 'sau bay tam chin'];
     const ratio = computeMedianRatio(segments, outputs);
     expect(ratio).toBeCloseTo(1.0, 1);
   });
 
   test('computes median for even-length batch', () => {
-    const segments = [
-      { text: 'one two' },
-      { text: 'three four five six' }
-    ];
-    const outputs = [
-      'mot hai',
-      'ba bon nam sau'
-    ];
+    const segments = [{ text: 'one two' }, { text: 'three four five six' }];
+    const outputs = ['mot hai', 'ba bon nam sau'];
     const ratio = computeMedianRatio(segments, outputs);
     expect(ratio).toBeCloseTo(1.0, 1);
   });
@@ -1074,10 +1040,7 @@ describe('computeMedianRatio', () => {
 
 describe('detectCascadeShifts', () => {
   test('returns empty for small batches (< CASCADE_MIN_BATCH_SIZE)', () => {
-    const segments = [
-      { text: 'Line 1 with NASA 2024.' },
-      { text: 'Line 2 content here.' }
-    ];
+    const segments = [{ text: 'Line 1 with NASA 2024.' }, { text: 'Line 2 content here.' }];
     const outputs = ['Wrong content', 'NASA 2024 here'];
     expect(detectCascadeShifts(segments, outputs)).toEqual([]);
   });
@@ -1089,7 +1052,7 @@ describe('detectCascadeShifts', () => {
       { text: 'Both agencies collaborate on ISS.' },
       { text: 'The budget was 500 million USD.' },
       { text: 'They plan to reach MARS by 2030.' },
-      { text: 'The CREW will have 4 members.' }
+      { text: 'The CREW will have 4 members.' },
     ];
     const outputs = [
       'Chuong trinh da duoc khoi dong nay',
@@ -1097,7 +1060,7 @@ describe('detectCascadeShifts', () => {
       'Chuong trinh ESA 2020 hop tac nhe',
       'Ca hai co quan ISS ngan sach hom nay.',
       'Ngan sach 500 trieu USD ke hoach nhe',
-      'Ho du dinh dat MARS vao 2030.'
+      'Ho du dinh dat MARS vao 2030.',
     ];
     const cascades = detectCascadeShifts(segments, outputs);
     expect(cascades.length).toBeGreaterThanOrEqual(1);
@@ -1110,7 +1073,7 @@ describe('detectCascadeShifts', () => {
       { text: 'Both agencies work on ISS together.' },
       { text: 'Budget was 500 million USD total.' },
       { text: 'Target is MARS by 2030 deadline.' },
-      { text: 'CREW will consist of 4 astronauts.' }
+      { text: 'CREW will consist of 4 astronauts.' },
     ];
     const outputs = [
       'NASA da khoi dong chuong trinh A nam 2024.',
@@ -1118,7 +1081,7 @@ describe('detectCascadeShifts', () => {
       'Ca hai co quan hop tac tren ISS.',
       'Ngan sach la 500 trieu USD tong.',
       'Muc tieu la MARS truoc han 2030.',
-      'CREW se gom 4 phi hanh gia.'
+      'CREW se gom 4 phi hanh gia.',
     ];
     const cascades = detectCascadeShifts(segments, outputs);
     expect(cascades.length).toBe(0);
@@ -1130,14 +1093,14 @@ describe('detectCascadeShifts', () => {
       { text: 'Simple line two here today also' },
       { text: 'Simple line three more content' },
       { text: 'Simple line four additional text' },
-      { text: 'Simple line five final words here' }
+      { text: 'Simple line five final words here' },
     ];
     const outputs = [
       'Dong mot o day hom nay bay gio',
       'Dong hai o day hom nay cung vay',
       'Dong ba them noi dung o day nua',
       'Dong bon them van ban nua day nhe',
-      'Dong nam tu cuoi cung o day nhe'
+      'Dong nam tu cuoi cung o day nhe',
     ];
     const cascades = detectCascadeShifts(segments, outputs);
     expect(cascades.length).toBe(0);
@@ -1150,7 +1113,7 @@ describe('detectCascadeShifts', () => {
       { text: 'Both agencies collaborate on ISS.' },
       { text: 'The budget was 500 million USD.' },
       { text: 'They plan to reach MARS by 2030.' },
-      { text: 'The CREW will have 4 members.' }
+      { text: 'The CREW will have 4 members.' },
     ];
     const outputs = [
       'Chuong trinh da duoc khoi dong nay',
@@ -1158,7 +1121,7 @@ describe('detectCascadeShifts', () => {
       'Chuong trinh ESA 2020 hop tac nhe',
       'Ca hai co quan ISS ngan sach hom nay.',
       'Ngan sach 500 trieu USD ke hoach nhe',
-      'Ho du dinh dat MARS vao 2030.'
+      'Ho du dinh dat MARS vao 2030.',
     ];
 
     const result = await MergeFixer.fix(segments, outputs, 'en', 'vi');

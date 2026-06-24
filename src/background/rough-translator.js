@@ -13,7 +13,10 @@ async function _checkChromeTranslatorAvailability(src, tgt) {
   let available = false;
   try {
     if (self.translation?.canTranslate) {
-      const status = await self.translation.canTranslate({ sourceLanguage: src, targetLanguage: tgt });
+      const status = await self.translation.canTranslate({
+        sourceLanguage: src,
+        targetLanguage: tgt,
+      });
       available = status === 'readily' || status === 'after-download';
     } else if (self.ai?.translator?.capabilities) {
       const caps = await self.ai.translator.capabilities();
@@ -35,7 +38,10 @@ async function _translateWithChrome(text, src, tgt) {
     let translator = _translatorInstances.get(key);
     if (!translator) {
       if (self.translation?.createTranslator) {
-        translator = await self.translation.createTranslator({ sourceLanguage: src, targetLanguage: tgt });
+        translator = await self.translation.createTranslator({
+          sourceLanguage: src,
+          targetLanguage: tgt,
+        });
       } else if (self.ai?.translator?.create) {
         translator = await self.ai.translator.create({ sourceLanguage: src, targetLanguage: tgt });
       }
@@ -46,7 +52,7 @@ async function _translateWithChrome(text, src, tgt) {
       translator.translate(text),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), CHROME_TRANSLATOR_TIMEOUT_MS)
-      )
+      ),
     ]);
     return result || null;
   } catch (err) {
@@ -85,11 +91,9 @@ export const RoughTranslator = {
   },
 
   async translateBatch(texts, src, tgt) {
-    const results = await Promise.allSettled(
-      texts.map(t => this.translate(t, src, tgt))
-    );
-    return results.map(r => r.status === 'fulfilled' ? r.value : null);
-  }
+    const results = await Promise.allSettled(texts.map((t) => this.translate(t, src, tgt)));
+    return results.map((r) => (r.status === 'fulfilled' ? r.value : null));
+  },
 };
 
 export const _internals = {
@@ -97,5 +101,5 @@ export const _internals = {
   _translatorInstances,
   _checkChromeTranslatorAvailability,
   _translateWithChrome,
-  _translateWithGoogle
+  _translateWithGoogle,
 };

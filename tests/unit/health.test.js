@@ -15,12 +15,12 @@ describe('HealthManager Module', () => {
   test('should report success and calculate score', async () => {
     const provider = 'google';
     const key = 'key1';
-    
+
     await HealthManager.report(provider, key, true, 500); // 500ms
-    
+
     const score = await HealthManager.getScore(provider, key);
     expect(score).toBeGreaterThan(0.5);
-    
+
     const stats = await chrome.storage.local.get('yousub_health_stats');
     const hash = HealthManager.getHash(provider, key);
     expect(stats.yousub_health_stats[hash].successCount).toBe(1);
@@ -30,10 +30,10 @@ describe('HealthManager Module', () => {
   test('should open circuit breaker after 10 consecutive failures', async () => {
     const provider = 'openai';
     const key = 'key2';
-    
+
     await HealthManager.report(provider, key, false);
     await HealthManager.report(provider, key, false);
-    
+
     let isOpen = await HealthManager.isCircuitOpen(provider, key);
     expect(isOpen).toBe(false);
 
@@ -52,11 +52,11 @@ describe('HealthManager Module', () => {
   test('should reset consecutive failures on success', async () => {
     const provider = 'openai';
     const key = 'key2';
-    
+
     await HealthManager.report(provider, key, false);
     await HealthManager.report(provider, key, false);
     await HealthManager.report(provider, key, true); // Success resets counter
-    
+
     const stats = await chrome.storage.local.get('yousub_health_stats');
     const hash = HealthManager.getHash(provider, key);
     expect(stats.yousub_health_stats[hash].consecutiveFails).toBe(0);

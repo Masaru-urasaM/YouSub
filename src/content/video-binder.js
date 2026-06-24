@@ -9,9 +9,9 @@ let callbackFired = false; // Phase 53.2: Prevent double invocation
 const TIMEOUT_MS = 10000; // 10 seconds max wait
 const VIDEO_SELECTORS = [
   'ytd-reel-video-renderer[is-active] video', // Shorts: Active reel video
-  'video.html5-main-video',                  // Regular: Main player video
-  '#movie_player video',                     // Fallback
-  'video'                                    // Generic
+  'video.html5-main-video', // Regular: Main player video
+  '#movie_player video', // Fallback
+  'video', // Generic
 ];
 
 /**
@@ -65,7 +65,12 @@ function onVideoFound(video) {
   }
 
   videoElement = video;
-  devLog('[YouSub] VideoBinder: Video element found. Duration:', video.duration, 'ReadyState:', video.readyState);
+  devLog(
+    '[YouSub] VideoBinder: Video element found. Duration:',
+    video.duration,
+    'ReadyState:',
+    video.readyState
+  );
 
   if (boundCallback) {
     boundCallback(video);
@@ -88,14 +93,20 @@ function startObserver() {
       }
     } catch (e) {
       console.error('[YouSub] VideoBinder: Observer callback error:', e);
-      if (observer) { observer.disconnect(); observer = null; }
-      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
     }
   });
 
   observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
   });
 
   timeoutId = setTimeout(function () {
@@ -104,7 +115,11 @@ function startObserver() {
       observer = null;
     }
     timeoutId = null;
-    console.error('[YouSub] VideoBinder: Timed out waiting for video element after', TIMEOUT_MS, 'ms.');
+    console.error(
+      '[YouSub] VideoBinder: Timed out waiting for video element after',
+      TIMEOUT_MS,
+      'ms.'
+    );
   }, TIMEOUT_MS);
 }
 
@@ -124,7 +139,9 @@ export const VideoBinder = {
       return;
     }
 
-    devLog('[YouSub] VideoBinder: Video element not found immediately, starting MutationObserver...');
+    devLog(
+      '[YouSub] VideoBinder: Video element not found immediately, starting MutationObserver...'
+    );
     startObserver();
   },
 
@@ -152,7 +169,7 @@ export const VideoBinder = {
    */
   getVideo: function () {
     return videoElement;
-  }
+  },
 };
 
 // Compatibility for legacy global access

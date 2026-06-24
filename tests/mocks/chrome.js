@@ -12,7 +12,7 @@ global.chrome = {
         if (typeof keys === 'string') {
           result[keys] = global.chrome.storage.session.store[keys];
         } else if (Array.isArray(keys)) {
-          keys.forEach(k => result[k] = global.chrome.storage.session.store[k]);
+          keys.forEach((k) => (result[k] = global.chrome.storage.session.store[k]));
         } else if (keys === null) {
           Object.assign(result, global.chrome.storage.session.store);
         }
@@ -28,7 +28,7 @@ global.chrome = {
         if (typeof keys === 'string') {
           delete global.chrome.storage.session.store[keys];
         } else if (Array.isArray(keys)) {
-          keys.forEach(k => delete global.chrome.storage.session.store[k]);
+          keys.forEach((k) => delete global.chrome.storage.session.store[k]);
         }
         if (callback) callback();
         return Promise.resolve();
@@ -38,7 +38,7 @@ global.chrome = {
         if (callback) callback();
         return Promise.resolve();
       }),
-      store: {}
+      store: {},
     },
     local: {
       get: jest.fn((keys, callback) => {
@@ -46,7 +46,7 @@ global.chrome = {
         if (typeof keys === 'string') {
           result[keys] = global.chrome.storage.local.store[keys];
         } else if (Array.isArray(keys)) {
-          keys.forEach(k => result[k] = global.chrome.storage.local.store[k]);
+          keys.forEach((k) => (result[k] = global.chrome.storage.local.store[k]));
         } else if (keys === null) {
           Object.assign(result, global.chrome.storage.local.store);
         }
@@ -62,7 +62,7 @@ global.chrome = {
         if (typeof keys === 'string') {
           delete global.chrome.storage.local.store[keys];
         } else if (Array.isArray(keys)) {
-          keys.forEach(k => delete global.chrome.storage.local.store[k]);
+          keys.forEach((k) => delete global.chrome.storage.local.store[k]);
         }
         if (callback) callback();
         return Promise.resolve();
@@ -75,9 +75,9 @@ global.chrome = {
       store: {}, // Internal store for testing
       onChanged: {
         addListener: jest.fn(),
-        removeListener: jest.fn()
-      }
-    }
+        removeListener: jest.fn(),
+      },
+    },
   },
   runtime: {
     id: 'mock-extension-id',
@@ -87,16 +87,16 @@ global.chrome = {
     }),
     onMessage: {
       addListener: jest.fn(),
-      removeListener: jest.fn()
+      removeListener: jest.fn(),
     },
     openOptionsPage: jest.fn(),
-    getURL: jest.fn(path => `chrome-extension://mock-id/${path}`),
-    lastError: null
+    getURL: jest.fn((path) => `chrome-extension://mock-id/${path}`),
+    lastError: null,
   },
   tabs: {
     query: jest.fn(() => Promise.resolve([{ id: 1, url: 'https://youtube.com/watch?v=123' }])),
-    sendMessage: jest.fn(() => Promise.resolve())
-  }
+    sendMessage: jest.fn(() => Promise.resolve()),
+  },
 };
 
 // Unified API for cross-browser support

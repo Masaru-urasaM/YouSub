@@ -1,94 +1,92 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>YouSub</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <title>YouSub</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-
-<body>
-  <div class="container">
-    <div class="header">
-      <img src="../../assets/icons/icon48.png" alt="YouSub" class="logo">
-      <h1>YouSub</h1>
-    </div>
-
-    <div class="content">
-      <div id="health-status" class="health-indicator hidden">
-        <span class="health-dot"></span>
-        <div id="health-text">Checking APIs...</div>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="../../assets/icons/icon48.png" alt="YouSub" class="logo" />
+        <h1>YouSub</h1>
       </div>
 
-      <select id="lang-selector" class="lang-selector"></select>
-      <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
-      <div class="button-group">
-        <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Cache</button>
-        <button id="open-debug-btn" class="secondary-btn">DEBUG</button>
-      </div>
-
-      <div id="loading" class="hidden">
-        <div class="spinner"></div>
-        <p id="loading-text">Extracting...</p>
-      </div>
-
-      <div class="toggle-row">
-        <label class="switch">
-          <input type="checkbox" id="dual-mode-toggle">
-          <span class="slider round"></span>
-        </label>
-        <label for="dual-mode-toggle" class="toggle-label">Dual Subtitles</label>
-      </div>
-
-      <hr class="divider">
-      
-      <!-- Execution Stats Section (New Phase 35.13) -->
-      <div id="execution-stats" class="stats-container hidden">
-        <div class="stats-header">
-          <span id="stats-title-text" class="stats-title">Last Execution</span>
-          <span id="stats-source-badge" class="stats-badge">API</span>
+      <div class="content">
+        <div id="health-status" class="health-indicator hidden">
+          <span class="health-dot"></span>
+          <div id="health-text">Checking APIs...</div>
         </div>
-        <div class="stats-model-row">
+
+        <select id="lang-selector" class="lang-selector"></select>
+        <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
+        <div class="button-group">
+          <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Cache</button>
+          <button id="open-debug-btn" class="secondary-btn">DEBUG</button>
+        </div>
+
+        <div id="loading" class="hidden">
+          <div class="spinner"></div>
+          <p id="loading-text">Extracting...</p>
+        </div>
+
+        <div class="toggle-row">
+          <label class="switch">
+            <input type="checkbox" id="dual-mode-toggle" />
+            <span class="slider round"></span>
+          </label>
+          <label for="dual-mode-toggle" class="toggle-label">Dual Subtitles</label>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Execution Stats Section (New Phase 35.13) -->
+        <div id="execution-stats" class="stats-container hidden">
+          <div class="stats-header">
+            <span id="stats-title-text" class="stats-title">Last Execution</span>
+            <span id="stats-source-badge" class="stats-badge">API</span>
+          </div>
+          <div class="stats-model-row">
             <span id="stats-model-name">gemini-1.5-flash</span>
+          </div>
+          <div class="stats-grid">
+            <div class="stats-item">
+              <span class="stats-label">Requests</span>
+              <span id="stats-requests" class="stats-value">--</span>
+            </div>
+            <div class="stats-item">
+              <span class="stats-label">Duration</span>
+              <span id="stats-duration" class="stats-value">--</span>
+            </div>
+            <div class="stats-item">
+              <span class="stats-label">Input</span>
+              <span id="stats-input-tokens" class="stats-value">--</span>
+            </div>
+            <div class="stats-item">
+              <span class="stats-label">Output</span>
+              <span id="stats-output-tokens" class="stats-value">--</span>
+            </div>
+          </div>
         </div>
-        <div class="stats-grid">
-          <div class="stats-item">
-            <span class="stats-label">Requests</span>
-            <span id="stats-requests" class="stats-value">--</span>
-          </div>
-          <div class="stats-item">
-            <span class="stats-label">Duration</span>
-            <span id="stats-duration" class="stats-value">--</span>
-          </div>
-          <div class="stats-item">
-            <span class="stats-label">Input</span>
-            <span id="stats-input-tokens" class="stats-value">--</span>
-          </div>
-          <div class="stats-item">
-            <span class="stats-label">Output</span>
-            <span id="stats-output-tokens" class="stats-value">--</span>
-          </div>
-        </div>
-      </div>
 
-      <button id="open-settings-btn" class="secondary-btn">Settings</button>
-    </div>
-  </div>
-
-  <!-- Confirmation Modal -->
-  <div id="confirm-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-      <h3 id="modal-title">Confirm</h3>
-      <p id="modal-message">Are you sure?</p>
-      <div class="modal-footer">
-        <button id="modal-cancel-btn" class="secondary-btn">No</button>
-        <button id="modal-confirm-btn" class="secondary-btn danger-btn">Yes</button>
+        <button id="open-settings-btn" class="secondary-btn">Settings</button>
       </div>
     </div>
-  </div>
 
-  <script src="../shared/libs/browser-polyfill.js"></script>
-  <script src="popup.js" type="module"></script>
-</body>
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <h3 id="modal-title">Confirm</h3>
+        <p id="modal-message">Are you sure?</p>
+        <div class="modal-footer">
+          <button id="modal-cancel-btn" class="secondary-btn">No</button>
+          <button id="modal-confirm-btn" class="secondary-btn danger-btn">Yes</button>
+        </div>
+      </div>
+    </div>
 
+    <script src="../shared/libs/browser-polyfill.js"></script>
+    <script src="popup.js" type="module"></script>
+  </body>
 </html>

@@ -6,5 +6,8 @@ build/
 package-lock.json
 # Scratch/junk scheduled for removal in Phase 73.
 tmp/
+# Hand-crafted governance docs — keep their tables/wording out of the format pass.
+*.md
+LICENSE
 # Bundled third-party polyfill — keep upstream formatting.
 src/shared/libs/

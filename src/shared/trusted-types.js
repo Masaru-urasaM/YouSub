@@ -19,7 +19,7 @@ export const TrustedTypes = {
         policy = window.trustedTypes.createPolicy('yousub-policy', {
           createHTML: (html) => html, // We trust our own generated HTML
           createScript: (script) => script,
-          createScriptURL: (url) => url
+          createScriptURL: (url) => url,
         });
         devLog('[YouSub] TrustedTypes: Policy created successfully.');
       } catch (e) {
@@ -37,5 +37,5 @@ export const TrustedTypes = {
       return policy.createHTML(html);
     }
     return html;
-  }
+  },
 };
