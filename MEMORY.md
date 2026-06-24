@@ -1,7 +1,7 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-71 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
+**Status**: v0.2.2 — Phases 0-72 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
 **Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
 **Last Updated**: 2026-06-24
 
@@ -47,6 +47,7 @@
 - **Phase 69** (Coverage, [EPIC]): honest denominator (`src/**` minus vendored polyfill) baseline **23%**. Decision 12 (developer-approved): "70% global" reframed as Milestone-7 exit (reached across 69/75/76), not one phase. Did the honest winnable work via a 4-agent parallel workflow (each gated green + lint/prettier, no `src/` edits): providers.js 0.35%→97%, overlay.js 6%→61%, translator pure-helpers (via expanded `_internals`) 11%→24%, page-detector/trusted-types/utils 100%, subtitle-extractor 90%, video-binder 88%. **+202 tests (218→420)**, **global 23%→40%**. Added `collectCoverageFrom` + `coverageThreshold` ratchet (38/34/36) to jest.config; added storage-level `chrome.storage.onChanged` to the mock. DEFERRED D3 (providers cosmetic timeout msg). translator deep coverage→75, UI glue→76.
 - **Phase 70** (CI): created `.github/workflows/test.yml` (push/PR → npm ci → lint → format:check → test+coverage-gate → package). Repo is local-only (no remote) → workflow is **dormant until pushed to GitHub**; did NOT rename master→main. All steps verified locally (lint/format/test/package all exit 0). Resolved open questions: v0.4.0 (already fixed in P65, only a historical SPEC revision-row remains), src/debug (keep — shipped, wired via popup.js), Phase 77 (developer wants BOTH selector resilience AND full Japanese UI i18n via chrome.i18n).
 - **Phase 71** (Docs): SPEC-vs-reality audit (Explore agent). Removed 3 phantom files from SPEC §2.5/2.7 (`toast.js`, `tab-about.js`, `logo.svg` — never existed); rewrote §2.6/2.7 to real ESM architecture (loader.js → dynamic import(main.js) → ESM graph; window.YouSub = shim; web_accessible_resources). Added undocumented real modules + src/debug to the map. New `README.md` (private-repo, BYOK privacy, dev quickstart, AGPL). Decision 13 (phantoms were specced-not-built). LICENSE already done in P67.
+- **Phase 72** (Governance): deleted `GEMINI.md` (near-dup of CLAUDE.md); folded its unique `MAX_LINES_PER_BATCH` guard into CLAUDE.md as Rule 12; added Rule 13 (CLAUDE.md = single canonical rules file + maintenance-mode/[Hotfix]). Fixed CLAUDE.md stale Project-Overview boilerplate ("A new software project"→real YouSub desc), removed phantom PROMPT.md from doc tables (CONTEXT.md is real, kept). CLAUDE.md is now the sole AI-rules file.
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

@@ -6,9 +6,9 @@
 
 ## Project Overview
 
-A new software project.
+**YouSub** — a shipped Manifest V3 browser extension (v0.2.2, Chrome Web Store) that intercepts YouTube's native transcripts, translates them with the user's own LLM API keys (BYOK, multi-provider), and renders a synced, customizable subtitle overlay (including a dual original + translated mode).
 
-**Tech Stack**: To be determined
+**Tech Stack**: Manifest V3, vanilla JavaScript (ES2020+ ESM), **no build step**; background service worker (`type: module`); Jest + jsdom tests; ESLint 9 + Prettier + husky/lint-staged. See `YOUSUB_PROJECT_SPEC.md` for the full architecture and `README.md` for a quickstart. **Status**: Milestone 7 — Professionalization & Hardening.
 
 ## MANDATORY WORKFLOW — User-Driven Development
 
@@ -185,6 +185,14 @@ The purpose of this is to keep `ROADMAP.md` clean and only contain tasks that ar
 Before starting any task and after completing a task, you MUST always check the two files `ROADMAP.md` and `ROADMAP_DONE.md` first. 
 This check is mandatory for you to understand the project context, grasp what has been done and what is about to be done next.
 
+## Rule 12: Do Not Touch `MAX_LINES_PER_BATCH`
+
+`MAX_LINES_PER_BATCH` (in `src/background/translator.js`) sets the maximum number of subtitle lines per translation batch. It has repeatedly been mis-blamed for unrelated issues. **Do not change it, and do not propose changing it, while diagnosing problems** unless the developer explicitly asks. It is not the cause of merge, timeout, or alignment bugs — look elsewhere.
+
+## Rule 13: Single Canonical AI-Rules File + Maintenance Mode
+
+`CLAUDE.md` is the **single canonical** source of AI working rules (the former `GEMINI.md` mirror was retired in Phase 72). Post-v0.2.2 the project is in **maintenance mode**: the strict "ONE PROMPT = ONE PHASE" model still applies to roadmap phases, but small one-off hotfixes outside the roadmap may be handled directly and logged as `[Hotfix] <issue>: <description>` in `CHANGELOG.md`.
+
 ---
 
 ## Documentation Architecture
@@ -199,22 +207,21 @@ This check is mandatory for you to understand the project context, grasp what ha
 | `YOUSUB_DESIGN_DECISIONS.md` | Technical problems + resolved design decisions |
 | `CHANGELOG.md` | Change history by phase |
 | `DEFERRED.md` | Deferred features and tasks |
-| `PROMPT.md` | Current task prompt template |
+| `README.md` | Project readme — quickstart, privacy/BYOK, doc map |
 
 ## Directory Structure
 
 ```
 YouSub/
-├── Claude.md                          # Project-specific rules (this file)
-├── YOUSUB_PROJECT_SPEC.md           # Navigation hub — project specification
-├── YOUSUB_DESIGN_DECISIONS.md       # Design decisions record
+├── CLAUDE.md                          # Project-specific AI rules (this file, canonical)
+├── README.md                          # Quickstart, privacy/BYOK, doc map
+├── CONTEXT.md                         # High-level background, goals, desired outcomes
+├── YOUSUB_PROJECT_SPEC.md             # Navigation hub — project specification
+├── YOUSUB_DESIGN_DECISIONS.md         # Design decisions record
 ├── CHANGELOG.md                       # Change history
 ├── DEFERRED.md                        # Deferred items
-├── PROMPT.md                          # Current task prompt
 ├── ROADMAP.md                         # Current and remaining tasks
 ├── ROADMAP_DONE.md                    # Archived completed tasks
-├── .Claude/
-│   └── settings.local.json            # Claude local permissions
 └── [project source code]
 ```
 

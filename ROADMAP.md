@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-71 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-72 done.
 
 ---
 
@@ -13,7 +13,7 @@
 
 This file is the **single source of truth** for all development work on YouSub. Before doing ANY work, you MUST:
 
-1. Read `CLAUDE.md` — the canonical hard rules for your behavior (`GEMINI.md` is being retired in Phase 72; until then it mirrors the same core rules)
+1. Read `CLAUDE.md` — the single canonical hard-rules file for your behavior (the former `GEMINI.md` mirror was retired in Phase 72)
 2. Read this file (`ROADMAP.md`) — contains what to do next
 3. Read `ROADMAP_DONE.md` — contains what has already been completed
 4. Read `YOUSUB_DESIGN_DECISIONS.md` — contains past decisions (do NOT re-propose rejected approaches)
@@ -79,7 +79,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **69** | **[EPIC] Coverage expansion (23% → 40% honest; 70% = M7 exit)** | DONE (2026-06-24) | M7 |
 | **70** | **CI pipeline (GitHub Actions) — ready-to-use, dormant until pushed** | DONE (2026-06-24) | M7 |
 | **71** | **SPEC reconciliation + README + LICENSE** | DONE (2026-06-24) | M7 |
-| **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | TODO | M7 |
+| **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | DONE (2026-06-24) | M7 |
 | **73** | **Repo hygiene cleanup** | TODO | M7 |
 | **74** | **Privacy / store compliance** | TODO | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | TODO | M7 |
@@ -164,11 +164,12 @@ Split into reviewable sub-phases (Rule 5):
 - **Verify**: `grep` confirms zero remaining `toast.js`/`tab-about`/`logo.svg` references in the SPEC; folder map matches the real tree.
 
 ### Phase 72 — AI-governance consolidation
-**Status**: TODO · **Risk**: Low · **Group**: docs
-- Delete `GEMINI.md`; make `CLAUDE.md` the complete canonical rules file (fold in any uniquely useful content, e.g. the context-check rule). Clean up `.gemini/` references.
-- Fix the Documentation Architecture tables (remove the phantom `PROMPT.md`, or create it).
-- Reconcile the stale "A new software project / Tech Stack: TBD" boilerplate.
-- **Verify**: a single source of AI rules; no dangling references.
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: docs
+- Deleted `GEMINI.md` (it was a near-duplicate of `CLAUDE.md` with "Gemini" swapped in). Folded its one unique item — the `MAX_LINES_PER_BATCH` "do not touch" guard — into `CLAUDE.md` as **Rule 12**. Added **Rule 13** (CLAUDE.md is the single canonical rules file + the maintenance-mode/`[Hotfix]` note). No `.gemini/` dir existed.
+- Removed the phantom `PROMPT.md` from CLAUDE.md's Documentation Architecture table + Directory Structure (kept `CONTEXT.md`, which exists; added `README.md`). Fixed the `.Claude/` casing artifact.
+- Replaced the stale "A new software project / Tech Stack: TBD" Project-Overview boilerplate with the real YouSub description + tech stack.
+- Updated the ROADMAP session-instructions note (line 16) — `GEMINI.md` is now retired, not "being retired".
+- **Verify**: only one AI-rules file (`CLAUDE.md`); remaining "Gemini" matches are the LLM provider, not the retired file.
 
 ### Phase 73 — Repo hygiene cleanup
 **Status**: TODO · **Risk**: Low · **Group**: hygiene

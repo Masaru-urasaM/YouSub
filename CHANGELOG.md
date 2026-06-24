@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 72 — AI-Governance Consolidation (2026-06-24)
+
+Makes `CLAUDE.md` the single canonical AI-rules file.
+
+**Removed**
+- `GEMINI.md` (deleted) — it was a near-verbatim duplicate of `CLAUDE.md` with "Gemini" substituted for "Claude". Its one unique item (the `MAX_LINES_PER_BATCH` "do not touch / stop blaming it" guard) was folded into `CLAUDE.md`.
+
+**Changed — `CLAUDE.md`**
+- Added **Rule 12** (do not change/propose changing `MAX_LINES_PER_BATCH` while diagnosing — it's not the cause of merge/timeout/alignment bugs) and **Rule 13** (single canonical rules file + post-v0.2.2 maintenance mode with `[Hotfix]` logging).
+- Replaced the stale "A new software project / Tech Stack: To be determined" Project-Overview boilerplate with the real YouSub description and tech stack.
+- Removed the phantom `PROMPT.md` from the Documentation Architecture table + Directory Structure; added `README.md`/`CONTEXT.md`; fixed the `.Claude/` casing.
+- `ROADMAP.md`: updated the session-instructions note — `GEMINI.md` is now retired, not "being retired".
+
+**Verify**: a single source of AI rules; the only remaining "Gemini" references are the LLM provider (CHANGELOG/SPEC), not the retired file. `CONTEXT.md` confirmed to exist (kept in the doc map).
+
 ### Phase 71 — SPEC Reconciliation + README (2026-06-24)
 
 Brings the documentation back in line with the shipped code.
