@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-70 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-71 done.
 
 ---
 
@@ -78,7 +78,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **68** | **Test recovery — fix the remaining 15 failing tests** | DONE (2026-06-24) | M7 |
 | **69** | **[EPIC] Coverage expansion (23% → 40% honest; 70% = M7 exit)** | DONE (2026-06-24) | M7 |
 | **70** | **CI pipeline (GitHub Actions) — ready-to-use, dormant until pushed** | DONE (2026-06-24) | M7 |
-| **71** | **SPEC reconciliation + README + LICENSE** | TODO | M7 |
+| **71** | **SPEC reconciliation + README + LICENSE** | DONE (2026-06-24) | M7 |
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | TODO | M7 |
 | **73** | **Repo hygiene cleanup** | TODO | M7 |
 | **74** | **Privacy / store compliance** | TODO | M7 |
@@ -157,10 +157,11 @@ Split into reviewable sub-phases (Rule 5):
 - **Verify**: all gate commands pass locally; workflow will run green once a GitHub remote exists.
 
 ### Phase 71 — SPEC reconciliation + README + LICENSE
-**Status**: TODO · **Risk**: Low · **Group**: docs
-- `YOUSUB_PROJECT_SPEC.md` §2.5/2.7: remove phantom files (`toast.js`, `tab-about.js`, `logo.svg`); rewrite §2.6/2.7 to the real architecture (ESM modules loaded via `loader.js` dynamic `import()`, with `window.YouSub` as a compatibility shim); fix the dependency graph; document `src/debug/`.
-- Add a light, private-repo `README.md`; record removed-feature decisions + the cache-TTL choice in `YOUSUB_DESIGN_DECISIONS.md`.
-- **Verify**: no broken cross-references, no references to non-existent files.
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: docs
+- Ran a SPEC-vs-reality audit (Explore agent, line-referenced). `YOUSUB_PROJECT_SPEC.md` §2.5/2.7: removed phantom files (`toast.js`, `tab-about.js`, `logo.svg` — confirmed never existed); §2.6/2.7 rewritten to the real ESM architecture (single `loader.js` entry → dynamic `import()` of `main.js` → ESM module graph; `window.YouSub` = compat shim; documented `web_accessible_resources`). Added the previously-undocumented real modules (`loader.js`, `shared/trusted-types.js`, `shared/utils.js`, `shared/libs/browser-polyfill.js`, `background/merge-fixer.js`, `background/rough-translator.js`) and the `src/debug/` panel; fixed the icon list.
+- Added a light, private-repo `README.md` (tech stack, dev quickstart, privacy/BYOK note, doc map, AGPL-3.0). LICENSE was already added in Phase 67.
+- Recorded the reconciliation as **Decision 13** (phantom modules were specced but never built — do not re-add); cache-TTL choice is **Decision 11**.
+- **Verify**: `grep` confirms zero remaining `toast.js`/`tab-about`/`logo.svg` references in the SPEC; folder map matches the real tree.
 
 ### Phase 72 — AI-governance consolidation
 **Status**: TODO · **Risk**: Low · **Group**: docs

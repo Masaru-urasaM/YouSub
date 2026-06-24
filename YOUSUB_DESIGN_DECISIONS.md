@@ -239,3 +239,21 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Tradeoff accepted**: "≥70% global" is reinterpreted as a Milestone-7 exit criterion reached incrementally across Phases 69/75/76, not a Phase-69 deliverable. The threshold must be raised (never lowered) as those phases land.
 
 **References**: `jest.config.cjs` (`collectCoverageFrom`, `coverageThreshold`); `src/background/translator.js` (`_internals`); Phase 69 in `ROADMAP.md` / `CHANGELOG.md`; the 8 new `tests/unit/*.test.js` files.
+
+### Decision 13 — Phase 71 SPEC Reconciliation: Phantom Modules Were Specced but Never Built (do not re-add)
+
+**Date**: 2026-06-24
+**Status**: RESOLVED
+
+**Problem**: `YOUSUB_PROJECT_SPEC.md` (§2.5 folder map and §2.7 dependency graph) listed three source files that do not exist in the repo, and described an outdated loading model. A SPEC-vs-reality audit confirmed the code is correct and the SPEC was stale — so the docs were reconciled to the code, not vice-versa.
+
+**Findings & resolution**:
+1. **`src/content/toast.js`** — never existed. Toast/status messaging is implemented inside `overlay.js` (`showStatus`), not a separate component. SPEC reference removed.
+2. **`src/options/tab-about.js`** — never existed. The About tab is plain markup inline in `options.html` (no JS module). SPEC reference removed; a note clarifies the inline markup.
+3. **`assets/options/logo.svg`** — never existed; the settings page uses PNG icons. SPEC reference removed.
+4. **Loading model** — §2.6/§2.7 claimed sequential IIFE content scripts sharing `window.YouSub`. Reality (since the Phase 30s ESM refactor): the manifest injects a single `src/content/loader.js`, which dynamic-`import()`s `main.js`; all modules are real ESM (`import`/`export`) and `window.YouSub` is only a compatibility shim. §2.6/§2.7 rewritten to match, including `web_accessible_resources`.
+5. **Undocumented-but-real** modules added to the SPEC map: `loader.js`, `shared/trusted-types.js`, `shared/utils.js`, `shared/libs/browser-polyfill.js`, `background/merge-fixer.js`, `background/rough-translator.js`, and the `src/debug/` diagnostics panel.
+
+**Tradeoff accepted**: the SPEC is now descriptive of the shipped code. If any of the three phantom features (a standalone toast component, a `tab-about.js` module, an SVG logo) is ever wanted, it is a **new** feature — not a "missing" one — and should be added deliberately.
+
+**References**: `YOUSUB_PROJECT_SPEC.md` §2.5–2.7; `src/content/loader.js`, `src/content/overlay.js` (`showStatus`), `src/options/options.html` (inline About tab); `README.md` (new, Phase 71); Phase 71 in `ROADMAP.md` / `CHANGELOG.md`.

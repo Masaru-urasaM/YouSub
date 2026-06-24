@@ -139,14 +139,14 @@ YouSub/
 +-- manifest.json                       # Extension manifest (Manifest V3)
 +-- src/
 |   +-- content/                        # Content scripts (injected into YouTube pages)
-|   |   +-- main.js                     # Entry point — orchestrates all content modules
+|   |   +-- loader.js                   # Manifest content-script entry — dynamic-imports main.js as ESM
+|   |   +-- main.js                     # Orchestrates all content modules (ESM, imported by loader.js)
 |   |   +-- page-detector.js            # YouTube page detection + SPA navigation
 |   |   +-- video-binder.js             # Find and monitor <video> element
 |   |   +-- subtitle-extractor.js       # Extract subtitle tracks from page data
 |   |   +-- subtitle-parser.js          # Parse timedtext JSON3/XML into normalized format
-|   |   +-- overlay.js                  # Overlay UI creation, update, destroy
+|   |   +-- overlay.js                  # Overlay UI creation, update, destroy (+ inline status messages)
 |   |   +-- sync-engine.js              # Synchronization: timeupdate -> subtitle lookup
-|   |   +-- toast.js                    # Toast notification component
 |   |   +-- overlay.css                 # Overlay styles
 |   |   +-- main-world-extractor.js     # MAIN world script (web accessible)
 |   |   +-- main-world-fetcher.js       # MAIN world fetch helper (web accessible)
@@ -157,28 +157,33 @@ YouSub/
 |   |   +-- api-manager.js             # API key manager + failover logic
 |   |   +-- health.js                  # Provider health tracking + circuit breaker
 |   |   +-- cache.js                    # Translation cache (chrome.storage.local)
+|   |   +-- merge-fixer.js              # Detect & repair merged/misaligned translated lines
+|   |   +-- rough-translator.js         # 3-tier rough-translation fallback
 |   +-- options/                        # Options page (full settings UI)
 |   |   +-- options.html                # Options page shell
 |   |   +-- options.css                 # Options page styles (dark theme)
 |   |   +-- options.js                  # Options page logic + tab controller
 |   |   +-- tab-translation.js          # Translation tab (API keys, language)
 |   |   +-- tab-appearance.js           # Appearance tab (font, color, position)
-|   |   +-- tab-about.js               # About tab (version, links)
+|   |                                   # (About tab markup is inline in options.html — no separate module)
 |   +-- popup/                          # Extension popup (quick actions)
 |   |   +-- popup.html                  # Popup page (simplified)
 |   |   +-- popup.css                 # Popup styles
 |   |   +-- popup.js                    # Popup logic
 |   +-- shared/                         # Shared between content/background/popup/options
-|       +-- constants.js                # Shared constants (message types, defaults)
-|       +-- providers-registry.js       # Provider/model definitions (shared data)
-|       +-- logger.js                   # Structured JSONL logging
+|   |   +-- constants.js                # Shared constants (message types, defaults)
+|   |   +-- providers-registry.js       # Provider/model definitions (shared data)
+|   |   +-- logger.js                   # Structured JSONL logging
+|   |   +-- trusted-types.js            # Trusted Types policy (safe innerHTML sinks)
+|   |   +-- utils.js                    # Shared helpers (e.g. sanitizeKey)
+|   |   +-- libs/
+|   |       +-- browser-polyfill.js     # Vendored webextension-polyfill (cross-browser)
+|   +-- debug/                          # Advanced diagnostics panel (opened from the popup)
+|       +-- debug.html                  # Log viewer UI
+|       +-- debug.css                   # Log viewer styles
+|       +-- debug.js                    # Log viewer logic
 +-- assets/
-|   +-- icons/                          # Extension icons
-|   |   +-- icon16.png
-|   |   +-- icon48.png
-|   |   +-- icon128.png
-|   +-- options/                        # Options page assets
-|       +-- logo.svg                    # YouSub logo for settings page
+|   +-- icons/                          # Extension icons (icon16/19/32/38/48/128.png)
 +-- tests/                              # Test files (Phase 21+)
 |   +-- unit/
 |   +-- integration/
@@ -195,43 +200,61 @@ YouSub/
 
 ### 2.6 Content Script Module Pattern
 
-All content scripts use this pattern to share state via `window.YouSub`:
+Content scripts are **ES modules** (`import`/`export`), not IIFEs. The manifest
+injects a single entry, `src/content/loader.js`, which dynamic-imports
+`src/content/main.js`; `main.js` then statically imports the other modules. Each
+module exports a named object and also registers itself on a `window.YouSub`
+**compatibility shim** for legacy cross-module access:
 
 ```javascript
-(function () {
-  'use strict';
-  const YouSub = window.YouSub || (window.YouSub = {});
+// src/content/<module>.js
+import { devLog } from '../shared/constants.js';
 
-  YouSub.SomeModule = {
-    init: function () { /* ... */ },
-    destroy: function () { /* ... */ }
-  };
-})();
+export const SomeModule = {
+  init() {
+    /* ... */
+  },
+  destroy() {
+    /* ... */
+  },
+};
+
+// Compatibility shim for legacy global access
+if (typeof window !== 'undefined') {
+  window.YouSub = window.YouSub || {};
+  window.YouSub.SomeModule = SomeModule;
+}
 ```
+
+`window.YouSub` is a **secondary** convenience layer; the primary wiring is the
+ESM import graph rooted at `loader.js -> main.js`.
 
 ### 2.7 File Dependency Graph
 
 ```
 manifest.json
-  +-- content_scripts (loaded in order, all share window.YouSub namespace):
-  |     src/shared/constants.js          <- Loaded first: defines namespace, constants
-  |     src/shared/providers-registry.js <- Provider/model definitions (shared data)
-  |     src/content/page-detector.js
-  |     src/content/video-binder.js
-  |     src/content/subtitle-extractor.js
-  |     src/content/subtitle-parser.js
-  |     src/content/overlay.js
-  |     src/content/toast.js
-  |     src/content/sync-engine.js
-  |     src/content/main.js              <- Loaded last: orchestrates everything
+  +-- content_scripts: [ src/content/loader.js ]   <- the ONLY injected content script
+  |     loader.js  --(dynamic import)-->  src/content/main.js   <- ESM orchestrator
+  |       +-- import src/shared/constants.js
+  |       +-- import src/shared/trusted-types.js
+  |       +-- import src/content/page-detector.js
+  |       +-- import src/content/video-binder.js
+  |       +-- import src/content/subtitle-extractor.js
+  |       +-- import src/content/subtitle-parser.js
+  |       +-- import src/content/overlay.js
+  |       +-- import src/content/sync-engine.js
+  |     (each module also self-registers on the window.YouSub shim)
+  |     web_accessible_resources exposes the modules above + main-world-*.js so
+  |     loader.js can import() them and the page-context scripts can be injected.
   |
   +-- background.service_worker (ES modules, import/export):
   |     src/background/service-worker.js  <- Entry point
-  |       +-- import src/background/providers.js    (API implementations)
-  |       +-- import src/background/translator.js   (translation engine)
-  |       +-- import src/background/api-manager.js  (key management + failover)
-  |       +-- import src/background/health.js       (circuit breaker)
-  |       +-- import src/background/cache.js        (translation cache)
+  |       +-- import src/background/providers.js     (API implementations)
+  |       +-- import src/background/translator.js    (translation engine)
+  |       |     +-- import src/background/merge-fixer.js / rough-translator.js
+  |       +-- import src/background/api-manager.js   (key management + failover)
+  |       +-- import src/background/health.js        (circuit breaker)
+  |       +-- import src/background/cache.js         (translation cache)
   |
   +-- options_page:
   |     src/options/options.html
@@ -239,12 +262,12 @@ manifest.json
   |       +-- src/options/options.js           (tab controller)
   |       +-- src/options/tab-translation.js   (API keys, language)
   |       +-- src/options/tab-appearance.js    (font, color, position)
-  |       +-- src/options/tab-about.js         (version, links)
+  |       (About tab markup is inline in options.html — no separate module)
   |
   +-- action.default_popup:
         src/popup/popup.html
           +-- src/popup/popup.css
-          +-- src/popup/popup.js
+          +-- src/popup/popup.js   (also opens src/debug/debug.html)
 ```
 
 ---

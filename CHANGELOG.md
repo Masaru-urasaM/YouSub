@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 71 — SPEC Reconciliation + README (2026-06-24)
+
+Brings the documentation back in line with the shipped code.
+
+**Changed — `YOUSUB_PROJECT_SPEC.md`**
+- Removed three phantom files from §2.5/§2.7 (audit-confirmed never existed): `src/content/toast.js` (status messaging lives in `overlay.js` `showStatus`), `src/options/tab-about.js` (About tab is inline markup in `options.html`), `assets/options/logo.svg` (page uses PNG icons).
+- Rewrote §2.6 (module pattern) and §2.7 (dependency graph) from the stale "sequential IIFE content scripts sharing `window.YouSub`" model to the real one: the manifest injects a single `src/content/loader.js`, which dynamic-`import()`s `main.js`; modules are ESM with `window.YouSub` as a compatibility shim; documented `web_accessible_resources`.
+- Added the previously-undocumented real modules to the folder map: `loader.js`, `shared/trusted-types.js`, `shared/utils.js`, `shared/libs/browser-polyfill.js`, `background/merge-fixer.js`, `background/rough-translator.js`, and the `src/debug/` diagnostics panel. Corrected the icon list.
+
+**Added**
+- `README.md` — light, private-repo readme: tech stack, dev quickstart (`npm test`/`lint`/`format`/`package`, load-unpacked), BYOK privacy note, documentation map, AGPL-3.0.
+- `YOUSUB_DESIGN_DECISIONS.md` **Decision 13** — records that the phantom modules were specced but never built (re-adding any would be a *new* feature, not a fix).
+
+**Verify**: `grep` confirms zero remaining `toast.js`/`tab-about`/`logo.svg` references in the SPEC. (LICENSE was already added in Phase 67.)
+
 ### Phase 70 — CI Pipeline (ready-to-use GitHub Actions) (2026-06-24)
 
 Adds a CI workflow that mirrors the local quality gates so they also run on GitHub.
