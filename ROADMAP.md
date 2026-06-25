@@ -2,8 +2,8 @@
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
-> **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. **Milestone 7 — Professionalization & Hardening COMPLETE** (Phases 65-77 done). Pending: deploy + comprehensive test pass.
+> **Last updated**: 2026-06-25
+> **Status**: Shipped v0.2.2. **Milestone 7 COMPLETE** (Phases 65-77) + **post-M7 DEFERRED backlog cleared** (D1–D7; only D5's dev-only npm-audit items remain deferred — they need a jest/babel major migration). Comprehensive pass done: **468 tests green**, ESLint 0, Prettier clean, build VERIFY OK (both ZIPs), version 0.2.2 consistent. **Pending (manual, developer)**: Chrome/Firefox store upload + recommended browser smoke-tests (esp. the D6 translator path: one real video + one Shorts with a live API key).
 
 ---
 

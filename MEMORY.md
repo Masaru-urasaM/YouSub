@@ -1,9 +1,9 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-77 complete. **Milestone 7 (Professionalization & Hardening, Phases 65-77) COMPLETE.** Pending: deploy + comprehensive test pass.
-**Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
-**Last Updated**: 2026-06-24
+**Status**: v0.2.2 — Phases 0-77 complete + **post-M7 DEFERRED backlog (D1–D7) cleared** (only D5's dev-only npm-audit items remain deferred). **Milestone 7 COMPLETE.** Comprehensive pass: 468 tests green, ESLint 0, Prettier clean, build VERIFY OK, version 0.2.2 consistent. Pending (manual): store upload + recommended browser smoke-tests (esp. the D6 translator path).
+**Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done; post-M7 DEFERRED backlog D1–D7 done 2026-06-25)
+**Last Updated**: 2026-06-25
 
 ## Implementation Log
 
