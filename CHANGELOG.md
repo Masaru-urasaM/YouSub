@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D7 resolved: CSS dedup investigated, declined (2026-06-25)
+
+**Investigated, no code change (developer-approved outcome)**
+
+- Compared `src/popup/popup.css` vs `src/options/options.css` rule-by-rule. The "duplicated modal/button CSS" turned out to be **shared selector names with divergent values**, not real duplication: only `.modal-overlay` + `@keyframes modalFadeIn` are byte-identical. `.secondary-btn`, `.modal-content`, `.danger-btn`, `modalSlideUp`, and the modal heading/body rules all differ by design (compact hard-coded popup vs wider CSS-variable options, with a different modal DOM — `.modal-content h3`/`p` vs `.modal-header h3`/`.modal-body p`). Merging would risk the visual regression the deferral flagged; extracting only the 2 identical blocks would split the `modalSlideUp` pair for ~15 lines. **D7 closed as "investigated — not meaningfully dedupable"; no files changed.**
+
 ### DEFERRED Backlog — D6 (extraction): tryKeyForBatch split, behavior-preserving (2026-06-25)
 
 Developer-approved during the backlog pass. Done behind the just-built characterization gate.
