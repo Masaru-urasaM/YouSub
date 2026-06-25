@@ -84,7 +84,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | DONE (2026-06-25) | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | DONE (2026-06-25) — 76b CSS dedup → DEFERRED D7 | M7 |
-| **77** | **Transcript-button locale resilience (+ optional Japanese UI i18n)** | TODO | M7 |
+| **77** | **Transcript-button locale resilience + Japanese UI i18n** | IN PROGRESS (77a done) | M7 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started
 >

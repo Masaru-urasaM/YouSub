@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 77a — Transcript-Button Locale Resilience (2026-06-25)
+
+Makes the fast DOM-scrape path work on non-English YouTube UIs (e.g. Japanese), instead of falling back to the slow Innertube path.
+
+**Changed — `src/content/main-world-extractor.js` `findTranscriptButton()`**
+- Strategy B (aria-label): `button[aria-label="Show transcript"]` (English exact) → `button[aria-label*="transcript" i], button[aria-label*="文字起こし"]` (EN case-insensitive substring + JA).
+- Strategy D (text search): exact `'show transcript'`/`'transcript'` → a label list `['show transcript', 'transcript', '文字起こしを表示', '文字起こし']`.
+- The primary, **language-agnostic** structural selectors (`ytd-video-description-transcript-section-renderer`, Strategies A/C) are unchanged — they already work in any locale; this hardens the aria-label/text fallbacks.
+
+**Scope note**: per the project's hard rule (code in English + Japanese only, never Vietnamese), the label list is EN + JA; other locales are covered by the structural selectors. `main-world-extractor.js` is a page-injected MAIN-world script (not unit-testable in jsdom, consistent with the Phase 69 coverage finding) — verified by lint + the full suite (435 green, no regression) + build VERIFY OK.
+
 ### Phase 76 — UI/UX Accessibility + Hygiene (2026-06-25)
 
 Adds accessibility to the popup + options UI and fixes UI hygiene items. Surgical — no redesign. Full suite **429 → 435** green; lint 0; `npm run package` VERIFY OK.

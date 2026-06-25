@@ -115,8 +115,13 @@
         }
       }
 
-      // Strategy B: Search by aria-label
-      var ariaBtn = document.querySelector('button[aria-label="Show transcript"]');
+      // Strategy B: Search by aria-label (locale-resilient). The structural
+      // selectors above already cover non-English videos language-agnostically;
+      // this adds EN (case-insensitive substring) + JA aria-label matches so a
+      // Japanese-UI YouTube still hits the fast DOM-scrape path.
+      var ariaBtn = document.querySelector(
+        'button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
+      );
       if (ariaBtn) {
         _devLog('[YouSub] MainWorldExtractor: Found transcript button by aria-label.');
         return ariaBtn;
@@ -139,13 +144,16 @@
         }
       }
 
-      // Strategy D: Search all buttons/renderers for text content
+      // Strategy D: Search all buttons/renderers for text content (locale-resilient).
+      // EN + JA YouTube UI labels for "Show transcript" / "transcript"
+      // (toLowerCase() is a no-op for Japanese, so the JA entries match as-is).
+      var transcriptLabels = ['show transcript', 'transcript', '文字起こしを表示', '文字起こし'];
       var allButtons = document.querySelectorAll(
         'ytd-button-renderer, tp-yt-paper-button, button, ytd-menu-service-item-renderer'
       );
       for (var i = 0; i < allButtons.length; i++) {
         var text = allButtons[i].textContent.trim().toLowerCase();
-        if (text === 'show transcript' || text === 'transcript') {
+        if (transcriptLabels.indexOf(text) !== -1) {
           _devLog('[YouSub] MainWorldExtractor: Found transcript button by text search.');
           return allButtons[i];
         }
