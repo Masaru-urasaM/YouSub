@@ -31,7 +31,7 @@ export function initAppearanceTab(saveIndicatorCallback) {
 }
 
 function loadSettings() {
-  chrome.storage.local.get(['yousub_appearance'], (res) => {
+  browser.storage.local.get(['yousub_appearance']).then((res) => {
     const styles = res.yousub_appearance || {
       fontSize: 1.5,
       fontColor: '#ffffff',

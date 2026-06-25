@@ -14,20 +14,62 @@
           <img src="../../assets/icons/icon618.png" alt="YouSub Logo" class="logo" />
           <h1>YouSub Settings</h1>
         </div>
-        <span class="version-badge">v0.2.2</span>
+        <span class="version-badge" id="version-badge">v0.2.2</span>
       </header>
 
       <nav class="settings-nav">
-        <ul class="tab-list">
-          <li><button class="tab-btn active" data-target="tab-translation">Translation</button></li>
-          <li><button class="tab-btn" data-target="tab-appearance">Appearance</button></li>
-          <li><button class="tab-btn" data-target="tab-about">About</button></li>
+        <ul class="tab-list" role="tablist">
+          <li>
+            <button
+              class="tab-btn active"
+              data-target="tab-translation"
+              role="tab"
+              id="tab-translation-tab"
+              aria-controls="tab-translation"
+              aria-selected="true"
+              tabindex="0"
+            >
+              Translation
+            </button>
+          </li>
+          <li>
+            <button
+              class="tab-btn"
+              data-target="tab-appearance"
+              role="tab"
+              id="tab-appearance-tab"
+              aria-controls="tab-appearance"
+              aria-selected="false"
+              tabindex="-1"
+            >
+              Appearance
+            </button>
+          </li>
+          <li>
+            <button
+              class="tab-btn"
+              data-target="tab-about"
+              role="tab"
+              id="tab-about-tab"
+              aria-controls="tab-about"
+              aria-selected="false"
+              tabindex="-1"
+            >
+              About
+            </button>
+          </li>
         </ul>
       </nav>
 
       <main class="settings-content">
         <!-- Translation Tab -->
-        <section id="tab-translation" class="tab-pane active">
+        <section
+          id="tab-translation"
+          class="tab-pane active"
+          role="tabpanel"
+          aria-labelledby="tab-translation-tab"
+          tabindex="0"
+        >
           <h2>Translation Settings</h2>
 
           <div class="card">
@@ -161,6 +203,7 @@
                       class="delete-custom-model-btn text-btn error-text hidden"
                       type="button"
                       title="Delete custom model"
+                      aria-label="Delete custom model"
                       style="padding: 0 4px; color: var(--error)"
                     >
                       ✕
@@ -213,7 +256,13 @@
         </section>
 
         <!-- Appearance Tab -->
-        <section id="tab-appearance" class="tab-pane">
+        <section
+          id="tab-appearance"
+          class="tab-pane"
+          role="tabpanel"
+          aria-labelledby="tab-appearance-tab"
+          tabindex="0"
+        >
           <h2>Appearance Settings</h2>
 
           <div class="appearance-grid">
@@ -277,7 +326,13 @@
         </section>
 
         <!-- About Tab -->
-        <section id="tab-about" class="tab-pane">
+        <section
+          id="tab-about"
+          class="tab-pane"
+          role="tabpanel"
+          aria-labelledby="tab-about-tab"
+          tabindex="0"
+        >
           <h2>About YouSub</h2>
           <div class="card">
             <div class="about-info">
@@ -287,14 +342,13 @@
                 class="large-logo"
               />
               <div class="about-text">
-                <h3>Version 0.2.2</h3>
+                <h3 id="about-version">Version 0.2.2</h3>
                 <p>Real-time AI subtitle translator for YouTube</p>
               </div>
             </div>
             <hr class="divider" />
             <div class="links-group">
-              <a href="#" class="link-btn">GitHub Repository</a>
-              <a href="#" class="link-btn">Report an Issue</a>
+              <a href="mailto:sytacxinh1123@gmail.com" class="link-btn">Report an Issue</a>
             </div>
             <hr class="divider" />
             <div class="action-group">
@@ -314,7 +368,14 @@
     </div>
 
     <!-- Confirmation Modal -->
-    <div id="confirm-modal" class="modal-overlay hidden">
+    <div
+      id="confirm-modal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      aria-describedby="modal-message"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h3 id="modal-title">Confirm Action</h3>

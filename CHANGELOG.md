@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 76 — UI/UX Accessibility + Hygiene (2026-06-25)
+
+Adds accessibility to the popup + options UI and fixes UI hygiene items. Surgical — no redesign. Full suite **429 → 435** green; lint 0; `npm run package` VERIFY OK.
+
+**Accessibility (76a)**
+- **Options tabs** → full ARIA tab pattern: `role="tablist"` / `role="tab"` (with `id`, `aria-controls`, `aria-selected`, roving `tabindex`) / `role="tabpanel"` (`aria-labelledby`). `options.js` `setupTabs` now syncs `aria-selected`/`tabindex` on switch and supports ArrowLeft/ArrowRight focus movement.
+- **Confirm modals** (both popup & options) → `role="dialog"`, `aria-modal="true"`, `aria-labelledby`/`aria-describedby`; both `showConfirmModal` helpers now move focus to the cancel button on open, close on **Escape**, and return focus to the opener on close.
+- **Icon-only ✕** button (`delete-custom-model`) → `aria-label`. **Popup** `health-status` + `loading` → `role="status"` `aria-live="polite"`.
+
+**Hygiene (76c)**
+- Dead About-tab links: removed the placeholder **GitHub Repository** link (private repo, no public URL); pointed **Report an Issue** at `mailto:` the contact address.
+- `chrome.*` → `browser.*` in `tab-appearance.js` (1) and `tab-translation.js` (3) — the 3 callback-style calls were properly converted to `.then()` (the vendored polyfill returns Promises and rejects extra args; `permissions` confirmed supported).
+- **Version badge from source of truth**: `options.js` now imports `Constants` and sets the header badge + About-tab version from `Constants.VERSION` (no more hardcoded `v0.2.2` drift risk).
+
+**Added**: `tests/unit/options-a11y.test.js` (6 tests) asserting the ARIA wiring (tablist/tab/tabpanel + dialog) is present. **Tests 429 → 435.**
+
+**Notes**
+- DEFERRED **D2** (Appearance form population) — **RESOLVED**: investigation found `loadSettings()` already populates the form from `yousub_appearance`; the dead `loadAppearance()` removed in 67b was a duplicate. No fix needed.
+- **76b** (deduplicate shared modal/button CSS) → **DEFERRED D7**: maintainability-only, needs visual-regression verification; the user-facing a11y + hygiene wins were prioritized.
+
 ### Phase 75c — Deduplicate `tryKeyForBatch` Post-Success Pipeline (2026-06-25)
 
 The behavior-preserving decomposition (developer-approved go), gated by the Phase 75b harness + full suite + manual review.

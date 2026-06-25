@@ -14,13 +14,18 @@
 **Dependency**: Phase 75 (`translator.js` / content-script refactor) — extract `esc()` to a small exported util as part of that pass.
 **Revisit when**: Phase 75 lands. Then add a test feeding crafted failure messages (e.g. `try again in <script>…`, `Limit 100, Used <img onerror=…>`) and assert the escaped output is entity-encoded.
 
-### D2 — Options "Appearance" tab may not populate the form from saved settings
+### D2 — Options "Appearance" tab form population — RESOLVED (no action needed)
 
-**Deferred**: 2026-06-24 (Phase 67b)
-**Effort**: Small
-**Why**: Phase 67b removed a never-called `loadAppearance()` from `src/options/tab-appearance.js` (confirmed dead — no references repo-wide). Its existence suggests the Appearance form was meant to populate its inputs from `yousub_appearance` storage on open, but it was never wired. Current behavior: the form shows the HTML default values; the actual subtitle overlay still reads saved appearance from storage, so the end-user appearance works — only the settings *form* may not reflect saved values.
-**Dependency**: none (independent UI fix).
-**Revisit when**: Phase 76 (UI/UX polish + a11y). Re-add appearance-form population on tab open (read `yousub_appearance`, set inputs, call `updatePreview()`), or confirm it is intentional.
+**Deferred**: 2026-06-24 (Phase 67b) · **Resolved**: 2026-06-25 (Phase 76)
+**Outcome**: Investigated in Phase 76 — the premise was stale. `tab-appearance.js` already has a working `loadSettings()` that is called from `initAppearanceTab()` and populates all inputs (font-size / font-color / bg-opacity / pos-bottom) + their value displays + the live preview from `yousub_appearance` storage `{fontSize, fontColor, bgOpacity, posBottom}`. The removed `loadAppearance()` was a genuinely-dead duplicate, not the live populator. No fix required; only the `chrome.→browser.` swap was applied on that file in Phase 76.
+
+### D7 — Deduplicate shared modal/button CSS (Phase 76b, deferred)
+
+**Deferred**: 2026-06-25 (Phase 76)
+**Effort**: Medium
+**Why**: `src/popup/popup.css` (491 lines) and `src/options/options.css` (753 lines) duplicate modal-overlay/button/`.secondary-btn`/`.danger-btn` rules. Extracting them into a shared stylesheet is maintainability-only (no user-facing change) and risky to do safely without **visual regression testing** (CSS specificity/cascade differences between the two contexts could shift the look). Phase 76 delivered the user-facing wins (a11y + hygiene) instead.
+**Dependency**: a way to visually diff the popup + options UI before/after (manual screenshots or a headless visual-regression pass).
+**Revisit when**: a dedicated CSS pass with visual verification. Low priority — the duplication is cosmetic-stable, not buggy.
 
 ### D3 — `Providers.chat()` timeout-message says "30s" but default is 15s
 

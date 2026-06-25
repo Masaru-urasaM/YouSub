@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-75 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-76 done.
 
 ---
 
@@ -83,7 +83,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **73** | **Repo hygiene cleanup** | DONE (2026-06-24) | M7 |
 | **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | DONE (2026-06-25) | M7 |
-| **76** | **[EPIC] UI/UX polish + accessibility** | TODO | M7 |
+| **76** | **[EPIC] UI/UX polish + accessibility** | DONE (2026-06-25) — 76b CSS dedup → DEFERRED D7 | M7 |
 | **77** | **Transcript-button locale resilience (+ optional Japanese UI i18n)** | TODO | M7 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started
@@ -199,12 +199,11 @@ Split into reviewable sub-phases:
 - **Verify**: full suite 429/429 green before & after each step; lint + prettier clean. (Browser re-check on a sample video recommended before the next release, since the harness doesn't cover the sanitize/untranslated cascades.)
 
 ### Phase 76 — [EPIC] UI/UX polish + accessibility
-**Status**: TODO · **Risk**: Med · **Group**: ux · **Depends**: 71
-Split at execution:
-- **76a** — Accessibility: ARIA for tabs/modals, focus trap + Escape dismiss, `aria-label` on icon-only buttons, visible focus indicators.
-- **76b** — Deduplicate modal/button CSS shared between popup & options into a shared stylesheet.
-- **76c** — Hygiene: `chrome.* → browser.*` consistency, HTML-vs-JS default-value drift, stale comments, inline-style → class, pull the version badge from constants. Wire or remove the dead GitHub/Issue links (private repo → clear placeholder or remove).
-- **Verify**: manual UI pass.
+**Status**: DONE (2026-06-25) · **Risk**: Med · **Group**: ux · **Depends**: 71
+- **76a (DONE)** — Accessibility: full ARIA tab pattern on the options tabs (tablist/tab/tabpanel + `aria-selected`/roving `tabindex` synced in `setupTabs`, + Arrow-key nav); `role="dialog"`+`aria-modal`+labelledby/describedby on both confirm modals, with focus-to-cancel on open, Escape-to-close, and focus-return to opener; `aria-label` on the ✕ icon button; `role="status"`+`aria-live="polite"` on the popup health + loading regions.
+- **76b (DEFERRED → D7)** — Deduplicate shared modal/button CSS: maintainability-only and needs visual-regression verification; deferred to a dedicated CSS pass to protect the look.
+- **76c (DONE)** — Hygiene: `chrome.* → browser.*` (4 calls; 3 callbacks properly rewritten to `.then()`); removed the dead GitHub link + pointed "Report an Issue" at `mailto:`; version badge + About version now read from `Constants.VERSION` (no hardcoded drift). DEFERRED **D2** found already-resolved (`loadSettings()` populates the Appearance form).
+- **Verify**: new `tests/unit/options-a11y.test.js` (6 tests) asserts the ARIA wiring; full suite **435/435** green; lint 0; `npm run package` VERIFY OK. (Manual/screen-reader pass still recommended before release.)
 
 ### Phase 77 — Transcript-button locale resilience + Japanese UI i18n
 **Status**: TODO · **Risk**: Med · **Group**: feature · **Depends**: 76

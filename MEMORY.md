@@ -1,7 +1,7 @@
 # AI Memory — YouSub Project
 
 ## Project Overview
-**Status**: v0.2.2 — Phases 0-75 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
+**Status**: v0.2.2 — Phases 0-76 complete (Milestone 7: Professionalization & Hardening, Phases 65-77 in progress)
 **Current Milestone**: M7: Professionalization & Hardening (M1-M6 done; post-M6 Phases 62-64 done)
 **Last Updated**: 2026-06-24
 
@@ -51,6 +51,7 @@
 - **Phase 73** (Hygiene): `git rm --cached` junk (résumé .docx, icons.zip, icon128-original.png, jest_output.txt, tmp/*); deleted dead translator_test.html + resize_icons.js (broken: dead path + jimp v0.x API vs installed 1.6 + only 3/6 sizes). Removed orphaned `jimp` dep → npm audit 38→19 vulns (rest are dev-only, DEFERRED D5). .gitignore += tmp/,*.docx,*.zip,*_output.txt,*-original.png. src/debug KEPT (shipped, wired). DEFERRED D4: résumé still in git history — scrub before any public push. Build/tests unchanged (420/420).
 - **Phase 74** (Privacy/store): added in-repo `privacy-policy.md` (mirror of gist `Masaru-urasaM/15f9846…`). Fixed manifest `data_collection_permissions` ["none"]→["websiteContent"] (transcript IS sent to 3rd-party LLM; "none" was false) — ⚠️ verify exact AMO enum at submission. `translate.googleapis.com` host_permission VERIFIED in use (rough-translator.js:66) → kept. Decision 14 (plaintext key storage tradeoff — keep, document). Manifest valid + build VERIFY OK.
 - **Phase 75** (translator refactor, HIGH risk, DONE): **75a** unify health-score (getScore dead-in-prod; added `HealthManager.computeScore`, live 10s formula, both call sites use it; +4 tests). **75b** characterization harness `translator-translate.test.js` (mock the `providers.js` MODULE not fetch — KEY INSIGHT; Providers.chat returns `{success,text}`, JSON `{"lines":[{n,t}]}`, default non-streaming; pins happy/429-failover/abort/guards; translator.js 24%→48.5%). **75c** dedup `tryKeyForBatch`: two identical ~95-line post-success pipelines → one `finalizeSuccessfulBatch` helper (−96 lines, verbatim, behavior-preserving, gated by harness+suite+manual review). Suite 420→**429**. Dead code (getFirstAvailableKey/allFailuresMap) already gone in 67b. DEFERRED D6: further retry-loop/text-parser splitting (lower value, needs harness extended first).
+- **Phase 76** (UI/UX a11y+hygiene, DONE): **76a** full ARIA tab pattern on options tabs (tablist/tab/tabpanel, aria-selected/roving tabindex synced in setupTabs + Arrow nav); both confirm modals → role=dialog/aria-modal + focus-to-cancel/Escape-close/return-focus; ✕ aria-label; popup health/loading role=status aria-live. **76c** chrome.→browser. (4; 3 callbacks→`.then()`); removed dead GitHub link, "Report an Issue"→mailto; version badge+About from `Constants.VERSION`. New `options-a11y.test.js` (6 tests). Suite 429→**435**, lint 0, build VERIFY OK. **76b** CSS dedup → DEFERRED D7 (needs visual-regression). **D2 RESOLVED** (loadSettings already populates Appearance form; the removed loadAppearance was a duplicate).
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

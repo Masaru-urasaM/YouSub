@@ -1,4 +1,5 @@
 import { Logger } from '../shared/logger.js';
+import { Constants } from '../shared/constants.js';
 import { initTranslationTab } from './tab-translation.js';
 import { initAppearanceTab } from './tab-appearance.js';
 
@@ -13,6 +14,7 @@ const resetBtn = document.getElementById('reset-btn');
 const exportLogsBtn = document.getElementById('export-logs-btn');
 
 function init() {
+  setVersionStrings();
   setupTabs();
 
   // Initialize Tabs
@@ -22,17 +24,42 @@ function init() {
   attachGlobalEventListeners();
 }
 
-function setupTabs() {
-  tabBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      // Remove active class from all
-      tabBtns.forEach((b) => b.classList.remove('active'));
-      tabPanes.forEach((p) => p.classList.remove('active'));
+function setVersionStrings() {
+  const badge = document.getElementById('version-badge');
+  if (badge) badge.textContent = `v${Constants.VERSION}`;
+  const aboutVersion = document.getElementById('about-version');
+  if (aboutVersion) aboutVersion.textContent = `Version ${Constants.VERSION}`;
+}
 
-      // Add active class to clicked tab and its content
-      btn.classList.add('active');
-      const targetId = btn.getAttribute('data-target');
-      document.getElementById(targetId).classList.add('active');
+function activateTab(btn) {
+  // Remove active class from all
+  tabBtns.forEach((b) => {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+    b.setAttribute('tabindex', '-1');
+  });
+  tabPanes.forEach((p) => p.classList.remove('active'));
+
+  // Add active class to selected tab and its content
+  btn.classList.add('active');
+  btn.setAttribute('aria-selected', 'true');
+  btn.setAttribute('tabindex', '0');
+  const targetId = btn.getAttribute('data-target');
+  document.getElementById(targetId).classList.add('active');
+}
+
+function setupTabs() {
+  tabBtns.forEach((btn, index) => {
+    btn.addEventListener('click', () => activateTab(btn));
+
+    // ARIA tab pattern: ArrowLeft/ArrowRight move focus & activate
+    btn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      const next = tabBtns[(index + dir + tabBtns.length) % tabBtns.length];
+      activateTab(next);
+      next.focus();
     });
   });
 }

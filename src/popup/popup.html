@@ -14,7 +14,7 @@
       </div>
 
       <div class="content">
-        <div id="health-status" class="health-indicator hidden">
+        <div id="health-status" class="health-indicator hidden" role="status" aria-live="polite">
           <span class="health-dot"></span>
           <div id="health-text">Checking APIs...</div>
         </div>
@@ -26,7 +26,7 @@
           <button id="open-debug-btn" class="secondary-btn">DEBUG</button>
         </div>
 
-        <div id="loading" class="hidden">
+        <div id="loading" class="hidden" role="status" aria-live="polite">
           <div class="spinner"></div>
           <p id="loading-text">Extracting...</p>
         </div>
@@ -75,7 +75,14 @@
     </div>
 
     <!-- Confirmation Modal -->
-    <div id="confirm-modal" class="modal-overlay hidden">
+    <div
+      id="confirm-modal"
+      class="modal-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      aria-describedby="modal-message"
+    >
       <div class="modal-content">
         <h3 id="modal-title">Confirm</h3>
         <p id="modal-message">Are you sure?</p>

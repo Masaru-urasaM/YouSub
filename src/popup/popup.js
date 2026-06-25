@@ -300,6 +300,9 @@ document.addEventListener('DOMContentLoaded', function () {
     modalTitle.textContent = title;
     modalMessage.textContent = message;
 
+    // A11y: remember the element that opened the modal so focus can return to it
+    const opener = document.activeElement;
+
     const handleConfirm = () => {
       closeModal();
       onConfirm();
@@ -309,14 +312,25 @@ document.addEventListener('DOMContentLoaded', function () {
       closeModal();
     };
 
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+
     const closeModal = () => {
       confirmModal.classList.add('hidden');
       modalConfirmBtn.removeEventListener('click', handleConfirm);
       modalCancelBtn.removeEventListener('click', handleCancel);
+      confirmModal.removeEventListener('keydown', handleKeydown);
+      // A11y: return focus to the opener
+      if (opener && typeof opener.focus === 'function') opener.focus();
     };
 
     modalConfirmBtn.addEventListener('click', handleConfirm);
     modalCancelBtn.addEventListener('click', handleCancel);
+    confirmModal.addEventListener('keydown', handleKeydown);
 
     // Close on backdrop click
     confirmModal.onclick = (e) => {
@@ -324,6 +338,8 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     confirmModal.classList.remove('hidden');
+    // A11y: move focus to the cancel button (first focusable / safe default)
+    modalCancelBtn.focus();
   }
 
   /**

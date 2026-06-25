@@ -390,7 +390,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
       fetchOllamaBtn.classList.remove('hidden');
 
       // Check permission state
-      chrome.permissions.contains({ origins: ['http://localhost/*'] }, (result) => {
+      browser.permissions.contains({ origins: ['http://localhost/*'] }).then((result) => {
         if (result) {
           connectOllamaBtn.textContent = 'Connected to Localhost';
           connectOllamaBtn.disabled = true;
@@ -430,22 +430,21 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   });
 
   connectOllamaBtn.addEventListener('click', () => {
-    chrome.permissions.request(
-      {
+    browser.permissions
+      .request({
         origins: ['http://localhost/*'],
-      },
-      (granted) => {
+      })
+      .then((granted) => {
         if (granted) {
           updateOllamaUI();
           alert('Permission granted! YouSub can now connect to your local Ollama instance.');
         }
-      }
-    );
+      });
   });
 
   fetchOllamaBtn.addEventListener('click', () => {
     fetchOllamaBtn.textContent = 'Fetching...';
-    chrome.runtime
+    browser.runtime
       .sendMessage({
         type: 'YOUSUB_FETCH_OLLAMA_MODELS',
         endpoint: 'http://localhost:11434/api/tags',
@@ -773,6 +772,9 @@ function showConfirmModal(title, message, onConfirm) {
   modalTitle.textContent = title;
   modalMessage.textContent = message;
 
+  // A11y: remember the element that opened the modal so focus can return to it
+  const opener = document.activeElement;
+
   const handleConfirm = () => {
     closeModal();
     onConfirm();
@@ -782,14 +784,25 @@ function showConfirmModal(title, message, onConfirm) {
     closeModal();
   };
 
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
+    }
+  };
+
   const closeModal = () => {
     confirmModal.classList.add('hidden');
     modalConfirmBtn.removeEventListener('click', handleConfirm);
     modalCancelBtn.removeEventListener('click', handleCancel);
+    confirmModal.removeEventListener('keydown', handleKeydown);
+    // A11y: return focus to the opener
+    if (opener && typeof opener.focus === 'function') opener.focus();
   };
 
   modalConfirmBtn.addEventListener('click', handleConfirm);
   modalCancelBtn.addEventListener('click', handleCancel);
+  confirmModal.addEventListener('keydown', handleKeydown);
 
   // Close on backdrop click
   confirmModal.onclick = (e) => {
@@ -797,6 +810,8 @@ function showConfirmModal(title, message, onConfirm) {
   };
 
   confirmModal.classList.remove('hidden');
+  // A11y: move focus to the cancel button (first focusable / safe default)
+  modalCancelBtn.focus();
 }
 
 function debouncedSave() {
