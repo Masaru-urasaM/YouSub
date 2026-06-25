@@ -1,0 +1,213 @@
+import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+
+/**
+ * Characterization tests for the exported translate() in src/background/translator.js.
+ *
+ * Purpose: pin the CURRENT externally-observable behavior of the translation
+ * pipeline so a future behavior-preserving refactor of tryKeyForBatch can be
+ * gated. These assert DECISIONS and OUTPUTS (success, ordering, recovery), not
+ * line execution.
+ *
+ * Strategy:
+ * - Mock the providers.js MODULE (not fetch). The engine talks to the LLM only
+ *   through Providers.chat / Providers.chatStream. The default path is
+ *   non-streaming (yousub_streaming_mode unset/false) so only chat is scripted.
+ * - Mock merge-fixer.js to a clean 1:1 pass-through. The real MergeFixer is a
+ *   large, network-capable post-processor (via RoughTranslator); stubbing it
+ *   isolates translate()'s own decision logic, which is what gates the refactor.
+ * - Use targetLang 'ja' (in NON_LATIN_TARGETS) so the foreign-script and
+ *   untranslated-line re-translation cascades are short-circuited — the engine
+ *   then makes exactly the Providers.chat calls we script.
+ * - APIManager and the chrome storage mock are REAL: keys are seeded into
+ *   chrome.storage.local and APIManager.getValidKeys() reads them, exercising
+ *   the real key-selection path.
+ */
+
+const chat = jest.fn();
+const chatStream = jest.fn();
+
+jest.unstable_mockModule('../../src/background/providers.js', () => ({
+  Providers: { chat, chatStream },
+}));
+
+// Clean 1:1 pass-through: no merges, nothing pending. Keeps translate()'s
+// post-parse path deterministic and free of RoughTranslator/network calls.
+jest.unstable_mockModule('../../src/background/merge-fixer.js', () => ({
+  MergeFixer: {
+    fix: jest.fn(async (segments, outputLines) => ({
+      lines: [...outputLines],
+      pendingIndices: [],
+    })),
+  },
+}));
+
+const { translate } = await import('../../src/background/translator.js');
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+const TGT = 'ja'; // non-Latin target → skips sanitize/foreign/untranslated cascades
+
+function seg(text, startMs) {
+  return { text, startMs };
+}
+
+// Is this Providers.chat call a per-batch translation request? Batch prompts are
+// JSON ({"lines":[{n,t},...]}); the context-summary call passes raw transcript.
+function isBatchPrompt(userPrompt) {
+  try {
+    const parsed = JSON.parse(userPrompt);
+    return parsed && Array.isArray(parsed.lines);
+  } catch {
+    return false;
+  }
+}
+
+// Echo the parsed lines back with transformed text so validCount === length and
+// index mapping holds (hadMismatch stays false). Marks each translation with a
+// "JA:" prefix so tests can assert the mocked translation was actually applied.
+function translateBatchResponse(userPrompt) {
+  const { lines } = JSON.parse(userPrompt);
+  const out = lines.map((l) => ({ n: l.n, t: 'JA:' + l.t }));
+  return { success: true, text: JSON.stringify({ lines: out }) };
+}
+
+const summaryResponse = { success: true, text: 'a short context summary' };
+
+// Default content-aware chat: summary call → summary; batch call → echo lines.
+function defaultChatImpl() {
+  return async (_provider, _model, _apiKey, userPrompt) => {
+    if (isBatchPrompt(userPrompt)) return translateBatchResponse(userPrompt);
+    return summaryResponse;
+  };
+}
+
+// Count only batch (translation) calls — the summary call fires first and must
+// not be confused with the first batch attempt when scripting failover.
+function batchCallCount() {
+  return chat.mock.calls.filter((c) => isBatchPrompt(c[3])).length;
+}
+
+function seedKeys(keys) {
+  chrome.storage.local.store = {
+    yousub_api_keys: keys,
+    yousub_failover_enabled: true,
+    yousub_model_rotation: false,
+    yousub_streaming_mode: false,
+  };
+}
+
+// ─── Lifecycle ────────────────────────────────────────────────────────
+
+describe('translate() characterization', () => {
+  beforeEach(() => {
+    // Fake timers: translate() leaves a force-timeout setTimeout pending after it
+    // resolves (Promise.race does not cancel the loser), and the module registers
+    // a 60s setInterval at load. Virtual timers keep both from hanging Jest.
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    chat.mockImplementation(defaultChatImpl());
+    // Distinct apiKey per test would be ideal, but each test seeds explicitly and
+    // uses 429 (no retry wait) so the 10s keyCooldowns Map never blocks a later
+    // test within a single batch attempt. Tests that exercise 429 use fresh keys.
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  // ── Behavior 1: Happy path ──────────────────────────────────────────
+  test('happy path: resolves with same-length, in-order, translated output', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'k1', model: 'gpt-4o-mini' }]);
+
+    const segments = [seg('Hello', 0), seg('Good morning', 1000), seg('How are you', 2000)];
+
+    const result = await translate(segments, 'en', TGT);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.translated)).toBe(true);
+    expect(result.translated).toHaveLength(segments.length);
+    // Output items are translated STRINGS (finalResults holds the parsed lines),
+    // in input order, with the mocked "JA:" translation applied.
+    expect(result.translated).toEqual(['JA:Hello', 'JA:Good morning', 'JA:How are you']);
+    // One summary call + one batch call (3 segments fit in a single batch).
+    expect(batchCallCount()).toBe(1);
+  });
+
+  // ── Behavior 2: Failover (first batch attempt 429, next key recovers) ─
+  test('failover: 429 on first key then success on second → recovers', async () => {
+    // Two physical keys so a 429 on the first triggers the next-key attempt.
+    seedKeys([
+      { provider: 'openai', apiKey: 'fk1', model: 'gpt-4o-mini' },
+      { provider: 'openai', apiKey: 'fk2', model: 'gpt-4o-mini' },
+    ]);
+
+    let batchAttempts = 0;
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      batchAttempts += 1;
+      // First batch attempt (first key) → rate limited; next key succeeds.
+      if (batchAttempts === 1) {
+        return { success: false, message: 'rate limited', statusCode: 429 };
+      }
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = [seg('Alpha', 0), seg('Bravo', 1000)];
+
+    const result = await translate(segments, 'en', TGT);
+
+    // Recovery is observed via success + the mocked translation being applied,
+    // NOT via hadFallback (a clean second-key success reports hadFallback=false;
+    // translateBatchWithFailover returns the winning key's own flag).
+    expect(result.success).toBe(true);
+    expect(result.translated).toEqual(['JA:Alpha', 'JA:Bravo']);
+    // Two batch attempts: the 429 on key #1, then the success on key #2.
+    expect(batchCallCount()).toBe(2);
+  });
+
+  // ── Behavior 3: Abort via already-aborted external signal ────────────
+  test('abort: already-aborted externalSignal resolves quickly without hanging', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'ak1', model: 'gpt-4o-mini' }]);
+
+    const ac = new AbortController();
+    ac.abort();
+
+    const segments = [seg('One', 0), seg('Two', 1000), seg('Three', 2000)];
+
+    // No real network (all mocked) and globalAbort is tripped immediately, so the
+    // batch loop breaks before any batch call. Must resolve, not hang.
+    const result = await translate(segments, 'en', TGT, null, null, ac.signal);
+
+    expect(result).toBeDefined();
+    // No batch ever succeeded → reported as failure; nothing translated.
+    expect(result.success).toBe(false);
+    expect(batchCallCount()).toBe(0);
+  });
+
+  // ── Behavior 4: Empty / invalid input guard ──────────────────────────
+  test('empty input returns {translated:[], hadFallback:false} with no chat calls', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'k1', model: 'gpt-4o-mini' }]);
+
+    const result = await translate([], 'en', TGT);
+
+    expect(result).toEqual({ translated: [], hadFallback: false });
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  test('all-invalid segments (missing text / non-numeric startMs) hit the same guard', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'k1', model: 'gpt-4o-mini' }]);
+
+    const segments = [
+      { startMs: 0 }, // missing text
+      { text: 'no timestamp' }, // missing/invalid startMs
+      { text: '', startMs: 1000 }, // empty text
+    ];
+
+    const result = await translate(segments, 'en', TGT);
+
+    // The top-of-translate() filter strips all of these, then the empty guard fires.
+    expect(result).toEqual({ translated: [], hadFallback: false });
+    expect(chat).not.toHaveBeenCalled();
+  });
+});

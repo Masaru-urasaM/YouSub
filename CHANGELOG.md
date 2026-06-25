@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 75b — `translate()` Characterization Harness (2026-06-25)
+
+Adds a behavior-pinning safety net for the translation orchestration, as the gate for the upcoming `tryKeyForBatch` decomposition (developer chose to proceed with the full refactor). Pure value regardless — advances the Decision-12-deferred translator coverage.
+
+**Added — `tests/unit/translator-translate.test.js` (5 tests)**
+- Drives the exported `translate()` end-to-end by mocking the `providers.js` **module** (`Providers.chat`/`chatStream`) — not `fetch` — and seeding `chrome.storage.local` with a config. Pins observable behavior (not line execution):
+  - **Happy path**: N segments → same-length, in-order translated output, one batch call.
+  - **Failover**: batch call #1 returns HTTP 429 → next attempt/key recovers; translation still completes.
+  - **Abort**: an already-aborted `externalSignal` resolves fast with no batch calls.
+  - **Input guards**: `[]` and all-invalid-segment inputs return `{ translated: [], hadFallback: false }` with zero provider calls.
+- Mocks `merge-fixer.js` to a 1:1 pass-through and uses a `ja` target to keep the foreign-script/untranslated cascades out of scope for these baseline tests.
+
+**Coverage**: `translator.js` **24% → 48.5%** lines. **Tests**: 424 → **429** (all green); gate exit 0.
+
+**Honest scope note**: this pins the *common* paths (JSON-success, 429-failover, abort, guards) but not yet the 5xx-transient retry loop, the non-JSON text-parser fallback, 413/recursive-split, the parse/quality thresholds, or the real MergeFixer contract. The decomposition (75c) extends this and treats uncovered branches as verbatim-move-only.
+
 ### Phase 75a — Unify the Health-Score Formula (2026-06-24)
 
 First slice of the [EPIC] Phase 75 translator refactor — the safe, behavior-preserving part.
