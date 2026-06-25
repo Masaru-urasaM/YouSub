@@ -313,6 +313,34 @@ describe('chat() — provider resolution and error handling', () => {
     expect(res.model).toBe('gpt-4o-mini');
   });
 
+  test('default timeout message reflects the real default abort window (15s)', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      throw err;
+    });
+
+    const res = await Providers.chat('openai', 'gpt-4o-mini', 'sk-abc', 'Q');
+
+    expect(res.success).toBe(false);
+    expect(res.message).toBe('Request timed out (15s)');
+  });
+
+  test('default timeout message derives from a caller-supplied timeoutMs', async () => {
+    globalThis.fetch = jest.fn(async () => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      throw err;
+    });
+
+    const res = await Providers.chat('openai', 'gpt-4o-mini', 'sk-abc', 'Q', {
+      timeoutMs: 90000,
+    });
+
+    expect(res.success).toBe(false);
+    expect(res.message).toBe('Request timed out (90s)');
+  });
+
   test('maps a generic fetch rejection to a network error message', async () => {
     globalThis.fetch = jest.fn(async () => {
       throw new Error('socket hang up');

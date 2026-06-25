@@ -333,8 +333,11 @@ export const Providers = {
 
     const endpoint = providerObj.endpoint;
     const style = providerObj.apiStyle;
-    const timeoutMsg = options.timeoutMsg || 'Request timed out (30s)';
     const timeoutMs = options.timeoutMs || 15000;
+    // Derive the default timeout message from the actual timeoutMs so it always
+    // matches the real abort window (DEFERRED D3: the old literal read "30s" while
+    // the default is 15s). A caller-supplied timeoutMsg still takes precedence.
+    const timeoutMsg = options.timeoutMsg || `Request timed out (${Math.round(timeoutMs / 1000)}s)`;
 
     try {
       const controller = new AbortController();

@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D3 resolved (2026-06-25)
+
+**Fixed**
+
+- `src/background/providers.js` — the default `Providers.chat()` timeout message now derives from the actual `timeoutMs` (`` `Request timed out (${Math.round(timeoutMs / 1000)}s)` ``) instead of a hardcoded "30s". The default `timeoutMs` is 15000, so the old literal misreported every default abort as "(30s)"; the message now reads "(15s)" by default and reflects any caller-supplied `timeoutMs`. A caller-supplied `timeoutMsg` still takes precedence. Only the `chat()` 336–337 mismatch was touched — the genuine 30s defaults on the `fetchQuota()` path (lines 33/172) are unrelated and left alone.
+
+**Added**
+
+- `tests/unit/providers.test.js` — 2 tests pinning the derived message: default abort → "Request timed out (15s)", and a caller-supplied `timeoutMs: 90000` → "Request timed out (90s)". The existing custom-`timeoutMsg` and `/timed out/i` tests still pass unchanged.
+
+**Tests**: 456 → **458** (+2). Full suite 458/458 green; coverage gate passes.
+
+**Left deferred (out of scope)**: the two harmless dead-defensive branches noted alongside D3 (`chat()` "Unknown API style" return, `fetchQuota()` trailing `return null`) — defense-in-depth, reachable only on a corrupted provider registry.
+
 ### DEFERRED Backlog — D1 + D2 resolved (2026-06-25)
 
 Closing out the post-Milestone-7 deferred backlog (see `DEFERRED.md`). This entry covers **D1** (code + test) and **D2** (doc-only — re-confirmed already resolved in Phase 76).
