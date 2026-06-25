@@ -182,6 +182,9 @@ function verifyZip(outputPath, platform) {
       if (platform === 'firefox' && m.background && m.background.service_worker) {
         errors.push('Firefox ZIP still contains background.service_worker');
       }
+      if (platform === 'firefox' && !(m.background && m.background.scripts)) {
+        errors.push('Firefox ZIP missing background.scripts (Firefox MV3 requires it)');
+      }
     } catch (e) {
       errors.push(`manifest.json is invalid JSON: ${e.message}`);
     }
@@ -227,6 +230,10 @@ function buildForPlatform(platform, manifest, constantsTransform) {
       delete m.background.scripts;
     }
     if (platform === 'firefox') {
+      // Firefox MV3 uses background.scripts (non-persistent event page);
+      // service_worker is Chrome-only. Source manifest ships service_worker
+      // (Chrome-clean, no dev-load warning), so derive scripts here.
+      m.background.scripts = [m.background.service_worker];
       delete m.background.service_worker;
     }
     return JSON.stringify(m, null, 2) + '\n';

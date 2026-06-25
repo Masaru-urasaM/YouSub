@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### [Hotfix] Chrome dev-load warning `'background.scripts' requires manifest version of 2 or lower` (2026-06-25)
+
+**Problem**: Loading the project root unpacked in Chrome (the daily dev workflow) showed a warning on `chrome://extensions`. The source `manifest.json` carried **both** `background.service_worker` (Chrome MV3) and `background.scripts` (Firefox MV3) for cross-browser support; Chrome warns on the Firefox-only `scripts` key. Non-fatal (Chrome still loads via `service_worker`), but noise. The shipped ZIPs were already clean — the build strips the foreign key per platform.
+
+**Changed**
+
+- `manifest.json` — removed the Firefox-only `"scripts": ["src/background/service-worker.js"]` line from `background`; the source manifest is now Chrome-clean (`service_worker` + `type: module` only) → no `chrome://extensions` warning on dev-load.
+- `scripts/package.js` — the Firefox build transform now **injects** `background.scripts` (derived from the `service_worker` path) before deleting `service_worker`, instead of relying on it being present in source. The Chrome transform is unchanged (its `delete m.background.scripts` is now a defensive no-op). Firefox ZIP output is functionally identical (key order differs only).
+- `scripts/package.js` — hardened `verifyZip`: the Firefox ZIP is now asserted to **contain** `background.scripts` (catches a regression in the new transform).
+
+**Decision rationale**: Developer confirmed YouSub is only ever tested/released on **Chrome** (never Firefox), so making the source manifest Chrome-clean has no downside. (Tradeoff noted: this would break Firefox dev-from-source, which Firefox stable can't run with `service_worker`-only — but that workflow does not exist here. The Firefox **ZIP** build remains correct for any future Firefox release.)
+
+**Verification**: `node scripts/package.js all` → both `[VERIFY OK]` (Chrome ZIP `{service_worker, type}`, Firefox ZIP `{scripts, type}`, source `{service_worker, type}`); full suite **468/468 passed**. **Manual**: developer reloads the source-unpacked extension in Chrome to confirm the warning is gone (the native "Load unpacked" dialog / privileged `chrome://extensions` page can't be driven by automation).
+
 ### DEFERRED Backlog — D4 resolved: scrub résumé + junk from git history (2026-06-25)
 
 **Security / hygiene (developer-approved, destructive history rewrite)**
