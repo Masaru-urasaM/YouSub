@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-74 done.
+> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-75 done.
 
 ---
 
@@ -82,7 +82,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **72** | **AI-governance consolidation (retire GEMINI.md, CLAUDE.md canonical)** | DONE (2026-06-24) | M7 |
 | **73** | **Repo hygiene cleanup** | DONE (2026-06-24) | M7 |
 | **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
-| **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | IN PROGRESS (75a done) | M7 |
+| **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | DONE (2026-06-25) | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | TODO | M7 |
 | **77** | **Transcript-button locale resilience (+ optional Japanese UI i18n)** | TODO | M7 |
 
@@ -189,12 +189,14 @@ Split into reviewable sub-phases (Rule 5):
 - **Verify**: manifest valid JSON + build VERIFY OK; `privacy-policy.md` present and consistent with the declared data flow.
 
 ### Phase 75 — [EPIC] Refactor `translator.js` (behavior-preserving)
-**Status**: TODO · **Risk**: **High** · **Group**: refactor · **Depends**: 68, 69
-- **Only after the suite is solid (68 + 69).** Split at execution.
-- Extract post-processing (merge-fix / sanitize / untranslated-detect) into testable modules; separate the concerns bundled in `tryKeyForBatch` (~255 lines).
-- Remove dead code: `getFirstAvailableKey`, `allFailuresMap`; unify the divergent health-score formula (`api-manager` inline vs `HealthManager.getScore`).
-- **Gate**: full suite green before AND after; behavior must be identical.
-- **Verify**: tests green + compare real translation output on a sample video.
+**Status**: DONE (2026-06-25) · **Risk**: High · **Group**: refactor · **Depends**: 68, 69
+Split into reviewable sub-phases:
+- **75a (DONE)** — Unified the divergent health-score formula. Found `HealthManager.getScore` is dead-in-prod (only tests call it); the live formula is api-manager's inline one (10s cap). Added `HealthManager.computeScore(entry)` as the single source of truth (live 10s formula), wired both call sites to it, + 4 pinning tests. Behavior-preserving (prod key-ordering unchanged). See Decision-supporting note in CHANGELOG.
+- **75b (DONE)** — Built `tests/unit/translator-translate.test.js`, a characterization harness for the exported `translate()` (mocks the `providers.js` module, not fetch): pins happy-path, 429-failover, abort, and input guards. `translator.js` coverage 24% → 48.5%.
+- **75c (DONE)** — Deduplicated `tryKeyForBatch`: the two near-identical ~95-line post-success pipelines (JSON-parse path + text-parse path) were extracted **verbatim** into one `finalizeSuccessfulBatch(...)` helper. Net −96 lines, no logic change. Gated by the 75b harness + full suite (429/429) + manual review.
+- **Dead code** (`getFirstAvailableKey`, `allFailuresMap`) was already removed in Phase 67b.
+- **Deferred (DEFERRED D6)**: further splitting of the (non-duplicated) retry loop / text-parser inside `tryKeyForBatch` — lower value, needs the harness extended to the 5xx/text/413/threshold branches first; not worth the shipped-core risk purely for cleanliness now.
+- **Verify**: full suite 429/429 green before & after each step; lint + prettier clean. (Browser re-check on a sample video recommended before the next release, since the harness doesn't cover the sanitize/untranslated cascades.)
 
 ### Phase 76 — [EPIC] UI/UX polish + accessibility
 **Status**: TODO · **Risk**: Med · **Group**: ux · **Depends**: 71

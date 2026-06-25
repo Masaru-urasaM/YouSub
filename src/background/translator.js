@@ -1038,6 +1038,118 @@ function parseJsonResponse(responseText, segments) {
   return { lines: result, validCount, hadMismatch: rawLines.length !== expected || hadReorder };
 }
 
+// Phase 75c: shared post-success pipeline (merge-fix -> sanitize -> untranslated
+// verify -> final sanitize). Extracted verbatim from the two identical blocks
+// that followed a successful JSON parse and a successful text parse in
+// tryKeyForBatch — behavior-preserving dedup. Callers report health and pass the
+// parsed lines + their own hadFallback signal.
+async function finalizeSuccessfulBatch(
+  rawLines,
+  segments,
+  key,
+  tabId,
+  options,
+  hadFallback,
+  result
+) {
+  let fixedLines;
+  if (options._skipMergeFix) {
+    fixedLines = rawLines;
+  } else {
+    const fixResult = await MergeFixer.fix(
+      segments,
+      rawLines,
+      options.src || 'auto',
+      options.tgt || 'vi'
+    );
+    fixedLines = fixResult.lines;
+    const pendingCount = fixResult.pendingIndices.length;
+    if (pendingCount > 0) {
+      Logger.info(
+        'Translator',
+        `[MERGE_FIX] Shift detected: ${pendingCount} lines pending re-translation (${key.provider})`
+      );
+      sendDebugLog(
+        tabId,
+        `MergeFixer: ${pendingCount} shifted lines, re-translating...`,
+        '#f59e0b'
+      );
+      fixedLines = await retranslateShiftedLines(
+        segments,
+        fixedLines,
+        fixResult.pendingIndices,
+        key,
+        tabId,
+        options
+      );
+      sendDebugLog(
+        tabId,
+        `MergeFixer: Re-translation done (${pendingCount} lines filled)`,
+        '#10b981'
+      );
+    } else {
+      Logger.trace(
+        'Translator',
+        `[MERGE_FIX] Clean batch - no merges (${segments.length} lines, ${key.provider})`
+      );
+    }
+
+    const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
+    if (contaminated.length > 0) {
+      Logger.info(
+        'Translator',
+        `[SANITIZE] Foreign script in ${contaminated.length} lines, re-translating (${key.provider})`
+      );
+      sendDebugLog(
+        tabId,
+        `Foreign script: ${contaminated.length} contaminated lines, re-translating...`,
+        '#f59e0b'
+      );
+      fixedLines = await retranslateShiftedLines(
+        segments,
+        fixedLines,
+        contaminated,
+        key,
+        tabId,
+        options
+      );
+      sendDebugLog(tabId, `Foreign script: Re-translation done`, '#10b981');
+    }
+
+    const untranslated = detectUntranslatedLines(fixedLines, segments, options.tgt || 'vi');
+    if (untranslated.length > 0) {
+      Logger.info(
+        'Translator',
+        `[UNTRANSLATED] ${untranslated.length} lines may be untranslated, verifying (${key.provider})`
+      );
+      sendDebugLog(
+        tabId,
+        `Untranslated: ${untranslated.length} lines, verifying with LLM...`,
+        '#f59e0b'
+      );
+      fixedLines = await retranslateWithVerification(
+        segments,
+        fixedLines,
+        untranslated,
+        key,
+        tabId,
+        options
+      );
+      sendDebugLog(tabId, `Untranslated: Verification done`, '#10b981');
+    }
+  }
+  const finalLines = options._skipSanitize
+    ? fixedLines
+    : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
+  return {
+    status: 'success',
+    translated: finalLines,
+    hadFallback,
+    hadRateLimit: false,
+    stats: { usage: result.usage, model: result.model },
+  };
+}
+
 // Phase 57: Try a single API key for a batch. Returns structured status.
 async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, options = {}) {
   const { signal, onChunk, isLastKey = false } = options;
@@ -1154,106 +1266,15 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
           const threshold = Math.max(1, Math.floor(segments.length * 0.1));
           if (jsonResult.validCount >= threshold || isLastKey) {
             HealthManager.report(key.provider, key.apiKey, true, duration);
-            let fixedLines;
-            if (options._skipMergeFix) {
-              fixedLines = jsonResult.lines;
-            } else {
-              const fixResult = await MergeFixer.fix(
-                segments,
-                jsonResult.lines,
-                options.src || 'auto',
-                options.tgt || 'vi'
-              );
-              fixedLines = fixResult.lines;
-              const pendingCount = fixResult.pendingIndices.length;
-              if (pendingCount > 0) {
-                Logger.info(
-                  'Translator',
-                  `[MERGE_FIX] Shift detected: ${pendingCount} lines pending re-translation (${key.provider})`
-                );
-                sendDebugLog(
-                  tabId,
-                  `MergeFixer: ${pendingCount} shifted lines, re-translating...`,
-                  '#f59e0b'
-                );
-                fixedLines = await retranslateShiftedLines(
-                  segments,
-                  fixedLines,
-                  fixResult.pendingIndices,
-                  key,
-                  tabId,
-                  options
-                );
-                sendDebugLog(
-                  tabId,
-                  `MergeFixer: Re-translation done (${pendingCount} lines filled)`,
-                  '#10b981'
-                );
-              } else {
-                Logger.trace(
-                  'Translator',
-                  `[MERGE_FIX] Clean batch - no merges (${segments.length} lines, ${key.provider})`
-                );
-              }
-
-              const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
-              if (contaminated.length > 0) {
-                Logger.info(
-                  'Translator',
-                  `[SANITIZE] Foreign script in ${contaminated.length} lines, re-translating (${key.provider})`
-                );
-                sendDebugLog(
-                  tabId,
-                  `Foreign script: ${contaminated.length} contaminated lines, re-translating...`,
-                  '#f59e0b'
-                );
-                fixedLines = await retranslateShiftedLines(
-                  segments,
-                  fixedLines,
-                  contaminated,
-                  key,
-                  tabId,
-                  options
-                );
-                sendDebugLog(tabId, `Foreign script: Re-translation done`, '#10b981');
-              }
-
-              const untranslated = detectUntranslatedLines(
-                fixedLines,
-                segments,
-                options.tgt || 'vi'
-              );
-              if (untranslated.length > 0) {
-                Logger.info(
-                  'Translator',
-                  `[UNTRANSLATED] ${untranslated.length} lines may be untranslated, verifying (${key.provider})`
-                );
-                sendDebugLog(
-                  tabId,
-                  `Untranslated: ${untranslated.length} lines, verifying with LLM...`,
-                  '#f59e0b'
-                );
-                fixedLines = await retranslateWithVerification(
-                  segments,
-                  fixedLines,
-                  untranslated,
-                  key,
-                  tabId,
-                  options
-                );
-                sendDebugLog(tabId, `Untranslated: Verification done`, '#10b981');
-              }
-            }
-            const finalLines = options._skipSanitize
-              ? fixedLines
-              : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
-            return {
-              status: 'success',
-              translated: finalLines,
-              hadFallback: jsonResult.hadMismatch || jsonResult.validCount < segments.length,
-              hadRateLimit: false,
-              stats: { usage: result.usage, model: result.model },
-            };
+            return await finalizeSuccessfulBatch(
+              jsonResult.lines,
+              segments,
+              key,
+              tabId,
+              options,
+              jsonResult.hadMismatch || jsonResult.validCount < segments.length,
+              result
+            );
           }
           Logger.warn(
             'Translator',
@@ -1329,102 +1350,15 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
 
       if (validLinesCount >= threshold || isLastKey) {
         HealthManager.report(key.provider, key.apiKey, true, duration);
-        let fixedLines;
-        if (options._skipMergeFix) {
-          fixedLines = resultLines;
-        } else {
-          const fixResult = await MergeFixer.fix(
-            segments,
-            resultLines,
-            options.src || 'auto',
-            options.tgt || 'vi'
-          );
-          fixedLines = fixResult.lines;
-          const pendingCount = fixResult.pendingIndices.length;
-          if (pendingCount > 0) {
-            Logger.info(
-              'Translator',
-              `[MERGE_FIX] Shift detected: ${pendingCount} lines pending re-translation (${key.provider})`
-            );
-            sendDebugLog(
-              tabId,
-              `MergeFixer: ${pendingCount} shifted lines, re-translating...`,
-              '#f59e0b'
-            );
-            fixedLines = await retranslateShiftedLines(
-              segments,
-              fixedLines,
-              fixResult.pendingIndices,
-              key,
-              tabId,
-              options
-            );
-            sendDebugLog(
-              tabId,
-              `MergeFixer: Re-translation done (${pendingCount} lines filled)`,
-              '#10b981'
-            );
-          } else {
-            Logger.trace(
-              'Translator',
-              `[MERGE_FIX] Clean batch - no merges (${segments.length} lines, ${key.provider})`
-            );
-          }
-
-          const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
-          if (contaminated.length > 0) {
-            Logger.info(
-              'Translator',
-              `[SANITIZE] Foreign script in ${contaminated.length} lines, re-translating (${key.provider})`
-            );
-            sendDebugLog(
-              tabId,
-              `Foreign script: ${contaminated.length} contaminated lines, re-translating...`,
-              '#f59e0b'
-            );
-            fixedLines = await retranslateShiftedLines(
-              segments,
-              fixedLines,
-              contaminated,
-              key,
-              tabId,
-              options
-            );
-            sendDebugLog(tabId, `Foreign script: Re-translation done`, '#10b981');
-          }
-
-          const untranslated = detectUntranslatedLines(fixedLines, segments, options.tgt || 'vi');
-          if (untranslated.length > 0) {
-            Logger.info(
-              'Translator',
-              `[UNTRANSLATED] ${untranslated.length} lines may be untranslated, verifying (${key.provider})`
-            );
-            sendDebugLog(
-              tabId,
-              `Untranslated: ${untranslated.length} lines, verifying with LLM...`,
-              '#f59e0b'
-            );
-            fixedLines = await retranslateWithVerification(
-              segments,
-              fixedLines,
-              untranslated,
-              key,
-              tabId,
-              options
-            );
-            sendDebugLog(tabId, `Untranslated: Verification done`, '#10b981');
-          }
-        }
-        const finalLines = options._skipSanitize
-          ? fixedLines
-          : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
-        return {
-          status: 'success',
-          translated: finalLines,
-          hadFallback: validLinesCount < segments.length,
-          hadRateLimit: false,
-          stats: { usage: result.usage, model: result.model },
-        };
+        return await finalizeSuccessfulBatch(
+          resultLines,
+          segments,
+          key,
+          tabId,
+          options,
+          validLinesCount < segments.length,
+          result
+        );
       } else {
         Logger.warn(
           'Translator',

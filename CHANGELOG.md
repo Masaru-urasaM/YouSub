@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 75c — Deduplicate `tryKeyForBatch` Post-Success Pipeline (2026-06-25)
+
+The behavior-preserving decomposition (developer-approved go), gated by the Phase 75b harness + full suite + manual review.
+
+**Changed — `src/background/translator.js`**
+- `tryKeyForBatch` had **two near-identical ~95-line blocks** running the post-success pipeline (`MergeFixer.fix` → shifted-line re-translation → foreign-script sanitize → untranslated verification → final sanitize → build the success result) — one after a successful JSON parse, one after a successful text parse. They differed only in the input lines (`jsonResult.lines` vs `resultLines`) and the `hadFallback` signal.
+- Extracted that pipeline **verbatim** into a single `finalizeSuccessfulBatch(rawLines, segments, key, tabId, options, hadFallback, result)` helper; both call sites now `report(true)` then `return await finalizeSuccessfulBatch(...)`. Net **−96 lines**, removes the duplication, no logic change.
+
+**Why behavior-preserving**: the two blocks were byte-for-byte identical except the two parameterized values (verified by reading both); the helper is the same code with those two values passed in. The error branches (`parse_fail`/`quality_fail`/`413`/`429`/`error`/`exception`), the retry loop, and the JSON→text fallthrough are untouched.
+
+**Verify**: full suite **429/429** green (incl. the 75b `translate()` harness: happy path, 429-failover, abort, input guards) + coverage gate exit 0; `npm run lint` 0; `prettier` clean. `translator.js` coverage 48.5% → **50.6%** (the shared helper is now hit by both paths).
+
+**Scope note**: this completes Phase 75's headline win (de-duplication + the 75a health-score unify). Further structural splitting of `tryKeyForBatch` (extracting the retry loop / the text-timestamp parser into their own functions) is **lower-value, non-duplicated code on the shipped engine** and is left as optional future work (DEFERRED D6) rather than spent against the Phase 76/77 + deploy budget.
+
 ### Phase 75b — `translate()` Characterization Harness (2026-06-25)
 
 Adds a behavior-pinning safety net for the translation orchestration, as the gate for the upcoming `tryKeyForBatch` decomposition (developer chose to proceed with the full refactor). Pure value regardless — advances the Decision-12-deferred translator coverage.
