@@ -1,9 +1,53 @@
 import { jest } from '@jest/globals';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+/**
+ * Load the English locale catalog so chrome.i18n.getMessage returns real text
+ * in jsdom. Wrapped in try/catch: a path mistake degrades to an empty catalog
+ * (key-fallback) instead of wiping out every test suite at setup time.
+ */
+let I18N_MESSAGES = {};
+try {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const localePath = path.resolve(__dirname, '../../_locales/en/messages.json');
+  I18N_MESSAGES = JSON.parse(fs.readFileSync(localePath, 'utf8'));
+} catch {
+  I18N_MESSAGES = {};
+}
 
 /**
  * Mock Chrome Extension APIs for Jest tests.
  */
 global.chrome = {
+  i18n: {
+    // Mirrors browser.i18n.getMessage: returns the catalog entry's `message`
+    // (with $N$ / $1 substitutions applied) or the key itself when missing.
+    getMessage: jest.fn((key, substitutions) => {
+      const entry = I18N_MESSAGES[key];
+      if (!entry || typeof entry.message !== 'string') return '';
+      let msg = entry.message;
+      const subs = Array.isArray(substitutions)
+        ? substitutions
+        : substitutions !== undefined
+          ? [substitutions]
+          : [];
+      // Named placeholders: $NAME$ -> resolves via `placeholders` -> $1..$9
+      if (entry.placeholders) {
+        Object.keys(entry.placeholders).forEach((name) => {
+          const content = entry.placeholders[name].content || '';
+          const idxMatch = content.match(/^\$(\d+)$/);
+          const value = idxMatch ? (subs[Number(idxMatch[1]) - 1] ?? '') : content;
+          msg = msg.replace(new RegExp(`\\$${name}\\$`, 'gi'), value);
+        });
+      }
+      // Positional placeholders: $1..$9
+      msg = msg.replace(/\$(\d)/g, (_m, d) => subs[Number(d) - 1] ?? '');
+      return msg;
+    }),
+    getUILanguage: jest.fn(() => 'en'),
+  },
   // ... existing chrome mock ...
   storage: {
     session: {

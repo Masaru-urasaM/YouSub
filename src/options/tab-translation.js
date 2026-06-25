@@ -1,4 +1,16 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
+import { applyI18n } from '../shared/i18n.js';
+
+// Localized message helper with graceful fallback to the provided default.
+function i18n(key, fallback) {
+  try {
+    const msg = browser.i18n && browser.i18n.getMessage(key);
+    if (msg) return msg;
+  } catch {
+    /* i18n unavailable */
+  }
+  return fallback;
+}
 
 let apiKeys = [];
 let failoverEnabled = true;
@@ -226,26 +238,32 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   const connectOllamaBtn = clone.querySelector('.connect-ollama-btn');
   const fetchOllamaBtn = clone.querySelector('.fetch-ollama-models-btn');
 
+  // Localize the row's static labels/placeholders/titles before any dynamic
+  // JS textContent assignments below (those take precedence where present).
+  applyI18n(clone);
+
   const isPrimary = index === 0;
   rowDev.setAttribute('data-index', index);
-  title.textContent = isPrimary ? 'Primary Key:' : `Backup Key ${index}:`;
+  title.textContent = isPrimary
+    ? i18n('optionsRowPrimaryKey', 'Primary Key:')
+    : i18n('optionsRowBackupKey', `Backup Key ${index}:`).replace('{index}', index);
 
   if (keyData.disabled) {
     rowDev.style.opacity = '0.5';
-    disableBtn.textContent = 'Enable';
+    disableBtn.textContent = i18n('optionsRowEnable', 'Enable');
   } else {
     rowDev.style.opacity = '1';
-    disableBtn.textContent = 'Disable';
+    disableBtn.textContent = i18n('optionsRowDisable', 'Disable');
   }
 
   disableBtn.addEventListener('click', () => {
     keyData.disabled = !keyData.disabled;
     if (keyData.disabled) {
       rowDev.style.opacity = '0.5';
-      disableBtn.textContent = 'Enable';
+      disableBtn.textContent = i18n('optionsRowEnable', 'Enable');
     } else {
       rowDev.style.opacity = '1';
-      disableBtn.textContent = 'Disable';
+      disableBtn.textContent = i18n('optionsRowDisable', 'Disable');
     }
     debouncedSave();
   });
@@ -518,10 +536,10 @@ function renderSingleRow(keyData, index, healthStats = {}) {
   visibilityBtn.addEventListener('click', () => {
     if (apiKeyInput.type === 'password') {
       apiKeyInput.type = 'text';
-      visibilityBtn.textContent = 'Hide';
+      visibilityBtn.textContent = i18n('optionsRowHide', 'Hide');
     } else {
       apiKeyInput.type = 'password';
-      visibilityBtn.textContent = 'Show';
+      visibilityBtn.textContent = i18n('optionsRowShow', 'Show');
     }
   });
 
@@ -613,7 +631,7 @@ function renderSingleRow(keyData, index, healthStats = {}) {
     statusText.textContent = keyData.statusMessage ? `Failed: ${keyData.statusMessage}` : 'Failed';
   } else {
     statusText.classList.add('untested');
-    statusText.textContent = '-- Not tested --';
+    statusText.textContent = i18n('optionsRowNotTested', '-- Not tested --');
   }
 
   // Set initial classes for real-time updates
@@ -652,7 +670,7 @@ function updateRealtimeStatuses() {
             : 'Failed';
         } else {
           statusText.classList.add('untested');
-          statusText.textContent = '-- Not tested --';
+          statusText.textContent = i18n('optionsRowNotTested', '-- Not tested --');
         }
       }
 

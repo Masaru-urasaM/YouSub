@@ -1,7 +1,19 @@
 import { Logger } from '../shared/logger.js';
 import { Constants } from '../shared/constants.js';
+import { applyI18n } from '../shared/i18n.js';
 import { initTranslationTab } from './tab-translation.js';
 import { initAppearanceTab } from './tab-appearance.js';
+
+// Localized message helper with graceful fallback to the provided default.
+function i18n(key, fallback) {
+  try {
+    const msg = browser.i18n && browser.i18n.getMessage(key);
+    if (msg) return msg;
+  } catch {
+    /* i18n unavailable */
+  }
+  return fallback;
+}
 
 // State
 let saveTimeout = null;
@@ -14,6 +26,8 @@ const resetBtn = document.getElementById('reset-btn');
 const exportLogsBtn = document.getElementById('export-logs-btn');
 
 function init() {
+  // Localize static markup first (graceful fallback keeps English if missing).
+  applyI18n(document);
   setVersionStrings();
   setupTabs();
 
@@ -65,13 +79,13 @@ function setupTabs() {
 }
 
 export function showSaveIndicator() {
-  saveStatus.textContent = 'Saved';
+  saveStatus.textContent = i18n('optionsSaved', 'Saved');
   saveStatus.classList.add('show-saved');
 
   if (saveTimeout) clearTimeout(saveTimeout);
 
   saveTimeout = setTimeout(() => {
-    saveStatus.textContent = 'All changes saved automatically.';
+    saveStatus.textContent = i18n('optionsSavedAuto', 'All changes saved automatically.');
     saveStatus.classList.remove('show-saved');
   }, 2000);
 }

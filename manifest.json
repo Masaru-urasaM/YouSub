@@ -3,6 +3,7 @@
   "name": "YouSub",
   "version": "0.2.2",
   "description": "Real-time subtitle translator for YouTube",
+  "default_locale": "en",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "*://*.youtube.com/*",

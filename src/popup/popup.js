@@ -1,7 +1,22 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { devLog, devWarn } from '../shared/constants.js';
+import { applyI18n } from '../shared/i18n.js';
+
+// Localized message helper with graceful fallback to the provided default.
+function i18n(key, fallback, substitutions) {
+  try {
+    const msg = browser.i18n && browser.i18n.getMessage(key, substitutions);
+    if (msg) return msg;
+  } catch {
+    /* i18n unavailable */
+  }
+  return fallback;
+}
 
 document.addEventListener('DOMContentLoaded', function () {
+  // Localize static markup first (graceful fallback keeps English if missing).
+  applyI18n(document);
+
   const getSubBtn = document.getElementById('get-sub-btn');
   const clearPageCacheBtn = document.getElementById('clear-page-cache-btn');
   const openDebugBtn = document.getElementById('open-debug-btn');
@@ -109,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     const langObj = YOUSUB_PROVIDERS.languages.find((l) => l.code === currentLang);
     const langName = langObj ? langObj.name.toUpperCase() : currentLang.toUpperCase();
-    getSubBtn.textContent = `Translate to ${langName}`;
+    getSubBtn.textContent = i18n('popupTranslateTo', `Translate to ${langName}`, [langName]);
   }
 
   async function getCurrentVideoId() {
@@ -136,19 +151,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (!hasKeys) {
       healthStatus.className = 'health-indicator health-error';
-      healthText.textContent = 'API Not Configured';
+      healthText.textContent = i18n('popupHealthApiNotConfigured', 'API Not Configured');
       return;
     }
 
     if (allDisabled) {
       healthStatus.className = 'health-indicator health-error';
-      healthText.textContent = 'All API Keys Disabled';
+      healthText.textContent = i18n('popupHealthAllKeysDisabled', 'All API Keys Disabled');
       return;
     }
 
     // Default state: Checking
     healthStatus.className = 'health-indicator health-warning';
-    healthText.textContent = 'Checking APIs...';
+    healthText.textContent = i18n('popupHealthChecking', 'Checking APIs...');
 
     // Fetch real-time health from background
     browser.runtime
@@ -162,23 +177,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
           if (healthy.length > 0) {
             healthStatus.className = 'health-indicator';
+            const onlineLabel = i18n('popupHealthOnlineSuffix', 'Online');
             const names = healthy.map((s) => {
               const p = YOUSUB_PROVIDERS.getProvider(s.provider);
               const m = p
                 ? p.models.find((m) => m.id === s.model) || { name: s.model }
                 : { name: s.model };
-              return `${m.name} (Online)`;
+              return `${m.name} (${onlineLabel})`;
             });
             healthText.innerHTML = names.join('<br>');
           } else if (poor.length > 0) {
             healthStatus.className = 'health-indicator health-warning';
-            healthText.textContent = 'Service Degradation (Poor Latency)';
+            healthText.textContent = i18n(
+              'popupHealthDegradation',
+              'Service Degradation (Poor Latency)'
+            );
           } else if (broken.length > 0) {
             healthStatus.className = 'health-indicator health-error';
-            healthText.textContent = 'API Error (Circuit Open)';
+            healthText.textContent = i18n('popupHealthCircuitOpen', 'API Error (Circuit Open)');
           } else {
             healthStatus.className = 'health-indicator health-warning';
-            healthText.textContent = 'Checking APIs...';
+            healthText.textContent = i18n('popupHealthChecking', 'Checking APIs...');
           }
         }
       })
@@ -215,46 +234,50 @@ document.addEventListener('DOMContentLoaded', function () {
     const videoId = await getCurrentVideoId();
     if (!videoId) return;
 
-    showConfirmModal('Clear Cache', 'Delete translation cache for this video?', () => {
-      clearPageCacheBtn.disabled = true;
-      clearPageCacheBtn.textContent = 'Clearing...';
+    showConfirmModal(
+      i18n('popupClearCacheConfirmTitle', 'Clear Cache'),
+      i18n('popupClearCacheConfirmMessage', 'Delete translation cache for this video?'),
+      () => {
+        clearPageCacheBtn.disabled = true;
+        clearPageCacheBtn.textContent = i18n('popupClearing', 'Clearing...');
 
-      browser.runtime
-        .sendMessage({
-          type: 'YOUSUB_CLEAR_VIDEO_CACHE',
-          videoId,
-        })
-        .then((res) => {
-          if (res.success) {
-            clearPageCacheBtn.textContent = 'Cache Cleared!';
+        browser.runtime
+          .sendMessage({
+            type: 'YOUSUB_CLEAR_VIDEO_CACHE',
+            videoId,
+          })
+          .then((res) => {
+            if (res.success) {
+              clearPageCacheBtn.textContent = i18n('popupCacheCleared', 'Cache Cleared!');
 
-            // Hide stats when cache is cleared
-            const statsContainer = document.getElementById('execution-stats');
-            if (statsContainer) statsContainer.classList.add('hidden');
-            browser.storage.local.remove(`yousub_stats_${videoId}`);
+              // Hide stats when cache is cleared
+              const statsContainer = document.getElementById('execution-stats');
+              if (statsContainer) statsContainer.classList.add('hidden');
+              browser.storage.local.remove(`yousub_stats_${videoId}`);
 
-            setTimeout(() => {
-              clearPageCacheBtn.disabled = false;
-              clearPageCacheBtn.textContent = 'Clear Page Cache';
-            }, 2000);
+              setTimeout(() => {
+                clearPageCacheBtn.disabled = false;
+                clearPageCacheBtn.textContent = i18n('popupClearPageCache', 'Clear Page Cache');
+              }, 2000);
 
-            // Disable translation if it was active, as cache is gone
-            getSubBtn.classList.remove('active');
-            browser.storage.local.set({ yousub_translation_enabled: false });
-            sendMessageToActiveTab({
-              type: 'YOUSUB_TOGGLE_TRANSLATION',
-              enabled: false,
-              targetLang: currentLang,
-            });
-          } else {
-            clearPageCacheBtn.textContent = 'Error clearing';
-            setTimeout(() => {
-              clearPageCacheBtn.disabled = false;
-              clearPageCacheBtn.textContent = 'Clear Page Cache';
-            }, 2000);
-          }
-        });
-    });
+              // Disable translation if it was active, as cache is gone
+              getSubBtn.classList.remove('active');
+              browser.storage.local.set({ yousub_translation_enabled: false });
+              sendMessageToActiveTab({
+                type: 'YOUSUB_TOGGLE_TRANSLATION',
+                enabled: false,
+                targetLang: currentLang,
+              });
+            } else {
+              clearPageCacheBtn.textContent = i18n('popupErrorClearing', 'Error clearing');
+              setTimeout(() => {
+                clearPageCacheBtn.disabled = false;
+                clearPageCacheBtn.textContent = i18n('popupClearPageCache', 'Clear Page Cache');
+              }, 2000);
+            }
+          });
+      }
+    );
   });
 
   getSubBtn.addEventListener('click', function () {
@@ -382,17 +405,17 @@ document.addEventListener('DOMContentLoaded', function () {
       statsContainer.classList.remove('hidden');
 
       if (stats.source === 'cache') {
-        sourceBadge.textContent = 'Cache';
+        sourceBadge.textContent = i18n('popupStatsCache', 'Cache');
         sourceBadge.className = 'stats-badge cache';
-        modelName.textContent = 'Loaded from memory';
+        modelName.textContent = i18n('popupStatsLoadedFromMemory', 'Loaded from memory');
         requestsVal.textContent = '--';
         durationVal.textContent = '--';
         inputTokensVal.textContent = '--';
         outputTokensVal.textContent = '--';
       } else {
-        sourceBadge.textContent = 'API';
+        sourceBadge.textContent = i18n('popupStatsApi', 'API');
         sourceBadge.className = 'stats-badge';
-        modelName.textContent = stats.model || 'Unknown model';
+        modelName.textContent = stats.model || i18n('popupStatsUnknownModel', 'Unknown model');
 
         requestsVal.textContent = stats.batchCount || '0';
 

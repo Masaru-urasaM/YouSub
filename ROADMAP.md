@@ -3,7 +3,7 @@
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.0
 > **Last updated**: 2026-06-23
-> **Status**: Shipped v0.2.2. In **Milestone 7 — Professionalization & Hardening** (Phases 65-77); Phases 65-76 done.
+> **Status**: Shipped v0.2.2. **Milestone 7 — Professionalization & Hardening COMPLETE** (Phases 65-77 done). Pending: deploy + comprehensive test pass.
 
 ---
 
@@ -84,7 +84,7 @@ When you receive this, follow the `CLAUDE.md` workflow: Present -> Discuss -> Ch
 | **74** | **Privacy / store compliance** | DONE (2026-06-24) | M7 |
 | **75** | **[EPIC] Refactor `translator.js` + remove dead code (behavior-preserving)** | DONE (2026-06-25) | M7 |
 | **76** | **[EPIC] UI/UX polish + accessibility** | DONE (2026-06-25) — 76b CSS dedup → DEFERRED D7 | M7 |
-| **77** | **Transcript-button locale resilience + Japanese UI i18n** | IN PROGRESS (77a done) | M7 |
+| **77** | **Transcript-button locale resilience + Japanese UI i18n** | DONE (2026-06-25) — overlay i18n optional | M7 |
 
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started
 >
@@ -206,12 +206,10 @@ Split into reviewable sub-phases:
 - **Verify**: new `tests/unit/options-a11y.test.js` (6 tests) asserts the ARIA wiring; full suite **435/435** green; lint 0; `npm run package` VERIFY OK. (Manual/screen-reader pass still recommended before release.)
 
 ### Phase 77 — Transcript-button locale resilience + Japanese UI i18n
-**Status**: TODO · **Risk**: Med · **Group**: feature · **Depends**: 76
-- **Committed work (both confirmed by developer 2026-06-24)**:
-  1. Make transcript-button detection locale-resilient (`aria-label` containing "transcript" + a locale dictionary EN/VI/JA + `html[lang]`), so non-English YouTube uses the fast DOM-scrape path instead of the slow Innertube fallback.
-  2. Localize the UI to Japanese via `chrome.i18n`: extract all UI strings (popup + options + overlay status) into `_locales/en/messages.json` + `_locales/ja/messages.json`, set `default_locale` in the manifest, and wire `chrome.i18n.getMessage` (or a small helper) across the HTML/JS. (The global rule "English + Japanese" governs code/comments; this adds product-level JA localization on top.)
-- Likely an [EPIC] — split at execution (77a selector resilience, 77b i18n extraction/wiring) given the string-sweep scope.
-- **Verify**: non-English YouTube uses the fast path; UI renders correctly in both `en` and `ja`.
+**Status**: DONE (2026-06-25) · **Risk**: Med · **Group**: feature · **Depends**: 76
+- **77a (DONE)** — `main-world-extractor.js` `findTranscriptButton()` made locale-resilient: the aria-label/text fallbacks now match EN (case-insensitive substring) + JA (`文字起こし` / `文字起こしを表示`); the primary structural selectors (`ytd-…-transcript-section-renderer`) are already language-agnostic. Per the hard rule (code = English + Japanese only), the label list is EN + JA, not VI; other locales rely on the structural path.
+- **77b (DONE)** — Full Japanese UI i18n via the WebExtensions `i18n` API: `_locales/en/messages.json` + `_locales/ja/messages.json` (**98 keys each, identical set**, natural JA translations); `src/shared/i18n.js` `applyI18n()` helper (textContent + placeholder/aria-label/title; **graceful** — untagged/missing strings keep their hardcoded English, never blank); `data-i18n*` tags across popup + options (incl. the cloned API-key-row template); `manifest.json` `default_locale: "en"`; `scripts/package.js` packs `_locales` (verified in both ZIPs); `chrome.i18n` mock added. **Bug caught** (advisor): a `$INDEX$` token without a `placeholders` block would render blank in real Chrome → switched to a `{index}` token + tightened the parity test. **Surfaces**: popup + options done; overlay status strings skipped (optional — content-script i18n works but was out of scope); manifest name/description left literal ("YouSub" is a brand).
+- **Verify**: full suite **435 → 443** green; lint 0; `prettier --check` clean; `npm run package` VERIFY OK with `_locales/en` + `_locales/ja` in both ZIPs; en/ja key-parity test enforced.
 
 ---
 

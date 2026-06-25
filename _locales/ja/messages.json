@@ -1,0 +1,305 @@
+{
+  "extName": {
+    "message": "YouSub"
+  },
+  "extDescription": {
+    "message": "YouTube 用のリアルタイム字幕翻訳ツール"
+  },
+
+  "popupHealthChecking": {
+    "message": "APIを確認中..."
+  },
+  "popupClearCacheBtn": {
+    "message": "キャッシュを削除"
+  },
+  "popupDebugBtn": {
+    "message": "デバッグ"
+  },
+  "popupLoadingText": {
+    "message": "抽出中..."
+  },
+  "popupDualSubtitles": {
+    "message": "二言語字幕"
+  },
+  "popupStatsLastExecution": {
+    "message": "前回の実行"
+  },
+  "popupStatsRequests": {
+    "message": "リクエスト"
+  },
+  "popupStatsDuration": {
+    "message": "所要時間"
+  },
+  "popupStatsInput": {
+    "message": "入力"
+  },
+  "popupStatsOutput": {
+    "message": "出力"
+  },
+  "popupSettingsBtn": {
+    "message": "設定"
+  },
+  "popupModalConfirm": {
+    "message": "確認"
+  },
+  "popupModalAreYouSure": {
+    "message": "よろしいですか？"
+  },
+  "popupModalNo": {
+    "message": "いいえ"
+  },
+  "popupModalYes": {
+    "message": "はい"
+  },
+
+  "popupTranslateTo": {
+    "message": "$LANG$ に翻訳",
+    "placeholders": {
+      "lang": {
+        "content": "$1",
+        "example": "JAPANESE"
+      }
+    }
+  },
+  "popupHealthApiNotConfigured": {
+    "message": "APIが未設定です"
+  },
+  "popupHealthAllKeysDisabled": {
+    "message": "すべてのAPIキーが無効です"
+  },
+  "popupHealthDegradation": {
+    "message": "サービス低下（遅延が大きい）"
+  },
+  "popupHealthCircuitOpen": {
+    "message": "APIエラー（サーキットオープン）"
+  },
+  "popupHealthCacheMode": {
+    "message": "利用可能（キャッシュモード）"
+  },
+  "popupHealthOnlineSuffix": {
+    "message": "オンライン"
+  },
+  "popupClearCacheConfirmTitle": {
+    "message": "キャッシュを削除"
+  },
+  "popupClearCacheConfirmMessage": {
+    "message": "この動画の翻訳キャッシュを削除しますか？"
+  },
+  "popupClearing": {
+    "message": "削除中..."
+  },
+  "popupCacheCleared": {
+    "message": "キャッシュを削除しました！"
+  },
+  "popupClearPageCache": {
+    "message": "ページキャッシュを削除"
+  },
+  "popupErrorClearing": {
+    "message": "削除エラー"
+  },
+  "popupStatsCache": {
+    "message": "キャッシュ"
+  },
+  "popupStatsApi": {
+    "message": "API"
+  },
+  "popupStatsLoadedFromMemory": {
+    "message": "メモリから読み込み"
+  },
+  "popupStatsUnknownModel": {
+    "message": "不明なモデル"
+  },
+
+  "optionsTitle": {
+    "message": "YouSub 設定"
+  },
+  "optionsTabTranslation": {
+    "message": "翻訳"
+  },
+  "optionsTabAppearance": {
+    "message": "外観"
+  },
+  "optionsTabAbout": {
+    "message": "概要"
+  },
+  "optionsTranslationSettings": {
+    "message": "翻訳設定"
+  },
+  "optionsTargetLanguage": {
+    "message": "翻訳先の言語"
+  },
+  "optionsTargetLanguageDesc": {
+    "message": "字幕を翻訳する言語を選択してください。"
+  },
+  "optionsTranslateTo": {
+    "message": "翻訳先"
+  },
+  "optionsTranslationMode": {
+    "message": "翻訳モード"
+  },
+  "optionsTranslationModeDesc": {
+    "message": "字幕の配信と表示方法を設定します。"
+  },
+  "optionsStreamingMode": {
+    "message": "ストリーミングモードを有効にする（SSE）"
+  },
+  "optionsStreamingModeDesc": {
+    "message": "AIが生成するのに合わせて字幕が逐次表示されます。注意：キャッシュは翻訳が完了した後にのみ行われます。"
+  },
+  "optionsApiConfiguration": {
+    "message": "API設定"
+  },
+  "optionsApiConfigurationDesc": {
+    "message": "翻訳エンジンを動かすために、LLMのAPIキーをここで設定します。"
+  },
+  "optionsNoKeysAlert": {
+    "message": "翻訳を利用するには、少なくとも1つのAPIキーを設定する必要があります。"
+  },
+  "optionsAddBackupBtn": {
+    "message": "＋ バックアップキーを追加"
+  },
+  "optionsDeleteAllKeysBtn": {
+    "message": "すべてのAPIキーを削除"
+  },
+  "optionsEnableFailover": {
+    "message": "バックアップキーへの自動フェイルオーバーを有効にする"
+  },
+  "optionsEnableRotation": {
+    "message": "失敗時に別のモデルを試す"
+  },
+  "optionsCacheManagement": {
+    "message": "キャッシュ管理"
+  },
+  "optionsCacheManagementDesc": {
+    "message": "ローカルに保存されたすべての翻訳を削除して、容量を空けたり破損データを修復したりします。"
+  },
+  "optionsClearCacheBtn": {
+    "message": "翻訳キャッシュを削除"
+  },
+  "optionsRowPrimaryKey": {
+    "message": "プライマリキー："
+  },
+  "optionsRowBackupKey": {
+    "message": "バックアップキー {index}："
+  },
+  "optionsRowResetStats": {
+    "message": "統計をリセット"
+  },
+  "optionsRowResetStatsTitle": {
+    "message": "エラーを消去してクールダウンをリセット"
+  },
+  "optionsRowDisable": {
+    "message": "無効にする"
+  },
+  "optionsRowEnable": {
+    "message": "有効にする"
+  },
+  "optionsRowDelete": {
+    "message": "削除"
+  },
+  "optionsRowProvider": {
+    "message": "プロバイダー"
+  },
+  "optionsRowModel": {
+    "message": "モデル"
+  },
+  "optionsRowModelPlaceholder": {
+    "message": "選択または入力..."
+  },
+  "optionsRowDeleteCustomModel": {
+    "message": "カスタムモデルを削除"
+  },
+  "optionsRowConnectOllama": {
+    "message": "Ollamaに接続"
+  },
+  "optionsRowConnectOllamaTitle": {
+    "message": "localhost の権限をリクエスト"
+  },
+  "optionsRowRefreshModels": {
+    "message": "モデルを更新"
+  },
+  "optionsRowRefreshModelsTitle": {
+    "message": "Ollama からローカルモデルを取得"
+  },
+  "optionsRowApiKey": {
+    "message": "APIキー"
+  },
+  "optionsRowApiKeyPlaceholder": {
+    "message": "APIキーをここに貼り付けてください..."
+  },
+  "optionsRowShow": {
+    "message": "表示"
+  },
+  "optionsRowHide": {
+    "message": "非表示"
+  },
+  "optionsRowTest": {
+    "message": "テスト"
+  },
+  "optionsRowStatus": {
+    "message": "ステータス："
+  },
+  "optionsRowNotTested": {
+    "message": "-- 未テスト --"
+  },
+  "optionsAppearanceSettings": {
+    "message": "外観設定"
+  },
+  "optionsTypographyStyle": {
+    "message": "文字とスタイル"
+  },
+  "optionsFontSize": {
+    "message": "フォントサイズ（em）"
+  },
+  "optionsFontColor": {
+    "message": "文字色"
+  },
+  "optionsBackgroundOpacity": {
+    "message": "背景の不透明度"
+  },
+  "optionsVerticalPosition": {
+    "message": "垂直位置（下からのオフセット px）"
+  },
+  "optionsLivePreview": {
+    "message": "ライブプレビュー"
+  },
+  "optionsLivePreviewDesc": {
+    "message": "動画上で字幕がどのように表示されるかのプレビューです。"
+  },
+  "optionsAboutTitle": {
+    "message": "YouSub について"
+  },
+  "optionsAboutTagline": {
+    "message": "YouTube 用のリアルタイムAI字幕翻訳ツール"
+  },
+  "optionsReportIssue": {
+    "message": "問題を報告"
+  },
+  "optionsExportLogsDesc": {
+    "message": "APIや翻訳の不具合をトラブルシューティングするために、バックグラウンドのログをエクスポートします。"
+  },
+  "optionsExportLogsBtn": {
+    "message": "デバッグログをエクスポート（.jsonl）"
+  },
+  "optionsSavedAuto": {
+    "message": "すべての変更は自動的に保存されます。"
+  },
+  "optionsSaved": {
+    "message": "保存しました"
+  },
+  "optionsResetBtn": {
+    "message": "初期設定に戻す"
+  },
+  "optionsModalConfirmAction": {
+    "message": "操作の確認"
+  },
+  "optionsModalAreYouSure": {
+    "message": "この操作を実行してもよろしいですか？"
+  },
+  "optionsModalNoCancel": {
+    "message": "いいえ、キャンセル"
+  },
+  "optionsModalYesProceed": {
+    "message": "はい、実行する"
+  }
+}

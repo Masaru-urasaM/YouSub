@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 // Configuration
 // ---------------------------------------------------------------------------
 
-const includeList = ['manifest.json', 'src', 'assets'];
+const includeList = ['manifest.json', 'src', 'assets', '_locales'];
 
 const excludeList = [
   '.DS_Store',

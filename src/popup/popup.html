@@ -16,19 +16,25 @@
       <div class="content">
         <div id="health-status" class="health-indicator hidden" role="status" aria-live="polite">
           <span class="health-dot"></span>
-          <div id="health-text">Checking APIs...</div>
+          <div id="health-text" data-i18n="popupHealthChecking">Checking APIs...</div>
         </div>
 
         <select id="lang-selector" class="lang-selector"></select>
         <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
         <div class="button-group">
-          <button id="clear-page-cache-btn" class="secondary-btn hidden">Clear Cache</button>
-          <button id="open-debug-btn" class="secondary-btn">DEBUG</button>
+          <button
+            id="clear-page-cache-btn"
+            class="secondary-btn hidden"
+            data-i18n="popupClearCacheBtn"
+          >
+            Clear Cache
+          </button>
+          <button id="open-debug-btn" class="secondary-btn" data-i18n="popupDebugBtn">DEBUG</button>
         </div>
 
         <div id="loading" class="hidden" role="status" aria-live="polite">
           <div class="spinner"></div>
-          <p id="loading-text">Extracting...</p>
+          <p id="loading-text" data-i18n="popupLoadingText">Extracting...</p>
         </div>
 
         <div class="toggle-row">
@@ -36,7 +42,9 @@
             <input type="checkbox" id="dual-mode-toggle" />
             <span class="slider round"></span>
           </label>
-          <label for="dual-mode-toggle" class="toggle-label">Dual Subtitles</label>
+          <label for="dual-mode-toggle" class="toggle-label" data-i18n="popupDualSubtitles">
+            Dual Subtitles
+          </label>
         </div>
 
         <hr class="divider" />
@@ -44,7 +52,9 @@
         <!-- Execution Stats Section (New Phase 35.13) -->
         <div id="execution-stats" class="stats-container hidden">
           <div class="stats-header">
-            <span id="stats-title-text" class="stats-title">Last Execution</span>
+            <span id="stats-title-text" class="stats-title" data-i18n="popupStatsLastExecution"
+              >Last Execution</span
+            >
             <span id="stats-source-badge" class="stats-badge">API</span>
           </div>
           <div class="stats-model-row">
@@ -52,25 +62,27 @@
           </div>
           <div class="stats-grid">
             <div class="stats-item">
-              <span class="stats-label">Requests</span>
+              <span class="stats-label" data-i18n="popupStatsRequests">Requests</span>
               <span id="stats-requests" class="stats-value">--</span>
             </div>
             <div class="stats-item">
-              <span class="stats-label">Duration</span>
+              <span class="stats-label" data-i18n="popupStatsDuration">Duration</span>
               <span id="stats-duration" class="stats-value">--</span>
             </div>
             <div class="stats-item">
-              <span class="stats-label">Input</span>
+              <span class="stats-label" data-i18n="popupStatsInput">Input</span>
               <span id="stats-input-tokens" class="stats-value">--</span>
             </div>
             <div class="stats-item">
-              <span class="stats-label">Output</span>
+              <span class="stats-label" data-i18n="popupStatsOutput">Output</span>
               <span id="stats-output-tokens" class="stats-value">--</span>
             </div>
           </div>
         </div>
 
-        <button id="open-settings-btn" class="secondary-btn">Settings</button>
+        <button id="open-settings-btn" class="secondary-btn" data-i18n="popupSettingsBtn">
+          Settings
+        </button>
       </div>
     </div>
 
@@ -84,11 +96,13 @@
       aria-describedby="modal-message"
     >
       <div class="modal-content">
-        <h3 id="modal-title">Confirm</h3>
-        <p id="modal-message">Are you sure?</p>
+        <h3 id="modal-title" data-i18n="popupModalConfirm">Confirm</h3>
+        <p id="modal-message" data-i18n="popupModalAreYouSure">Are you sure?</p>
         <div class="modal-footer">
-          <button id="modal-cancel-btn" class="secondary-btn">No</button>
-          <button id="modal-confirm-btn" class="secondary-btn danger-btn">Yes</button>
+          <button id="modal-cancel-btn" class="secondary-btn" data-i18n="popupModalNo">No</button>
+          <button id="modal-confirm-btn" class="secondary-btn danger-btn" data-i18n="popupModalYes">
+            Yes
+          </button>
         </div>
       </div>
     </div>

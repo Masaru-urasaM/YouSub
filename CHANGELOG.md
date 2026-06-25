@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 77b — Japanese UI Internationalization (2026-06-25)
+
+Adds full Japanese UI localization via the standard WebExtensions `i18n` API, with graceful English fallback for any untagged/missing string.
+
+**Added**
+
+- `_locales/en/messages.json` + `_locales/ja/messages.json` — Chrome-format catalogs, **identical key set** (98 keys each), every entry a non-empty `message`. JA translations are natural (not literal MT): "翻訳" / "設定" / "外観" / "概要" / "二言語字幕" / "APIキー", `YouSub` kept as a brand.
+- `src/shared/i18n.js` — `applyI18n(root = document)` ESM helper. Localizes `data-i18n` (textContent) + `data-i18n-placeholder` / `data-i18n-aria-label` / `data-i18n-title` (attributes); only applies a message when `getMessage` is non-empty, so missing keys keep the hardcoded English.
+- `tests/unit/i18n.test.js` — 8 tests: locale-catalog validity + identical-key-set + non-empty + placeholder parity; `applyI18n` DOM text/attribute wiring, graceful fallback, and cloned-template path.
+
+**Changed**
+
+- `manifest.json` — added `"default_locale": "en"`. `name`/`description` left **literal** (deliberate: "YouSub" is a brand; localizing `name` is a no-op and keeps the identical-key-set test clean).
+- `src/popup/popup.html` + `src/options/options.html` — `data-i18n*` tags on the visible static UI (incl. the cloned `api-key-row` template labels/placeholders/titles).
+- `src/popup/popup.js`, `src/options/options.js`, `src/options/tab-translation.js` — import + call `applyI18n` on load (and `applyI18n(clone)` per rendered API-key row); the most visible **dynamic** strings (translate-button label, health statuses, clear-cache flow, save indicator, row enable/disable/show-hide/not-tested) now resolve via `browser.i18n.getMessage` with English fallback.
+- `scripts/package.js` — added `'_locales'` to `includeList` so the folder is packaged. **Verified**: both ZIPs contain `_locales/en/messages.json` + `_locales/ja/messages.json`, `default_locale=en` survives the manifest transform.
+- `tests/mocks/chrome.js` — added a `chrome.i18n` mock (`getMessage` loads `_locales/en/messages.json`, applies `$NAME$`/`$N$` substitutions, falls back to ''; load wrapped in try/catch so a path slip can't wipe the suite) + `getUILanguage`.
+
+**Scope notes**: content-script **overlay** status strings were **skipped** (optional per the phase brief; overlay is a content script that would also need a `web_accessible_resources` entry — deferred). OK/Failed API-test status lines that embed server text are left literal.
+
+**Tests**: 435 → **443** (+8). Full suite **443/443** green; `eslint .` = 0; `prettier --check` clean on touched files; `npm run package` VERIFY OK both platforms; `manifest.json` valid JSON.
+
 ### Phase 77a — Transcript-Button Locale Resilience (2026-06-25)
 
 Makes the fast DOM-scrape path work on non-English YouTube UIs (e.g. Japanese), instead of falling back to the slow Innertube path.
