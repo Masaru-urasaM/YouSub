@@ -6,6 +6,7 @@ import { SubtitleParser } from './subtitle-parser.js';
 import { Overlay } from './overlay.js';
 import { SyncEngine } from './sync-engine.js';
 import { TrustedTypes } from '../shared/trusted-types.js';
+import { escapeHtml as esc } from '../shared/utils.js';
 
 // Init Security Policy
 TrustedTypes.init();
@@ -245,14 +246,10 @@ async function processEntries(entries, videoId, targetLang) {
       SyncEngine.stop();
       Overlay.destroy();
 
-      // Phase 66 (B1): esc() escapes any value derived from API error text before it
-      // reaches innerHTML (the Overlay uses a TrustedTypes passthrough policy).
-      // failureReason is an internal constant, but escape it too for consistency.
-      const esc = (s) =>
-        String(s || '')
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+      // Phase 66 (B1) / DEFERRED D1: esc is the imported escapeHtml(); it escapes any
+      // value derived from API error text before it reaches innerHTML (the Overlay uses
+      // a TrustedTypes passthrough policy). failureReason is an internal constant, but
+      // escape it too for consistency.
       let msg = `<strong>Translation failed:</strong> ${esc(response.failureReason) || 'Error'}`;
       if (response.failures && response.failures.length > 0) {
         const unique = [];

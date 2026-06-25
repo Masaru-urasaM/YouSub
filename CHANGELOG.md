@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D1 + D2 resolved (2026-06-25)
+
+Closing out the post-Milestone-7 deferred backlog (see `DEFERRED.md`). This entry covers **D1** (code + test) and **D2** (doc-only — re-confirmed already resolved in Phase 76).
+
+**Added**
+
+- `src/shared/utils.js` — exported `escapeHtml(s)`, the HTML-metacharacter escaper extracted **verbatim** from the un-exported `esc()` closure in `src/content/main.js` (DEFERRED D1). Scope unchanged: `& < >` only (text-node contexts; no quote escaping), `&`-first replacement order, `String(s || '')` falsy→`''` coercion.
+- `tests/unit/utils.test.js` — 13 `escapeHtml` tests locking behavior: falsy coercion (`null`/`undefined`/`0`/`''`), `&`/`<`/`>` escaping, `&`-first double-escape ordering (`&lt;` → `&amp;lt;`), quote-scope exclusion, and crafted `<script>` / `<img onerror>` API-error payloads.
+
+**Changed**
+
+- `src/content/main.js` — imports `escapeHtml as esc` from `../shared/utils.js` and removed the local 5-line `esc` closure; all six `esc(...)` call sites are **byte-identical** (behavior-preserving). Comment updated to note the import.
+- `DEFERRED.md` — moved D1 + D2 from the active list to a new `## Resolved` tombstone section.
+
+**Tests**: 443 → **456** (+13). Full suite 456/456 green; coverage gate passes; `eslint` 0 on touched files; `utils.js` now 100% covered.
+
 ### Phase 77b — Japanese UI Internationalization (2026-06-25)
 
 Adds full Japanese UI localization via the standard WebExtensions `i18n` API, with graceful English fallback for any untagged/missing string.
