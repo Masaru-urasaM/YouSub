@@ -58,6 +58,7 @@
 - **D1 (DONE 2026-06-25)**: extracted `esc()` from `src/content/main.js` to `src/shared/utils.js` as exported `escapeHtml()` (verbatim — `&<>`-only, `&`-first ordering, `String(s||'')` coercion). +13 behavior-lock tests in `utils.test.js`; `main.js` imports `escapeHtml as esc` (call sites byte-identical). Suite 443 → 456.
 - **D2 (RESOLVED 2026-06-25)**: doc-only — re-confirmed `tab-appearance.js` `loadSettings()` already populates the Appearance form (fixed perception in Phase 76). Tombstoned in `DEFERRED.md`.
 - **D3 (DONE 2026-06-25)**: `providers.js` `chat()` default timeout message now derives from `timeoutMs` (`Request timed out (${round(timeoutMs/1000)}s)`) — was a hardcoded "30s" while the default is 15s. +2 pinning tests in `providers.test.js`. Suite 456 → 458. Dead-defensive branches left as-is (out of scope).
+- **D5 (PARTIAL 2026-06-25)**: closed the 1 high-severity `ws` advisory via `package.json` `overrides:{"ws":"^8.21.0"}` (dev-only `jsdom` dep; suite stays 458; lockfile +3/-3). Remaining 18 (1 low/17 moderate) are the jest/babel dev-chain; a plain `npm audit fix` empirically breaks jest (jest-runtime/jest-mock desync) → kept deferred. Audit 19→18.
 
 ## Key Concepts
 - **Extraction**: Hybrid pipeline (DOM scraping + Innertube API fallback + XHR fetch).

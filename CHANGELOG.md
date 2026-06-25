@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D5 (partial): high-severity `ws` advisory closed (2026-06-25)
+
+**Security (dev-only toolchain)**
+
+- `package.json` — added an `overrides: { "ws": "^8.21.0" }` entry forcing the transitive `ws` dependency (`jest-environment-jsdom → jsdom@26 → ws@8.20.0`) to the patched `8.21.0`, closing the single **high**-severity advisory (`GHSA-58qx-3vcg-4xpx` uninitialized-memory disclosure + `GHSA-96hv-2xvq-fx4p` memory-exhaustion DoS). `ws` is **dev-only** (absent from the shipped extension ZIP), so this is hardening, not a user-facing exposure — but the override is clean: lockfile diff is 3 lines and the full suite stays 458/458 green.
+
+**Investigated, intentionally NOT applied**
+
+- A plain `npm audit fix` (no `--force`) was tried and **reverted** — it reshuffles jest's internal package tree and breaks the whole suite with `TypeError: this._moduleMocker.clearMocksOnScope is not a function` (jest-runtime ↔ jest-mock version desync). The remaining advisories live in the `babel-jest` / `@jest/transform` / `babel-plugin-istanbul` dev chain and need a deliberate jest/babel major migration — kept deferred (D5).
+
+**Audit**: 19 → **18** vulnerabilities (1 high removed; 1 low + 17 moderate remain, all dev-only). **Tests**: 458/458 unchanged.
+
 ### DEFERRED Backlog — D3 resolved (2026-06-25)
 
 **Fixed**

@@ -22,13 +22,14 @@
 **Dependency**: none.
 **Revisit when**: **Before any public push / open-sourcing.** Scrub it (and re-check for any other sensitive blobs) from history with `git filter-repo` (or BFG), then force-push. Until then, keeping the repo private is sufficient. (Currently moot: the repo is local-only — there is no remote to push to.)
 
-### D5 — 19 npm-audit vulnerabilities in dev-only transitive deps
+### D5 — 18 npm-audit vulnerabilities in dev-only transitive deps (high-severity `ws` now fixed)
 
-**Deferred**: 2026-06-24 (Phase 73)
-**Effort**: Small–Medium
-**Why**: After removing the `jimp` dependency in Phase 73, `npm audit` dropped from 38 → **19** (1 low / 17 moderate / 1 high). The remaining advisories are all transitive dependencies of **dev** tooling (jest/eslint/etc.), which are **not shipped** in the extension ZIP — so there is no user-facing exposure. `npm audit fix --force` would pull breaking major bumps.
-**Dependency**: none.
-**Revisit when**: A dedicated tooling-maintenance pass (or alongside Phase 70 CI hardening). Try `npm audit fix` (non-breaking) first; evaluate majors individually. Low priority since it's dev-only.
+**Deferred**: 2026-06-24 (Phase 73) · **Updated**: 2026-06-25 (DEFERRED-backlog pass — high-severity `ws` closed)
+**Effort**: Medium (the remainder needs a breaking jest/babel major migration)
+**Progress (2026-06-25)**: the one **high**-severity advisory — `ws` (`GHSA-58qx-3vcg-4xpx` uninitialized-memory + `GHSA-96hv-2xvq-fx4p` memory-exhaustion DoS), pulled transitively by `jest-environment-jsdom → jsdom@26 → ws@8.20.0` — was closed **surgically** via a `package.json` `overrides: { "ws": "^8.21.0" }` entry (8.20.0 → 8.21.0). Dev-only, full suite stays **458/458** green, lockfile diff is 3 lines. Audit count 19 → **18**.
+**Why the rest stays deferred**: the remaining 18 (1 low / 17 moderate) are all transitive deps of the **dev** toolchain (`babel-jest` → `@jest/transform` → `babel-plugin-istanbul`, etc.), **not shipped** in the extension ZIP — no user-facing exposure. **Empirically verified**: a plain `npm audit fix` (no `--force`) reshuffles jest's internal packages and **breaks the entire test suite** (`TypeError: this._moduleMocker.clearMocksOnScope is not a function` — jest-runtime/jest-mock version desync); it was reverted. `--force` would pull breaking jest/babel majors.
+**Dependency**: a deliberate jest (and/or babel) major-version migration, with the suite re-validated after.
+**Revisit when**: a dedicated tooling-maintenance pass that can absorb a jest major bump. Low priority — dev-only, not shipped.
 
 ### D6 — Further `tryKeyForBatch` structural splitting (optional)
 
