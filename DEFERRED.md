@@ -6,14 +6,6 @@
 
 ---
 
-### D4 — Personal résumé `.docx` remains in git history
-
-**Deferred**: 2026-06-24 (Phase 73)
-**Effort**: Medium (history rewrite)
-**Why**: Phase 73 `git rm --cached`'d `assets/icons/グエンバンフアン履歴書.docx` (a personal résumé that had been committed) and added `*.docx` to `.gitignore`, so it is no longer tracked. But untracking does **not** remove it from past commits — it is still retrievable from git history. The repo is private, so this is not an active exposure.
-**Dependency**: none.
-**Revisit when**: **Before any public push / open-sourcing.** Scrub it (and re-check for any other sensitive blobs) from history with `git filter-repo` (or BFG), then force-push. Until then, keeping the repo private is sufficient. (Currently moot: the repo is local-only — there is no remote to push to.)
-
 ### D5 — 18 npm-audit vulnerabilities in dev-only transitive deps (high-severity `ws` now fixed)
 
 **Deferred**: 2026-06-24 (Phase 73) · **Updated**: 2026-06-25 (DEFERRED-backlog pass — high-severity `ws` closed)
@@ -28,6 +20,8 @@
 ## Resolved
 
 > Tombstones kept for traceability (Rule 8 — removed from the active list above).
+
+- **D4** — Personal résumé `.docx` in git history. **Resolved 2026-06-25** (developer-approved destructive scrub during the DEFERRED-backlog pass). Rewrote the entire local history with `git filter-repo --invert-paths` to purge 4 untracked-but-historical blobs: the résumé `assets/icons/グエンバンフアン履歴書.docx` (matched via `regex:.*\.docx$` to dodge a non-ASCII paths-file matching quirk, caught by the mandatory dry-run) plus the 3 junk binaries Phase 73 had `git rm --cached`'d (`icon128-original.png`, `icons.zip`, `tests/unit/jest_output.txt`). **All 44 commits preserved** (only blobs removed); hashes changed (HEAD `883800d` → `9428c69`); branch `master` + working tree intact; suite **468/468** green; build **VERIFY OK**. A full-history `git bundle` backup (`../yousub-pre-d4-scrub.bundle`) was created **and restore-verified** (test-clone, 44 commits, blob present) before the rewrite. Local-only (no remote); on-disk untracked copies remain (gitignored).
 
 - **D1** — B1 error-toast `esc()` escaping unit test. **Resolved 2026-06-25** (DEFERRED-backlog pass). Extracted the un-exported `esc()` closure from `src/content/main.js` to `src/shared/utils.js` as an exported `escapeHtml()` (verbatim move — `&<>`-only escaping, `&`-first ordering, `String(s||'')` coercion all preserved; `main.js` imports it as `esc`). Added 13 behavior-locking unit tests in `tests/unit/utils.test.js` (falsy coercion, `&`/`<`/`>` escaping, double-escape ordering, quote-scope exclusion, crafted `<script>`/`<img onerror>` payloads). Suite 443 → 456, `utils.js` 100% covered.
 - **D2** — Options "Appearance" tab form population. **Resolved 2026-06-25** (investigated in Phase 76). Premise was stale: `tab-appearance.js` already has a working `loadSettings()` (called from `initAppearanceTab()`) that populates all inputs + value displays + the live preview from `yousub_appearance` storage. The removed `loadAppearance()` was a dead duplicate, not the live populator. No fix required.

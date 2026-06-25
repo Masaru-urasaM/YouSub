@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D4 resolved: scrub résumé + junk from git history (2026-06-25)
+
+**Security / hygiene (developer-approved, destructive history rewrite)**
+
+- Rewrote the full local git history with `git filter-repo --invert-paths` to purge 4 blobs that were untracked (`git rm --cached` in Phase 73) but still retrievable from history: the personal résumé `assets/icons/グエンバンフアン履歴書.docx` and 3 junk binaries (`icon128-original.png`, `icons.zip`, `tests/unit/jest_output.txt`).
+- The résumé was matched via `regex:.*\.docx$` (the only `.docx` in history) after a literal UTF-8 paths-file entry failed to match the non-ASCII filename — a Windows/encoding quirk caught by the mandatory **dry-run** before the real run.
+- **Safety**: a full-history `git bundle` backup (`../yousub-pre-d4-scrub.bundle`) was created **and restore-verified** (test-clone → 44 commits, blob present) before the rewrite.
+- **Result**: all **44 commits preserved**, only the blobs removed; commit hashes changed (HEAD `883800d` → `9428c69`); `master` + working tree intact; **full suite 468/468 green**; **build VERIFY OK** (both ZIPs, 49 files). No remote exists, so only the local repo was affected; the on-disk untracked copies remain (gitignored).
+- **Verification**: `git rev-list --all --objects | grep -iE 'docx|履歴書|icon128-original|icons.zip|jest_output'` returns nothing; `git cat-file -e <résumé-blob>` now fails (gone).
+
 ### DEFERRED Backlog — D7 resolved: CSS dedup investigated, declined (2026-06-25)
 
 **Investigated, no code change (developer-approved outcome)**
