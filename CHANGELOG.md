@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D6 (extraction): tryKeyForBatch split, behavior-preserving (2026-06-25)
+
+Developer-approved during the backlog pass. Done behind the just-built characterization gate.
+
+**Changed — `src/background/translator.js`**
+
+- Extracted the provider-call **retry loop** out of `tryKeyForBatch` into a new `callProviderWithRetry({...}) → { result, duration }` helper (verbatim move; same transient-only retry on Timeout/5xx, `RETRY_ATTEMPTS`, `wait`, break conditions).
+- Extracted the **timestamp text parser** block into a new `parseTimestampedText(responseText, segments) → { lines, validCount }` helper (verbatim; mirrors `parseJsonResponse`'s shape). The threshold / finalize / `parse_fail` / `quality_fail` decisions stay in `tryKeyForBatch`.
+- Verified by reading `git diff`: both function bodies are **character-identical** to the removed blocks (sole deltas — `callProviderWithRetry` adds `return { result, duration }`; `parseTimestampedText` reads its `responseText` param instead of `result.text`). The only other change is the two call-site replacements + the `_internals` export.
+
+**Added**
+
+- `parseTimestampedText` exposed via `_internals`; 6 focused unit tests in `tests/unit/translator-helpers.test.js` (in-order mapping, zero-match→originals, duplicate-timestamp FIFO `shift()`, consecutive-tag accumulation, `#<n> ` index-marker strip, partial-match fallback) — the branches the `translate()` harness does not pin directly.
+
+**Tests**: 462 → **468** (+6). Full suite green; the D6-gate harness (5xx-retry, text-parse, 413-split, accept-on-last-key) passes unchanged, confirming the move is behavior-preserving.
+
+**⚠ Manual verification still required (developer)**: the harness deliberately stubs the sanitize / foreign-script / untranslated-re-translation / MergeFixer cascades, so the unit suite proves the *move* but not the full shipped translation path. A browser smoke-test (one real video + one Shorts with a live API key) is recommended before the next release.
+
 ### DEFERRED Backlog — D6 (gate): translator characterization harness extended (2026-06-25)
 
 **Added**

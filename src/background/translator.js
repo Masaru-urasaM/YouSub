@@ -1151,6 +1151,125 @@ async function finalizeSuccessfulBatch(
 }
 
 // Phase 57: Try a single API key for a batch. Returns structured status.
+// Phase D6 (DEFERRED): provider call with transient-retry (timeouts + 5xx).
+// Extracted verbatim from tryKeyForBatch — behavior-preserving. Loops up to
+// RETRY_ATTEMPTS times, retrying only transient failures, and returns the final
+// { result, duration }. (Both stay undefined if an aborted signal breaks the loop
+// before the first attempt — the caller's existing try/catch then surfaces that as
+// a thrown 'exception', matching the prior inline behavior.)
+async function callProviderWithRetry({
+  key,
+  effectiveUserPrompt,
+  effectiveSystemPrompt,
+  jsonApiOptions,
+  isStreaming,
+  estimatedOutputTokens,
+  signal,
+  onChunk,
+}) {
+  let result;
+  let duration;
+  for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
+    if (signal && signal.aborted) break;
+
+    if (attempt > 0) {
+      const delay = RETRY_DELAYS_MS[attempt - 1] || 3000;
+      Logger.warn(
+        'Translator',
+        `Retry ${attempt}/${RETRY_ATTEMPTS} for ${key.provider} after ${delay}ms...`
+      );
+      await wait(delay);
+    }
+
+    const attemptStart = performance.now();
+    if (isStreaming) {
+      result = await Providers.chatStream(
+        key.provider,
+        key.model,
+        key.apiKey,
+        effectiveUserPrompt,
+        {
+          systemPrompt: effectiveSystemPrompt,
+          temperature: 0.1,
+          maxTokens: estimatedOutputTokens,
+          signal,
+        },
+        (chunk) => {
+          if (onChunk) onChunk(chunk);
+        }
+      );
+    } else {
+      result = await Providers.chat(key.provider, key.model, key.apiKey, effectiveUserPrompt, {
+        systemPrompt: effectiveSystemPrompt,
+        temperature: 0.1,
+        maxTokens: estimatedOutputTokens,
+        signal,
+        ...jsonApiOptions,
+      });
+    }
+    duration = performance.now() - attemptStart;
+
+    const isTransient =
+      !result.success &&
+      ((result.message && result.message.includes('Timeout')) ||
+        (result.statusCode && result.statusCode >= 500));
+    if (!isTransient || attempt === RETRY_ATTEMPTS) break;
+  }
+  return { result, duration };
+}
+
+// Phase D6 (DEFERRED): timestamp text parser. Extracted verbatim from
+// tryKeyForBatch — behavior-preserving; mirrors parseJsonResponse's shape. Maps
+// [HH:MM:SS]-tagged response text back onto segments by normalized timestamp
+// (queued FIFO per tag), keeping the original segment text where no tag matched.
+// Returns { lines, validCount }.
+function parseTimestampedText(responseText, segments) {
+  let cleanedText = cleanResponse(responseText);
+  cleanedText = cleanedText.replace(/#\d+\s+(?=\[)/g, '');
+
+  const tagRegex = /\[(\d{1,2}:\d{1,2}:\d{1,2})\]/g;
+  const parsedQueues = {};
+  let pendingTags = [];
+  let lastEnd = 0;
+  let match;
+
+  while ((match = tagRegex.exec(cleanedText)) !== null) {
+    const textBetween = cleanedText.substring(lastEnd, match.index).trim();
+    if (textBetween && pendingTags.length > 0) {
+      pendingTags.forEach((tag) => {
+        const norm = normalizeTs(tag);
+        if (!parsedQueues[norm]) parsedQueues[norm] = [];
+        parsedQueues[norm].push(textBetween);
+      });
+      pendingTags = [];
+    }
+    pendingTags.push(match[1]);
+    lastEnd = tagRegex.lastIndex;
+  }
+
+  const finalContent = cleanedText.substring(lastEnd).trim();
+  if (finalContent && pendingTags.length > 0) {
+    pendingTags.forEach((tag) => {
+      const norm = normalizeTs(tag);
+      if (!parsedQueues[norm]) parsedQueues[norm] = [];
+      parsedQueues[norm].push(finalContent);
+    });
+  }
+
+  let validLinesCount = 0;
+  const resultLines = segments.map((s) => {
+    const rawTs = formatTimestamp(s.startMs);
+    const normTs = normalizeTs(rawTs);
+    if (parsedQueues[normTs] && parsedQueues[normTs].length > 0) {
+      validLinesCount++;
+      return parsedQueues[normTs].shift();
+    }
+    return s.text;
+  });
+
+  return { lines: resultLines, validCount: validLinesCount };
+}
+
 async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, options = {}) {
   const { signal, onChunk, isLastKey = false } = options;
 
@@ -1194,54 +1313,16 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
       ? Math.min(segments.length * 130, 16384)
       : Math.min(segments.length * 100, 8192);
 
-    let result;
-    let duration;
-    for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
-      if (signal && signal.aborted) break;
-
-      if (attempt > 0) {
-        const delay = RETRY_DELAYS_MS[attempt - 1] || 3000;
-        Logger.warn(
-          'Translator',
-          `Retry ${attempt}/${RETRY_ATTEMPTS} for ${key.provider} after ${delay}ms...`
-        );
-        await wait(delay);
-      }
-
-      const attemptStart = performance.now();
-      if (isStreaming) {
-        result = await Providers.chatStream(
-          key.provider,
-          key.model,
-          key.apiKey,
-          effectiveUserPrompt,
-          {
-            systemPrompt: effectiveSystemPrompt,
-            temperature: 0.1,
-            maxTokens: estimatedOutputTokens,
-            signal,
-          },
-          (chunk) => {
-            if (onChunk) onChunk(chunk);
-          }
-        );
-      } else {
-        result = await Providers.chat(key.provider, key.model, key.apiKey, effectiveUserPrompt, {
-          systemPrompt: effectiveSystemPrompt,
-          temperature: 0.1,
-          maxTokens: estimatedOutputTokens,
-          signal,
-          ...jsonApiOptions,
-        });
-      }
-      duration = performance.now() - attemptStart;
-
-      const isTransient =
-        !result.success &&
-        ((result.message && result.message.includes('Timeout')) ||
-          (result.statusCode && result.statusCode >= 500));
-      if (!isTransient || attempt === RETRY_ATTEMPTS) break;
-    }
+    const { result, duration } = await callProviderWithRetry({
+      key,
+      effectiveUserPrompt,
+      effectiveSystemPrompt,
+      jsonApiOptions,
+      isStreaming,
+      estimatedOutputTokens,
+      signal,
+      onChunk,
+    });
 
     if (result.success && result.text) {
       saveDebugBatch({
@@ -1289,48 +1370,10 @@ async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, tabId, op
       }
 
       // Text-based parser (timestamp regex) — primary for non-JSON, fallback for JSON failures
-      let cleanedText = cleanResponse(result.text);
-      cleanedText = cleanedText.replace(/#\d+\s+(?=\[)/g, '');
-
-      const tagRegex = /\[(\d{1,2}:\d{1,2}:\d{1,2})\]/g;
-      const parsedQueues = {};
-      let pendingTags = [];
-      let lastEnd = 0;
-      let match;
-
-      while ((match = tagRegex.exec(cleanedText)) !== null) {
-        const textBetween = cleanedText.substring(lastEnd, match.index).trim();
-        if (textBetween && pendingTags.length > 0) {
-          pendingTags.forEach((tag) => {
-            const norm = normalizeTs(tag);
-            if (!parsedQueues[norm]) parsedQueues[norm] = [];
-            parsedQueues[norm].push(textBetween);
-          });
-          pendingTags = [];
-        }
-        pendingTags.push(match[1]);
-        lastEnd = tagRegex.lastIndex;
-      }
-
-      const finalContent = cleanedText.substring(lastEnd).trim();
-      if (finalContent && pendingTags.length > 0) {
-        pendingTags.forEach((tag) => {
-          const norm = normalizeTs(tag);
-          if (!parsedQueues[norm]) parsedQueues[norm] = [];
-          parsedQueues[norm].push(finalContent);
-        });
-      }
-
-      let validLinesCount = 0;
-      const resultLines = segments.map((s) => {
-        const rawTs = formatTimestamp(s.startMs);
-        const normTs = normalizeTs(rawTs);
-        if (parsedQueues[normTs] && parsedQueues[normTs].length > 0) {
-          validLinesCount++;
-          return parsedQueues[normTs].shift();
-        }
-        return s.text;
-      });
+      const { lines: resultLines, validCount: validLinesCount } = parseTimestampedText(
+        result.text,
+        segments
+      );
 
       const threshold = Math.max(1, Math.floor(segments.length * 0.1));
 
@@ -2077,6 +2120,7 @@ export const _internals = {
   buildVerificationPrompt,
   getProviderJsonConfig,
   parseJsonResponse,
+  parseTimestampedText,
   cleanResponse,
   partitionKeysByProvider,
   splitForGroqPayload,

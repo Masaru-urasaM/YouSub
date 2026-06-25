@@ -10,6 +10,7 @@ const {
   buildVerificationPrompt,
   getProviderJsonConfig,
   parseJsonResponse,
+  parseTimestampedText,
   cleanResponse,
   partitionKeysByProvider,
   splitForGroqPayload,
@@ -521,5 +522,67 @@ describe('selectGroupForBatch', () => {
     const groups = [[{ apiKey: `sel-single-${Math.random()}`, model: 'm' }]];
     expect(selectGroupForBatch(groups, 0).groupIndex).toBe(0);
     expect(selectGroupForBatch(groups, 7).groupIndex).toBe(0);
+  });
+});
+
+// ─── parseTimestampedText (D6: extracted from tryKeyForBatch) ──────────
+//
+// Maps [HH:MM:SS]-tagged response text back onto segments by normalized
+// timestamp. Returns { lines, validCount }; unmatched segments keep their
+// original text. These pin the branches the translate() characterization
+// harness does not exercise directly (duplicate tags / FIFO shift, multi-tag
+// accumulation, the `#\d+ ` strip, and the zero-match path).
+
+const seg = (text, startMs) => ({ text, startMs });
+
+describe('parseTimestampedText', () => {
+  test('maps in-order tagged lines and counts every match', () => {
+    const segments = [seg('a', 0), seg('b', 1000)];
+    const { lines, validCount } = parseTimestampedText('[00:00:00] AA\n[00:00:01] BB', segments);
+    expect(lines).toEqual(['AA', 'BB']);
+    expect(validCount).toBe(2);
+  });
+
+  test('zero tags → originals preserved, validCount 0', () => {
+    const segments = [seg('orig1', 0), seg('orig2', 1000)];
+    const { lines, validCount } = parseTimestampedText('no timestamps here at all', segments);
+    expect(lines).toEqual(['orig1', 'orig2']);
+    expect(validCount).toBe(0);
+  });
+
+  test('duplicate timestamps are consumed FIFO via the per-tag queue', () => {
+    // Two segments share startMs 0 → both normalize to the same tag key; the two
+    // response lines must be handed out in arrival order (shift()).
+    const segments = [seg('x', 0), seg('y', 0)];
+    const { lines, validCount } = parseTimestampedText(
+      '[00:00:00] FIRST\n[00:00:00] SECOND',
+      segments
+    );
+    expect(lines).toEqual(['FIRST', 'SECOND']);
+    expect(validCount).toBe(2);
+  });
+
+  test('consecutive tags before one text block both receive that text', () => {
+    // `[t1][t2] SHARED` — the empty gap between the two tags does not flush, so both
+    // tags accumulate and each gets the trailing content.
+    const segments = [seg('p', 0), seg('q', 1000)];
+    const { lines, validCount } = parseTimestampedText('[00:00:00][00:00:01] SHARED', segments);
+    expect(lines).toEqual(['SHARED', 'SHARED']);
+    expect(validCount).toBe(2);
+  });
+
+  test('strips a leading "#<n> " index marker before a tag', () => {
+    const segments = [seg('m', 0)];
+    const { lines, validCount } = parseTimestampedText('#5 [00:00:00] STRIPPED', segments);
+    expect(lines).toEqual(['STRIPPED']);
+    expect(validCount).toBe(1);
+  });
+
+  test('unmatched segment keeps its original text while matched ones translate', () => {
+    // Only the 0:0:0 tag is present → seg0 matches, seg1 (1s) falls back to source.
+    const segments = [seg('keep-en-0', 0), seg('keep-en-1', 1000)];
+    const { lines, validCount } = parseTimestampedText('[00:00:00] ONLY-FIRST', segments);
+    expect(lines).toEqual(['ONLY-FIRST', 'keep-en-1']);
+    expect(validCount).toBe(1);
   });
 });
