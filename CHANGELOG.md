@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### DEFERRED Backlog — D6 (gate): translator characterization harness extended (2026-06-25)
+
+**Added**
+
+- `tests/unit/translator-translate.test.js` — 4 characterization tests pinning the previously-uncovered branches of `tryKeyForBatch` (the stated gate for any future D6 extraction): (1) a 5xx transient failure retries the **same** key and recovers (drives the `wait(RETRY_DELAYS_MS[0])` retry through fake timers); (2) a non-JSON timestamped-text response falls through to the `[HH:MM:SS]` text parser and maps lines in order; (3) a 413 on the full batch triggers the failover layer's recursive split and still translates every line; (4) a zero-valid-line JSON response is accepted on the last/only key (accept-on-last-key escape hatch), preserving the originals. Each asserts observable outputs/decisions of `translate()`, not line execution.
+
+**Tests**: 458 → **462** (+4). Full suite green; coverage gate passes.
+
+**Still deferred (D6)**: the actual structural extraction of the retry loop / text parser out of `tryKeyForBatch` is cleanliness-only on the shipped core and is left for an explicit developer go-ahead — the harness is the safe, valuable half; the extraction is the risky half.
+
 ### DEFERRED Backlog — D5 (partial): high-severity `ws` advisory closed (2026-06-25)
 
 **Security (dev-only toolchain)**

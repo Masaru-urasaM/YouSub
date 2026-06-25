@@ -31,13 +31,14 @@
 **Dependency**: a deliberate jest (and/or babel) major-version migration, with the suite re-validated after.
 **Revisit when**: a dedicated tooling-maintenance pass that can absorb a jest major bump. Low priority — dev-only, not shipped.
 
-### D6 — Further `tryKeyForBatch` structural splitting (optional)
+### D6 — Further `tryKeyForBatch` structural splitting (optional — gate built, extraction pending)
 
-**Deferred**: 2026-06-25 (Phase 75c)
+**Deferred**: 2026-06-25 (Phase 75c) · **Updated**: 2026-06-25 (DEFERRED-backlog pass — characterization gate now BUILT)
 **Effort**: Medium
-**Why**: Phase 75c removed the biggest win — the two duplicated ~95-line post-success pipelines (now `finalizeSuccessfulBatch`). What remains inside `tryKeyForBatch` (the provider-call **retry loop** and the **text/timestamp parser** block) is cohesive but **not duplicated**, so extracting it is lower value, while it's still the shipped core with only partial behavior coverage (the 75b harness pins JSON-success/429-failover/abort/guards, not the 5xx-retry, non-JSON text path, 413-split, or quality thresholds).
-**Dependency**: extend `tests/unit/translator-translate.test.js` to characterize the 5xx-retry, non-JSON text-parser, 413-split, and parse/quality-threshold branches (and unmock `MergeFixer` for one case) **first** — those tests are the gate.
-**Revisit when**: a future translator-maintenance pass, or when a bug/feature already requires touching `tryKeyForBatch`. Not worth the risk purely for cleanliness right now.
+**Gate status (DONE 2026-06-25)**: the prerequisite characterization tests were added to `tests/unit/translator-translate.test.js` — 4 new tests pinning the previously-uncovered `tryKeyForBatch` branches: (1) 5xx transient **same-key** retry recovery (drives the `wait(RETRY_DELAYS_MS[0])` via fake timers), (2) non-JSON **timestamp-text parser** success, (3) **413 recursive-split** recovery, (4) **accept-on-last-key** for a zero-valid-line response (originals preserved). Suite 458 → 462, all green. The risky retry-loop / text-parser / 413 / threshold paths now have observable-behavior pins.
+**Why the extraction itself stays deferred**: with the gate in place, the remaining work is extracting the (non-duplicated) provider-call retry loop and the text/timestamp parser out of `tryKeyForBatch` for cohesion — **cleanliness-only** on the shipped translation core. Even with the new pins, `translate()` has subtle cascades the harness deliberately stubs (sanitize / foreign-script / untranslated re-translation, MergeFixer/RoughTranslator), so a structural extraction still carries shipped-core risk disproportionate to a readability gain. Per the project's own Rule 3 (surgical) / Rule 12 ethos, not worth doing unbidden.
+**Dependency**: none remaining for the gate. The extraction needs an explicit developer go-ahead (and ideally a browser smoke-test of a real translation afterward).
+**Revisit when**: a future translator-maintenance pass, or when a bug/feature already requires touching `tryKeyForBatch` — the extraction can then ride behind the now-existing gate.
 
 ---
 

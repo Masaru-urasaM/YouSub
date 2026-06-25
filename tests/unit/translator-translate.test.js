@@ -210,4 +210,106 @@ describe('translate() characterization', () => {
     expect(result).toEqual({ translated: [], hadFallback: false });
     expect(chat).not.toHaveBeenCalled();
   });
+
+  // ── Behavior 5: 5xx transient failure retries the SAME key (D6 gate) ──
+  test('5xx transient failure retries the same key and recovers', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'rk1', model: 'gpt-4o-mini' }]);
+
+    let batchAttempts = 0;
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      batchAttempts += 1;
+      // First attempt: a retryable 5xx (statusCode >= 500). The retry on the SAME
+      // key then succeeds — distinct from the 429 test, which switches keys.
+      if (batchAttempts === 1) {
+        return { success: false, statusCode: 503, message: 'Service Unavailable' };
+      }
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+
+    // tryKeyForBatch's retry loop does `await wait(RETRY_DELAYS_MS[0])` (1000ms)
+    // between attempt 0 and attempt 1, so the pending promise must be driven by the
+    // fake clock before it can resolve.
+    const p = translate(segments, 'en', TGT);
+    await jest.advanceTimersByTimeAsync(1000);
+    const result = await p;
+
+    expect(result.success).toBe(true);
+    expect(result.translated).toEqual(['JA:Hello', 'JA:World']);
+    // Two calls to the SAME key (503 then the retry success) — not a failover.
+    expect(batchCallCount()).toBe(2);
+  });
+
+  // ── Behavior 6: non-JSON timestamped text → text parser (D6 gate) ─────
+  test('non-JSON timestamped text falls through to the text parser', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'tk1', model: 'gpt-4o-mini' }]);
+
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      // NOT JSON → parseJsonResponse returns null → the engine falls through to the
+      // timestamp text parser, which keys translations off the [HH:MM:SS] tags that
+      // formatTimestamp(startMs) emits (0 → [00:00:00], 1000 → [00:00:01]).
+      return { success: true, text: '[00:00:00] TXT:Hello\n[00:00:01] TXT:World' };
+    });
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+
+    const result = await translate(segments, 'en', TGT);
+
+    expect(result.success).toBe(true);
+    // Both timestamped lines matched and were applied in input order.
+    expect(result.translated).toEqual(['TXT:Hello', 'TXT:World']);
+    expect(batchCallCount()).toBe(1);
+  });
+
+  // ── Behavior 7: 413 (payload too large) → recursive split (D6 gate) ───
+  test('413 on the full batch recursively splits and still translates all lines', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'pk1', model: 'gpt-4o-mini' }]);
+
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      const { lines } = JSON.parse(userPrompt);
+      // Reject any batch with more than 2 lines as 413; accept smaller batches. The
+      // failover layer's "all keys returned 413" safety net then recursively splits
+      // (segments.length > 2 && depth < MAX_RECURSION_DEPTH).
+      if (lines.length > 2) {
+        return { success: false, statusCode: 413, message: 'Payload Too Large' };
+      }
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = [seg('A', 0), seg('B', 1000), seg('C', 2000), seg('D', 3000)];
+
+    const result = await translate(segments, 'en', TGT);
+
+    expect(result.success).toBe(true);
+    expect(result.translated).toEqual(['JA:A', 'JA:B', 'JA:C', 'JA:D']);
+    // The 4-line batch 413s, then it is split into halves that each succeed →
+    // strictly more than one batch attempt.
+    expect(batchCallCount()).toBeGreaterThan(1);
+  });
+
+  // ── Behavior 8: low-quality output accepted on the last/only key ──────
+  test('low-quality (zero valid lines) JSON is accepted on the last/only key', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'qk1', model: 'gpt-4o-mini' }]);
+
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      // Valid JSON shape but an EMPTY lines array → validCount 0 (below threshold).
+      // Because this is the only key (isLastKey), the engine accepts it rather than
+      // failing the batch — pinning the accept-on-last-key escape hatch. With no
+      // line replaced, the original source text is preserved.
+      return { success: true, text: JSON.stringify({ lines: [] }) };
+    });
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+
+    const result = await translate(segments, 'en', TGT);
+
+    expect(result.success).toBe(true);
+    expect(result.translated).toEqual(['Hello', 'World']);
+    expect(batchCallCount()).toBe(1);
+  });
 });
