@@ -430,3 +430,124 @@
 **Summary**: Redesigned the translation batch distribution system from sequential failover (always starting from key 0) to two-tier round-robin scheduling. Tier 1 rotates batches across physical API key groups. Tier 2 rotates through models within a group on 429 failures. Model-aware cooldown isolates per-model rate limits.
 
 **Implementation**: 4 new functions in `translator.js`: `getCooldownKey()` (cooldown key changed from `apiKey` to `apiKey::model`), `groupByPhysicalKey()` (groups expanded virtual slots by physical key), `sortGroupsByHealth()` (health-based group ordering), `selectGroupForBatch()` (round-robin selector skipping fully-cooled-down groups). `_translateInternal()` batch loop builds key groups and uses round-robin selection. `translateBatchWithFailover()` standard failover replaced with group-based double loop (outer = key groups, inner = models). 413 skips entire group. Legacy flat iteration preserved for recursive 413-split calls. Groq waterfall path unchanged. Files modified: `src/background/translator.js` (+129/-40 lines).
+
+### Phase 64 — Streaming Timeout Robustness + Completeness Sweep
+**Status**: DONE (2026-06-08) — browser-verified, committed `95b75ae` · **Milestone**: M3
+**Summary**: Hardened streaming-translation timeout handling (fixes `TIMEOUT_BACKGROUND`) plus a completeness sweep across the pipeline. Committed later in Phase 65 along with the version-truth sync. Full change detail in `CHANGELOG.md` (Phase 64).
+
+---
+
+## Milestone 7 — Professionalization & Hardening (Phases 65-77)
+
+> **Completed 2026-06-23 → 2026-06-25.** Why this milestone existed: YouSub is a shipped, working product (v0.2.2) built quickly across 60+ phases. A read-only 7-dimension audit (which actually ran `npm test`) confirmed the core engine works, but found real technical debt in three areas — **documentation drift, missing tooling/CI/test-recovery, and repo hygiene** — plus a handful of verified correctness/security issues. The milestone professionalized the project **surgically**: low-risk, behavior-preserving changes first; the one genuinely risky refactor (`translator.js`) gated behind a solid test suite. Ordering: release-critical → tooling → tests → docs → hygiene → refactor → polish.
+
+> **Audit ground-truth (2026-06-23)**: real version was **0.2.2** (`constants.js` = `manifest.json` = `package.json`, working tree; last *commit* was Phase 63 `e7fe8e0` at 0.2.1). Tests: 13 suites, **215 tests — 198 pass / 17 fail**, **34.29% coverage**. Verified code findings: B2 (SyncEngine async race → TypeError on Shorts swipe) was a real blocker; B4 (circuit breaker `isCircuitOpen()`) needed investigation; B3 (cache TTL comment "7-day" vs code 30-day) a doc/code mismatch; B1 (error-toast `innerHTML` not fully `esc()`-ed) low-risk defense-in-depth (sinks not attacker-controlled).
+
+### Phase 65 — Commit Phase 64 + Version-Truth Sync
+**Status**: DONE (2026-06-23) · **Risk**: Low · **Group**: release/docs · **Commit**: `95b75ae`
+- Committed the uncommitted Phase 64 work (browser-verified): 10 modified files + 2 untracked test files.
+- Moved the Phase 64 CHANGELOG entry out of "pending verify" into released state.
+- Updated `MEMORY.md` (Phases 62/63/64 + status v0.2.2). Fixed `options.html` version badge `0.2.0 → 0.2.2` (header + About). Established `constants.js`/`manifest.json` as the version source of truth.
+- SPEC "v0.4.0" header confirmed stale → corrected to 0.2.2 (the remaining "v0.4.0" is a historical revision-history row, left as history).
+- **Verify**: manifest/package/constants/options-UI/MEMORY all read 0.2.2; `git status` clean.
+
+### Phase 66 — Fix correctness blockers + hardening
+**Status**: DONE (2026-06-23) · **Risk**: Low-Med · **Group**: correctness · **Depends**: 65
+- **B2 (real blocker — FIXED)** `sync-engine.js`: the `timeupdate` listener was armed inside the async storage `.then()`; converted that callback to an arrow function (correct lexical `this`) and added an `if (!videoElement) return` guard so a `stop()` that wins the race no longer throws `TypeError` on `addEventListener(null)` nor re-arms a torn-down engine. New `tests/unit/sync-engine-race.test.js` (2 deterministic tests).
+- **B4 (was a TEST bug, not a code bug)** `health.js`: `isCircuitOpen()` is correct (`Date.now() < circuitBreakerUntil`); breaker opens at `consecutiveFails >= 10`. The failing test wrongly expected it open after 3 fails — fixed the test; `health.js` unchanged.
+- **B3 (decision: keep 30-day behavior)** `cache.js`: kept the shipped 30-day TTL, corrected the comment, updated `cache.test.js`. See Decision 11.
+- **B1 (hardening)** `main.js`: wrapped `esc()` around `failureReason`, `retryMatch[1]`, `limitMatch` captures. Dedicated escaping test deferred to Phase 68 (DEFERRED D1).
+- **Tests**: 198 → 202 pass / 17 → 15 fail (215 → 217 total); +2 race tests.
+- **Verify**: targeted suites green (16/16); full suite no regressions.
+
+### Phase 67 — Dev-tooling foundation
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tooling
+- **67a** — ESLint 9 flat config + Prettier + `.editorconfig` + `.nvmrc` (22) + `package.json` metadata/scripts/`engines`; removed dangling `main`; `LICENSE` = AGPLv3 (developer choice), `license` ISC → `AGPL-3.0-only` + `private:true`. Baseline: ESLint 89 (34 err/55 warn), Prettier 63 files.
+- **67b** — ESLint cleanup to **0 problems** (15 parallel per-file agents fixed 11 errors + 55 `no-unused-vars` warnings surgically; net −176 lines). Latent find → DEFERRED D2.
+- **67c** — repo-wide `prettier --write` (52 files, `50462db`), `*.md` + `LICENSE` excluded. Added `.git-blame-ignore-revs`.
+- **67d** — husky v9 + lint-staged pre-commit (`eslint --fix` + `prettier --write` on staged js/json/css/html; md excluded). Replaced husky's default `npm test` hook (the 15 known failures would block every commit → full-suite gating moved to CI/Phase 70).
+
+### Phase 68 — Test recovery (remaining 15 failures)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tests · **Depends**: 67
+- Test-only, no production code touched. Real count was **15** across `subtitle-parser` (6, eval) + `sync-engine` (5, eval) + `api-manager` (4, mock).
+- Replaced `eval(scriptContent)` loaders with direct ESM `import` (`sync-engine` needs `jest.unstable_mockModule('overlay.js', …)`). Updated stale assertions to shipped behavior. `api-manager`: isolated failover/circuit/sort + added a rotation-on expansion test.
+- **D1** (`esc()` test) re-pointed to Phase 75 (extract to `utils.js`).
+- **Verify**: **0 failing — 218/218**; lint + prettier clean.
+
+### Phase 69 — [EPIC] Coverage expansion (honest 23% → 40%)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tests · **Depends**: 68
+- **Decision 12 (developer-approved)**: an honest denominator (`src/**` minus vendored `browser-polyfill.js`) measured **23%** baseline. "≥70% global" reframed as a Milestone-7 exit target reached incrementally (69 now, 75 translator, 76 UI) via a realistic ratchet.
+- One coordinated 4-agent parallel coverage pass (each gated green + lint/prettier-clean, no `src/` prod edits): `providers.js` 0.35% → 97%; `overlay.js` 6% → 61%; translator pure helpers via expanded `_internals` (24%); `page-detector` 100%, `subtitle-extractor` 90%, `video-binder` 88%, `trusted-types` 100%, `utils` 100%.
+- **+202 tests** (218 → 420); global 23% → 39.9% lines; `coverageThreshold` set a hair below achieved (stmts/lines 38, branches 34, funcs 36) — ratchets, never lower. Findings → DEFERRED D3.
+- **Verify**: 420/420 green with the threshold gate; lint + prettier clean.
+
+### Phase 70 — CI pipeline (ready-to-use, dormant)
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: tooling · **Depends**: 67-69
+- Repo is local-only (no remote, private by design) → wrote the workflow now, **dormant**; activates on first push. No `master → main` rename.
+- `.github/workflows/test.yml`: on push/PR to main|master → `npm ci` → lint → format:check → test (with coverage gate) → package (Chrome + Firefox build smoke test). Node 22, `HUSKY=0`. Every step verified locally before commit.
+
+### Phase 71 — SPEC reconciliation + README + LICENSE
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: docs
+- `YOUSUB_PROJECT_SPEC.md` §2.5/2.7: removed phantom files (`toast.js`, `tab-about.js`, `logo.svg` — never existed); §2.6/2.7 rewritten to the real ESM architecture (single `loader.js` → dynamic `import()` of `main.js`; `window.YouSub` compat shim; documented `web_accessible_resources`). Added previously-undocumented real modules + `src/debug/` panel; fixed the icon list.
+- Added a light private-repo `README.md` (tech stack, dev quickstart, privacy/BYOK, doc map, AGPL-3.0). Recorded as **Decision 13**.
+- **Verify**: zero remaining phantom-file references; folder map matches the real tree.
+
+### Phase 72 — AI-governance consolidation
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: docs
+- Deleted `GEMINI.md` (near-duplicate of `CLAUDE.md`). Folded its unique `MAX_LINES_PER_BATCH` "do not touch" guard into `CLAUDE.md` as **Rule 12**. Added **Rule 13** (single canonical rules file + maintenance-mode/`[Hotfix]` note).
+- Removed phantom `PROMPT.md` from the Documentation Architecture table + Directory Structure; fixed `.Claude/` casing; replaced stale "Tech Stack: TBD" boilerplate with the real description.
+- **Verify**: only one AI-rules file (`CLAUDE.md`).
+
+### Phase 73 — Repo hygiene cleanup
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: hygiene
+- `git rm --cached` (kept on disk): the personal résumé `.docx`, `icons.zip`, `icon128-original.png`, `jest_output.txt`, `tmp/test_*.js`. Fully deleted stale `translator_test.html`.
+- **Removed `resize_icons.js`** (doubly dead: hard-coded path + jimp v0.x API incompatible with installed jimp 1.6, emitted only 3 of 6 icon sizes). Dropping its sole consumer let me also drop the orphaned **`jimp` dependency** → `npm audit` 38 → 19.
+- Updated `.gitignore` (`tmp/`, `*.docx`, `*.zip`, `*_output.txt`, `*-original.png`). `src/debug/` kept (shipped diagnostics panel, documented).
+- **Privacy note → DEFERRED D4**: untracking stops future tracking but the résumé remained in git history (scrubbed later in D4).
+- **Verify**: `git status` clean; lint 0; 420/420 + gate; ZIPs valid.
+
+### Phase 74 — Privacy / store compliance
+**Status**: DONE (2026-06-24) · **Risk**: Low · **Group**: privacy
+- Added in-repo `privacy-policy.md` mirroring the published gist. Fixed Firefox `data_collection_permissions` `["none"]` → **`["websiteContent"]`** (the extension transmits transcript to a third-party LLM). ⚠️ Verify the exact AMO category set at submission time.
+- `translate.googleapis.com` host_permission **verified IN USE** by `rough-translator.js` (free Google-Translate tier) — kept. Recorded plaintext-key-storage tradeoff as **Decision 14**.
+- **Verify**: manifest valid + build VERIFY OK; `privacy-policy.md` consistent with the declared data flow.
+
+### Phase 75 — [EPIC] Refactor `translator.js` (behavior-preserving)
+**Status**: DONE (2026-06-25) · **Risk**: High · **Group**: refactor · **Depends**: 68, 69
+- **75a** — Unified the divergent health-score formula: `HealthManager.getScore` was dead-in-prod; added `HealthManager.computeScore(entry)` (live 10s formula) as the single source of truth, wired both call sites, +4 pinning tests. Behavior-preserving.
+- **75b** — Built `tests/unit/translator-translate.test.js`, a characterization harness for exported `translate()` (mocks `providers.js`, not fetch): pins happy-path, 429-failover, abort, input guards. `translator.js` coverage 24% → 48.5%.
+- **75c** — Deduplicated `tryKeyForBatch`: two near-identical ~95-line post-success pipelines extracted **verbatim** into one `finalizeSuccessfulBatch(...)`. Net −96 lines, no logic change.
+- Dead code (`getFirstAvailableKey`, `allFailuresMap`) already removed in 67b. Further `tryKeyForBatch` splitting → DEFERRED D6.
+- **Verify**: full suite 429/429 green before & after each step; lint + prettier clean.
+
+### Phase 76 — [EPIC] UI/UX polish + accessibility
+**Status**: DONE (2026-06-25) · **Risk**: Med · **Group**: ux · **Depends**: 71
+- **76a** — Accessibility: full ARIA tab pattern on the options tabs (tablist/tab/tabpanel + `aria-selected`/roving `tabindex` + Arrow-key nav); `role="dialog"`+`aria-modal` on both confirm modals with focus-to-cancel, Escape-to-close, focus-return; `aria-label` on the ✕ button; `role="status"`+`aria-live` on popup health + loading.
+- **76b** → DEFERRED **D7** (CSS dedup needs visual-regression verification).
+- **76c** — Hygiene: `chrome.* → browser.*` (4 calls); removed dead GitHub link, "Report an Issue" → `mailto:`; version badge + About read from `Constants.VERSION`. DEFERRED **D2** found already-resolved.
+- **Verify**: new `tests/unit/options-a11y.test.js` (6 tests); full suite **435/435**; lint 0; package VERIFY OK.
+
+### Phase 77 — Transcript-button locale resilience + Japanese UI i18n
+**Status**: DONE (2026-06-25) · **Risk**: Med · **Group**: feature · **Depends**: 76
+- **77a** — `main-world-extractor.js` `findTranscriptButton()` made locale-resilient: aria-label/text fallbacks match EN (case-insensitive substring) + JA (`文字起こし` / `文字起こしを表示`); structural selectors already language-agnostic. Label list EN + JA per the hard rule.
+- **77b** — Full Japanese UI i18n via WebExtensions `i18n`: `_locales/en` + `_locales/ja` (98 keys each, identical set); `src/shared/i18n.js` `applyI18n()` (graceful — missing strings keep hardcoded English); `data-i18n*` tags across popup + options; `default_locale: "en"`; `scripts/package.js` packs `_locales`. Bug caught (advisor): `$INDEX$` without a `placeholders` block → switched to a `{index}` token + parity test.
+- **Verify**: full suite **435 → 443** green; lint 0; prettier clean; package VERIFY OK with `_locales/en` + `_locales/ja` in both ZIPs.
+
+### Milestone 7 — Resolved Open Questions
+- **Phase 65/71**: SPEC "v0.4.0" intentional or typo? → RESOLVED: stale, corrected to 0.2.2 in Phase 65; the remaining "v0.4.0" is a historical revision-history row, left as history.
+- **Phase 66**: Cache TTL 30 days or 7? → RESOLVED (2026-06-23): keep 30 days; circuit-breaker threshold kept at 10 (not 3). See Decision 11.
+- **Phase 70**: Repo on GitHub (CI worthwhile)? → RESOLVED (2026-06-24): local-only; ready-to-use workflow stays dormant until a remote is added. No branch rename.
+- **Phase 73**: Keep `src/debug/` or remove? → RESOLVED: keep + document — shipped advanced-diagnostics panel wired via `popup.js`.
+- **Phase 77**: Japanese UI localization wanted, or only selector resilience? → RESOLVED (2026-06-24): do BOTH.
+
+### Post-M7 — DEFERRED backlog (D1–D7) + 0.2.3 release prep (2026-06-25 → 2026-06-30)
+- **DEFERRED backlog D1–D7 cleared (2026-06-25)** — see `DEFERRED.md` "Resolved" + `CHANGELOG.md` for full detail:
+  - **D1** — extracted the `esc()` closure from `main.js` to `utils.js` as exported `escapeHtml()` (verbatim) + 13 tests.
+  - **D2** — confirmed already resolved (`loadSettings()` populates the Appearance form); no fix.
+  - **D3** — `Providers.chat()` default timeout message now derives from `timeoutMs` (15s) instead of a hardcoded "30s"; +2 tests.
+  - **D4** — scrubbed the personal résumé + 3 junk blobs from the **entire git history** via `git filter-repo` (44 commits preserved, hashes changed); a restore-verified `git bundle` backup was made then removed. Local-only (no remote).
+  - **D5 (partial)** — closed the one **high**-severity advisory (`ws` 8.20 → 8.21 via `overrides`); the remaining 18 dev-only npm-audit vulns stay deferred (need a jest/babel major migration; `npm audit fix` empirically breaks the jest toolchain). **Only remaining open DEFERRED item.**
+  - **D6** — characterization gate (+4 tests) then behavior-preserving extraction of `callProviderWithRetry` + `parseTimestampedText` (+6 tests); 443 → 468 tests.
+  - **D7** — CSS dedup investigated, **declined** (developer-approved): `popup.css` vs `options.css` share selector names but values diverge by design — not meaningfully dedupable.
+- **[Hotfix] `background.scripts` Chrome dev-load warning (`f3a6efc`, 2026-06-25)**: removed the Firefox-only `background.scripts` key from the source manifest (Chrome-clean dev-load); the Firefox build transform now injects it; `verifyZip` hardened to assert the Firefox ZIP has `scripts`.
+- **0.2.3 release prep (`e7dde7a`, 2026-06-30)**: PATCH bump 0.2.2 → 0.2.3 across `manifest.json` / `package.json` / lockfile / `constants.js` / options-UI; CHANGELOG tagged `[0.2.3]`; both ZIPs built `[VERIFY OK]`; **468/468** tests. **Not yet uploaded to the store** (manual developer step).
