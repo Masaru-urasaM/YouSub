@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-30
+
 ### [Hotfix] Chrome dev-load warning `'background.scripts' requires manifest version of 2 or lower` (2026-06-25)
 
 **Problem**: Loading the project root unpacked in Chrome (the daily dev workflow) showed a warning on `chrome://extensions`. The source `manifest.json` carried **both** `background.service_worker` (Chrome MV3) and `background.scripts` (Firefox MV3) for cross-browser support; Chrome warns on the Firefox-only `scripts` key. Non-fatal (Chrome still loads via `service_worker`), but noise. The shipped ZIPs were already clean — the build strips the foreign key per platform.
