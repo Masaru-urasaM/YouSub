@@ -82,4 +82,54 @@ describe('Cache Module', () => {
     const cacheKeys = Object.keys(store).filter((k) => k.startsWith('yousub_vcache_'));
     expect(cacheKeys.length).toBe(0);
   });
+
+  // ─── hasAnyForVideoTarget (source-language-agnostic auto-start probe) ───
+  describe('hasAnyForVideoTarget', () => {
+    test('true when an entry exists under the legacy "auto" source key', async () => {
+      await Cache.set('vid_a', 'auto', 'vi', [{ text: 'hi' }]);
+      expect(await Cache.hasAnyForVideoTarget('vid_a', 'vi')).toBe(true);
+    });
+
+    test('true when an entry exists under a CONCRETE source key (B-c regression case)', async () => {
+      // The regression: probe used to pin "auto" and miss the single-track "en" entry.
+      await Cache.set('vid_b', 'en', 'vi', [{ text: 'hi' }]);
+      expect(await Cache.hasAnyForVideoTarget('vid_b', 'vi')).toBe(true);
+    });
+
+    test('false when no entry exists for that video+target', async () => {
+      await Cache.set('vid_c', 'en', 'vi', [{ text: 'hi' }]);
+      expect(await Cache.hasAnyForVideoTarget('vid_missing', 'vi')).toBe(false);
+    });
+
+    test('false when the target language differs', async () => {
+      await Cache.set('vid_d', 'en', 'vi', [{ text: 'hi' }]);
+      expect(await Cache.hasAnyForVideoTarget('vid_d', 'ja')).toBe(false);
+    });
+
+    test('ignores TTL at the probe (defers expiry to the serve-time Cache.get)', async () => {
+      await Cache.set('vid_e', 'en', 'vi', [{ text: 'old' }]);
+      // Age the stored data entry past the TTL. The probe reads metadata only, so it
+      // still reports existence; the actual serve (Cache.get) re-checks TTL and misses.
+      const key = 'yousub_vcache_vid_e_en_vi';
+      const stored = await chrome.storage.local.get(key);
+      stored[key].timestamp = Date.now() - 31 * 24 * 60 * 60 * 1000; // 31 days (TTL is 30)
+      await chrome.storage.local.set({ [key]: stored[key] });
+
+      expect(await Cache.hasAnyForVideoTarget('vid_e', 'vi')).toBe(true);
+      expect(await Cache.get('vid_e', 'en', 'vi')).toBeNull(); // serve-time TTL enforced
+    });
+
+    test('does not false-match a videoId that is a prefix of another', async () => {
+      // Matches on the structured metadata videoId field (not string prefixes), so
+      // 'ab' must not match an entry stored for 'ab_cd'.
+      await Cache.set('ab_cd', 'en', 'vi', [{ text: 'hi' }]);
+      expect(await Cache.hasAnyForVideoTarget('ab_cd', 'vi')).toBe(true);
+      expect(await Cache.hasAnyForVideoTarget('ab', 'vi')).toBe(false);
+    });
+
+    test('returns false for a falsy videoId', async () => {
+      expect(await Cache.hasAnyForVideoTarget('', 'vi')).toBe(false);
+      expect(await Cache.hasAnyForVideoTarget(null, 'vi')).toBe(false);
+    });
+  });
 });

@@ -401,6 +401,129 @@ describe('verifyAndRefineMerge', () => {
   });
 });
 
+// ─── verifyAndRefineMerge (injected roughTranslate delegate) ──
+
+describe('verifyAndRefineMerge (injected roughTranslate delegate)', () => {
+  test('uses the injected delegate and does NOT call RoughTranslator', async () => {
+    const segments = [
+      { text: 'I need to go to the store today' },
+      { text: 'Can you help me with this task' },
+    ];
+    const mergedText = 'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong';
+    const delegate = jest.fn(async () => [
+      'Toi can di den cua hang hom nay',
+      'Ban co the giup toi',
+    ]);
+
+    const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi', delegate);
+
+    expect(delegate).toHaveBeenCalledWith(
+      ['I need to go to the store today', 'Can you help me with this task'],
+      'en',
+      'vi'
+    );
+    expect(RoughTranslator.translateBatch).not.toHaveBeenCalled();
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+  });
+
+  test('falls back to RoughTranslator.translateBatch when no delegate is given', async () => {
+    const segments = [
+      { text: 'I need to go to the store today' },
+      { text: 'Can you help me with this task' },
+    ];
+    const mergedText = 'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong';
+    RoughTranslator.translateBatch = jest.fn(async () => [
+      'Toi can di den cua hang hom nay',
+      'Ban co the giup toi',
+    ]);
+
+    const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi');
+
+    expect(RoughTranslator.translateBatch).toHaveBeenCalledTimes(1);
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+  });
+
+  test('coerces a mismatched-length delegate response to all-null (fallback)', async () => {
+    const segments = [
+      { text: 'First sentence is quite long enough' },
+      { text: 'Second sentence here too now' },
+    ];
+    const mergedText = 'Cau mot dai Cau hai o day nua hom nay';
+    // Delegate violates the contract (length 1 for a 2-item request) → coerced to
+    // [null, null] → roughCurrent null → fallback branch.
+    const delegate = jest.fn(async () => ['only-one']);
+
+    const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi', delegate);
+
+    expect(delegate).toHaveBeenCalled();
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+    expect(result.fallback).toBe(true);
+  });
+
+  test('coerces a non-array delegate response to all-null (fallback)', async () => {
+    const segments = [
+      { text: 'First sentence is quite long enough' },
+      { text: 'Second sentence here too now' },
+    ];
+    const mergedText = 'Cau mot dai Cau hai o day nua hom nay';
+    const delegate = jest.fn(async () => undefined);
+
+    const result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi', delegate);
+
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+    expect(result.fallback).toBe(true);
+  });
+
+  test('normalizes non-string elements to null (does not throw on a malformed delegate)', async () => {
+    const segments = [
+      { text: 'First sentence is quite long enough' },
+      { text: 'Second sentence here too now' },
+    ];
+    const mergedText = 'Cau mot dai Cau hai o day nua hom nay';
+    // Right length but wrong element types (delegate violates Array<string|null>):
+    // number at [0], nested array at [1] would crash wordCount/extractAnchorWords
+    // if not normalized → both become null → clean fallback.
+    const delegate = jest.fn(async () => [5, ['x']]);
+
+    let result;
+    await expect(
+      (async () => {
+        result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi', delegate);
+      })()
+    ).resolves.not.toThrow();
+
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+    expect(result.fallback).toBe(true);
+  });
+
+  test('degrades to fallback (never throws) when the delegate rejects', async () => {
+    const segments = [
+      { text: 'First sentence is quite long enough' },
+      { text: 'Second sentence here too now' },
+    ];
+    const mergedText = 'Cau mot dai Cau hai o day nua hom nay';
+    const delegate = jest.fn(async () => {
+      throw new Error('delegate boom');
+    });
+
+    let result;
+    await expect(
+      (async () => {
+        result = await verifyAndRefineMerge(0, 1, 1, segments, mergedText, 'en', 'vi', delegate);
+      })()
+    ).resolves.not.toThrow();
+
+    expect(result.verified).toBe(true);
+    expect(result.absorbed).toBe(1);
+    expect(result.fallback).toBe(true);
+  });
+});
+
 // ─── fix ─────────────────────────────────────────────────────
 
 describe('fix', () => {
@@ -569,6 +692,89 @@ describe('fix', () => {
     expect(result.lines[0]).toBeTruthy();
     expect(result.lines[1]).toBeTruthy();
     expect(result.pendingIndices).toEqual([]);
+  });
+});
+
+// ─── fix (injected roughTranslate delegate) ─────────────────
+
+describe('fix (injected roughTranslate delegate)', () => {
+  test('forwards the delegate to verification (RoughTranslator not called)', async () => {
+    const segments = [
+      { text: 'I need to go to the store today' },
+      { text: 'Can you help me with this task' },
+    ];
+    const outputLines = [
+      'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong',
+      '',
+    ];
+    const delegate = jest.fn(async () => [
+      'Toi can di den cua hang hom nay',
+      'Ban co the giup toi',
+    ]);
+
+    const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi', delegate);
+
+    // Assert the args, not just that it was called: the delegate is invoked as
+    // roughTranslate(textsToTranslate, src, tgt), so an src/tgt swap at the call
+    // site would survive a bare toHaveBeenCalled().
+    expect(delegate).toHaveBeenCalledWith(expect.any(Array), 'en', 'vi');
+    expect(RoughTranslator.translateBatch).not.toHaveBeenCalled();
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines[0]).toContain('Toi can di den cua hang');
+    expect(result.lines[1]).toContain('Ban co the giup toi');
+    expect(result.pendingIndices).toEqual([]);
+  });
+
+  test('without a delegate, fix still uses RoughTranslator (unchanged behavior)', async () => {
+    const segments = [
+      { text: 'I need to go to the store today' },
+      { text: 'Can you help me with this task' },
+    ];
+    const outputLines = [
+      'Toi can di den cua hang hom nay Ban co the giup toi voi nhiem vu nay khong',
+      '',
+    ];
+    RoughTranslator.translateBatch = jest.fn(async () => [
+      'Toi can di den cua hang hom nay',
+      'Ban co the giup toi',
+    ]);
+
+    const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi');
+
+    expect(RoughTranslator.translateBatch).toHaveBeenCalled();
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines[0]).toContain('Toi can di den cua hang');
+  });
+
+  test('forwards the delegate through the SHIFT path (second call site)', async () => {
+    // A tail anomaly ('noi') + a high-ratio line[0] routes fix() through the
+    // shift-realignment path, which is a SEPARATE verifyAndRefineMerge call site
+    // from the classic pass. Pins delegate forwarding there (a dropped arg would
+    // otherwise pass silently — see the shift-aware tests below that use no delegate).
+    const segments = [
+      { text: 'First input line here for testing today' },
+      { text: 'Second input line here for testing now' },
+      { text: 'Third input line is separate and fine' },
+    ];
+    const outputLines = [
+      'Dong mot va dong hai gop lai thanh mot dong dich rat dai luon nhe ban oi hom nay',
+      'Dong ba rieng biet va tot dep nhe',
+      'noi',
+    ];
+    const delegate = jest.fn(async () => [
+      'Dong dau tien o day de test hom nay',
+      'Dong thu hai o day de test bay gio',
+    ]);
+
+    const result = await MergeFixer.fix(segments, outputLines, 'en', 'vi', delegate);
+
+    // Assert the args on the SHIFT-path call site too (a separate
+    // verifyAndRefineMerge invocation): an src/tgt swap here would otherwise pass.
+    expect(delegate).toHaveBeenCalledWith(expect.any(Array), 'en', 'vi');
+    expect(RoughTranslator.translateBatch).not.toHaveBeenCalled();
+    expect(result.pendingIndices).toEqual([0, 1]);
+    expect(result.lines[0]).toBe('');
+    expect(result.lines[1]).toBe('');
   });
 });
 

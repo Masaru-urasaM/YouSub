@@ -1,6 +1,17 @@
+// RoughTranslator — best-effort "rough" translation used ONLY internally by MergeFixer
+// (in the background service worker) to verify suspected line-merges. It uses Chrome's
+// on-device Translator API and NEVER performs a network request: there is deliberately no
+// third-party fallback, so no subtitle text leaves the device (privacy).
+//
+// IMPORTANT (verified 2026-06-30): Chrome documents the Translator API as unavailable in
+// Web/Service Workers, and this module only probes the legacy `self.translation` /
+// `self.ai.translator` shapes (the stable API since Chrome 138 is the top-level `Translator`
+// global). In the MV3 service-worker context the on-device path therefore does not run
+// today — translate() returns null and MergeFixer falls back to its offline heuristic (see
+// Decision 15 / Decision 1). The on-device scaffolding is retained for a possible future
+// move of rough-translation into a document/content-script context, where the API works.
 import { Logger } from '../shared/logger.js';
 
-const GT_TIMEOUT_MS = 5000;
 const CHROME_TRANSLATOR_TIMEOUT_MS = 3000;
 
 const _pairAvailability = new Map();
@@ -61,19 +72,6 @@ async function _translateWithChrome(text, src, tgt) {
   }
 }
 
-async function _translateWithGoogle(text, src, tgt) {
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(src)}&tl=${encodeURIComponent(tgt)}&dt=t&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(GT_TIMEOUT_MS) });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data?.[0]?.[0]?.[0] || null;
-  } catch (err) {
-    Logger.debug('RoughTranslator', `Google Translate failed: ${err.message}`);
-    return null;
-  }
-}
-
 export const RoughTranslator = {
   async translate(text, src, tgt) {
     if (!text || !text.trim()) return null;
@@ -83,9 +81,6 @@ export const RoughTranslator = {
       const result = await _translateWithChrome(text, src, tgt);
       if (result) return result;
     }
-
-    const googleResult = await _translateWithGoogle(text, src, tgt);
-    if (googleResult) return googleResult;
 
     return null;
   },
@@ -101,5 +96,4 @@ export const _internals = {
   _translatorInstances,
   _checkChromeTranslatorAvailability,
   _translateWithChrome,
-  _translateWithGoogle,
 };

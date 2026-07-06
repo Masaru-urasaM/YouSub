@@ -17,6 +17,30 @@
 
 ---
 
+### D8 — Detect transcript source language via `LanguageDetector` (replace conservative single-track heuristic)
+
+**Deferred**: 2026-07-01 (Phase B-c)
+**Effort**: Small–Medium (main-world `LanguageDetector` call + confidence threshold + plumbing already exists)
+**What**: Phase B-c derives the rough-translation source language with a **conservative single-track rule** (`deriveSourceLang` in `subtitle-extractor.js`): a concrete language only when exactly one caption track has a known `languageCode`, else `'auto'` (Decision 16). This is safe but leaves two gaps: (a) **multi-track** videos fall back to `'auto'` even though the panel default is usually the primary track, and (b) a single-track video whose transcript panel was switched to a **translation** language yields a wrong `languageCode`. The truly-correct signal is Chrome's on-device `LanguageDetector` API run on the **actually-scraped text** — the spike (2026-07-01) confirmed `LanguageDetector` is present in the YouTube main world (`hasLangDetector: true`).
+**Why deferred**: the on-device `Translator` feature it feeds is currently **dormant** — the 2026-07-01 spike found all tested pairs `downloadable` (model not resident), so `main-world-translator.js`'s strict `'available'` gate returns all-null regardless of source-language precision. Precision only pays off once models are resident. Adds async + confidence-threshold scope not worth it while dormant.
+**Dependency**: on-device Translator models actually resident on the target machine (availability `'available'`, not `'downloadable'`), i.e. B-d wiring making the feature live AND a downloaded model.
+**Revisit when**: B-d makes on-device rough back-translation live and on-device models are observed resident in the field (or a model-download trigger is added) — at which point the wrong-language edge cases start to matter.
+
+---
+
+### D9 — No unit harness for `main.js` (sourceLang threading + rough-translate onMessage handler)
+
+**Deferred**: 2026-07-01 (Phase B-c adversarial review, finding #6) · **Updated**: 2026-07-06 (Phase B-d review folded in finding `coverage-3`)
+**Effort**: Medium (stand up a `main.js` test harness — heavy top-level side effects + many content-module imports make it non-trivial to load in jsdom)
+**What**: The correctness-critical, cache-key-stability logic — the pure `deriveSourceLang(tracks)` and `Cache.hasAnyForVideoTarget` — is fully unit-tested. Two seams inside `main.js` remain untested because no `main.js` unit-test file exists (the module has heavy top-level side effects and imports — `TrustedTypes.init()`, `PageDetector.onNavigate(...)`, 9 content-module imports — and the chrome mock's `onMessage.addListener` is a bare no-op that never stores the listener):
+- **sourceLang threading**: `processEntries(entries, videoId, targetLang, sourceLang='auto')`, `startSubtitlePipeline`'s two paths (DOM-scrape passes the derived `sourceLang`; fallback-fetch passes `selectedTrack.languageCode`), and the `sourceLang || 'auto'` coercion posted to the SW (`main.js:114`). A silent regression here could post a wrong-language `sourceLang` to the SW / cache.
+- **`YOUSUB_ROUGH_TRANSLATE` onMessage handler** (`main.js:467-472`, Phase B-d): the content-side hop the SW delegate targets — `RoughTranslateBridge.translateBatch(...).then(sendResponse({translations})).catch(all-null)` + `return true` (keeps the async channel open). Surviving mutations (per the 2026-07-06 review, `coverage-3`): dropping `return true` closes the channel early (SW delegate times out to all-null → on-device rough translation silently disabled); dropping the `.catch` leaves the SW delegate hanging until its 3s timeout. The endpoints it wires ARE tested in isolation — `RoughTranslateBridge.translateBatch` (`rough-translate-bridge.test.js`) and the SW-side `buildRoughTranslateDelegate` (`rough-delegate.test.js`) — only the `main.js` wrapper that calls the bridge and shapes the reply is uncovered.
+**Why deferred**: consistent with how the codebase already treats `main.js` (integration/in-browser verified, not unit-tested); the derivation, probe, bridge, and delegate logic — the parts with real branching — are unit-tested. Both `main.js` seams are straight pass-through, and the Phase B-d review confirmed the handler code itself is correct (all four findings were coverage gaps, zero code defects). Standing up a partial `main.js` harness risks leaking observers/timers into the jest environment (destabilizing unrelated suites), so it is a deliberate architectural decision, not a quick add.
+**Dependency**: a `main.js` (or content-entry) unit-test harness (capture the `onMessage` listener via an enhanced chrome mock + neutralize the top-level side effects), or an integration/e2e harness that can drive `SubtitleExtractor.extract`'s callback and `chrome.runtime.onMessage`.
+**Revisit when**: a `main.js` test harness is introduced (would unblock both seams + other content-entry coverage), or at the B-d in-browser verification pass — assert `requestTranslationStreaming` is posted with the expected `sourceLang` for single-track / multi-track / fallback-fetch inputs (plus the `'' → 'auto'` coercion), and drive `onMessage` with a `YOUSUB_ROUGH_TRANSLATE` request asserting `sendResponse({translations})` of `length === texts.length` and `return true`.
+
+---
+
 ## Resolved
 
 > Tombstones kept for traceability (Rule 8 — removed from the active list above).

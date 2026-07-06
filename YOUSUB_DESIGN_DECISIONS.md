@@ -47,7 +47,7 @@ Two-signal minimum guardrail: at least 2 of 3 signals must fire to prevent false
 ### Decision 3 — 3-Tier RoughTranslator Architecture
 
 **Date**: 2026-05-07
-**Status**: RESOLVED
+**Status**: REVISED by [Decision 15](#decision-15--remove-google-translate-fallback-from-roughtranslator-privacy) (2026-06-30) — Tier 2 (Google Translate) removed for privacy; `RoughTranslator` is now on-device only (Tier 1) + return-null (Tier 3).
 
 **Problem**: `RoughTranslator` only used Google Translate scraping via undocumented API endpoint (`translate.googleapis.com`). This is rate-limited, unreliable, and may break without notice.
 
@@ -275,3 +275,55 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Tradeoff accepted**: keys are readable by anyone with local access to the browser profile. Users on shared/untrusted machines should remove keys after use. Revisit if a portable, low-friction secret-storage API becomes available in MV3.
 
 **References**: `src/background/api-manager.js`, `src/options/tab-translation.js` (key storage); `privacy-policy.md`; `manifest.json` `data_collection_permissions`; Phase 74 in `ROADMAP.md` / `CHANGELOG.md`.
+
+---
+
+### Decision 15 — Remove Google Translate Fallback from RoughTranslator (Privacy)
+
+**Date**: 2026-06-30
+**Status**: RESOLVED (revises Decision 3)
+
+**Problem**: Decision 3's 3-tier `RoughTranslator` kept Google Translate (`translate.googleapis.com`, `client=gtx`) as Tier 2. The 2026-06-30 professionalization audit found this sends subtitle text to a third party with **no user opt-in** whenever a line-merge/shift is suspected (and always on browsers with no on-device Translator), directly contradicting `privacy-policy.md` and undercutting YouSub's "no third-party / no first-party server" positioning. Removal-grade Chrome Web Store policy + ethics issue.
+
+**Options considered**:
+1. **Keep Google, disclose it in the privacy policy** — Pros: smallest change; preserves merge-verification quality everywhere. Cons: still sends subtitle text to a non-chosen third party; dents the core privacy positioning.
+2. **Make Google opt-in (off by default)** — Pros: keeps the safety net for users who opt in. Cons: adds a setting + UI + a storage read on a hot path; more surface for marginal benefit on a Chrome-only release.
+3. **Remove Google entirely; on-device only** — Pros: clean, truthful privacy story; permission reduction; surgical change. Cons: when on-device translation is unavailable, merge-verification loses its back-translation cross-check.
+
+**Resolution**: Option 3 (developer-chosen, 2026-06-30). Tier 2 (Google) deleted; the `translate.googleapis.com` host permission removed from `manifest.json`.
+
+**Verified caveat (2026-06-30, Chrome docs)**: Tier 1 (on-device) does **not** actually run in YouSub's background service worker. Chrome documents the Translator API as unavailable in Web/Service Workers ("The Translator API isn't available in Web Workers…"), and the code only probed the **deprecated** `self.translation` / `self.ai.translator` shapes (the stable API since Chrome 138 is the top-level `Translator` global). So on-device rough-translation was already inert in the SW and Google was carrying 100% of it. Removing Google therefore disables the back-translation merge-verification layer: `MergeFixer.verifyAndRefineMerge` always takes its `fallback: true` path, making the `verifyRatio` false-alarm rejection (`merge-fixer.js:351-357`) and the rough-based best-fit inert. The fully-offline cascade/heuristic signals (Decision 1) are unaffected and remain the primary merge detector; the strict `json_schema` P1 will further reduce merges at the source. Whether to RESTORE on-device verification by moving rough-translation to a content-script/document context (where the `Translator` global works) is an open follow-up.
+
+**Tradeoff accepted**: loss of the back-translation merge-verification layer (false-alarm rejection + rough-based best-fit) in exchange for a literally-true "no third-party transmission" privacy guarantee; the offline cascade/heuristic merge detection is retained. **Do NOT re-introduce a network-based rough-translation fallback.** If stronger merge-verification is later required, move rough-translation to a document/content-script context and adopt the stable `Translator` global API.
+
+**Phase B follow-up (2026-07-06 — the "open follow-up" above is now RESOLVED)**: Phase B (sub-phases B-a…B-d) restored the back-translation merge-verification layer **on-device only**, by moving rough-translation to the YouTube page's MAIN world — where the stable `Translator` global works — and having the service worker delegate to it: `finalizeSuccessfulBatch` → `buildRoughTranslateDelegate` → `browser.tabs.sendMessage` → content `YOUSUB_ROUGH_TRANSLATE` handler → `RoughTranslateBridge` → `main-world-translator.js`. The "**Do NOT re-introduce a network-based rough-translation fallback**" constraint holds — a 6-lens / 10-agent adversarial review (2026-07-06) confirmed **zero network egress** and zero code defects (all findings were test-coverage gaps). It is **best-effort**: gated to `availability === 'available'` with no in-path model download, so it stays dormant until an on-device model is resident (2026-07-01 spike: all pairs `downloadable`) and degrades to the offline heuristic otherwise. The on-device API needs a concrete source language, derived conservatively (Decision 16). See `CHANGELOG.md` (Phase B, 2026-07-06); the on-device-availability follow-up is DEFERRED **D8**, and the untested `main.js` handler seam is DEFERRED **D9**.
+
+**References**: `src/background/rough-translator.js`, `src/background/merge-fixer.js` (`verifyAndRefineMerge` fallback), `manifest.json`, `privacy-policy.md`, `CHANGELOG.md` ([Privacy P0], 2026-06-30; Phase B, 2026-07-06); revises Decision 3; enabled by Decision 16 · `src/content/main-world-translator.js`, `src/content/rough-translate-bridge.js`, `src/background/translator.js` (`buildRoughTranslateDelegate`).
+
+---
+
+### Decision 16 — Phase B: Conservative Single-Track Source-Language Derivation
+
+**Date**: 2026-07-01
+**Status**: RESOLVED
+
+**Problem**: Restoring on-device rough back-translation (Phase B) requires a **concrete** source language — the Chrome `Translator` API rejects `'auto'`. But the pipeline hardcoded `'auto'` (`main.js`, `requestTranslationStreaming`'s 3rd arg), and the primary extraction path scrapes the transcript **panel DOM** without recording which caption track it rendered. A **wrong** source language is worse than `'auto'`: `'auto'` cleanly disables on-device rough translation (→ heuristic fallback), whereas a wrong concrete language makes the on-device translator back-translate text it can't actually read, producing garbage word-counts that could corrupt `MergeFixer`'s merge verification.
+
+**Options considered**:
+1. **Always guess `tracks[0].languageCode`** — Pros: trivial; usually correct (panel defaults to the primary track). Cons: silently wrong for multi-track videos; a wrong guess actively harms verification.
+2. **`LanguageDetector` on the scraped text** — Pros: the truly-correct signal; immune to the panel-switched-to-translation edge case. Cons: added scope (async main-world API, confidence thresholds) for a feature that is currently **dormant** (spike 2026-07-01: all pairs `downloadable`, model not resident).
+3. **Conservative single-track rule** — assert a concrete language only when unambiguous: exactly one caption track with a truthy `languageCode`; otherwise `'auto'`. The fallback-fetch path (which chose a specific track) uses that track's `languageCode` directly.
+
+**Resolution**: Option 3 (2026-07-01). `deriveSourceLang(tracks)` lives in `src/content/subtitle-extractor.js` (imported ESM, already under test) rather than the `main-world-extractor.js` IIFE — the rule is a pure function of `tracks`, which the envelope already carries verbatim, so there is **zero fidelity loss** and the mapping becomes genuinely unit-testable (the IIFE is not). `main-world-extractor.js` is left untouched. Rejected Option 1 (wrong-guess harm) and deferred Option 2 (dormant feature; see `DEFERRED.md`).
+
+**Known edge cases (accepted, deferred to `LanguageDetector`)**:
+- Single-track video whose transcript panel was previously switched to a *translation* language → scraped text ≠ track's `languageCode` (rare; would yield a wrong concrete language).
+- Multi-track video → conservatively `'auto'` even though the panel default is usually the primary track.
+
+**Notes**: `sourceLang` participates in the **cache key** (`service-worker.js`), so the derivation must be deterministic per video (the single-track rule is, given stable track metadata) and there is a one-time cache miss for videos previously cached under `'auto'` (accepted). Empty `languageCode` (`''`, from the extractor's `t.languageCode || ''` mapping) is guarded both in `deriveSourceLang` and by `main.js`'s `sourceLang || 'auto'`.
+
+**Review follow-up (2026-07-01, adversarial review of Phase B-c)**: putting `sourceLang` in the cache key introduced a regression the plan missed — the auto-start probe `YOUSUB_CHECK_CACHE` fires on page enter **before** extraction, so it cannot know the concrete source language and always keyed `'auto'`. After B-c a single-track video's stream result is cached under its concrete code (e.g. `'en'`), so the probe missed it and **auto-start-from-cache silently stopped firing** for the common single-track case. Fixed (developer-chosen **Option A**, 2026-07-01) with a **source-language-agnostic** existence probe: `Cache.hasAnyForVideoTarget(videoId, tl)` matches any entry for `(videoId, tl)` regardless of source language; the stream/request **serve** still uses the precise `(videoId, sl, tl)` key. It reads **only the metadata index** (a single storage key) via a structured `videoId`+`tl` match — this runs on every page enter, so it must not `get(null)` the whole cache (that would deserialize every cached subtitle payload), and structured matching also removes any videoId-prefix-collision ambiguity. TTL is intentionally deferred: a probe match only triggers auto-start, and the serve-time `Cache.get` re-checks TTL (expired → miss → re-translate), so a stale metadata entry costs at most one correct re-translation, never a wrong serve. Residual, accepted: a multi-track video whose DOM-scrape path (`'auto'`) and fallback-fetch path (concrete `languageCode`) run in different sessions can create two stream cache entries — fail-safe (one redundant re-translation on the user's own key; never wrong content; auto-start still fires via the agnostic probe).
+
+**Test coverage note**: `deriveSourceLang` and the extractor→callback wiring are unit-tested (`subtitle-extractor.test.js`); `hasAnyForVideoTarget` is unit-tested (`cache.test.js`). The threading **downstream** of the extract callback lives in `main.js` (`processEntries` sourceLang param, the two `startSubtitlePipeline` paths, the `sourceLang || 'auto'` post) which has no unit harness — verified in-browser at B-d (tracked in `DEFERRED.md`).
+
+**References**: `src/content/subtitle-extractor.js` (`deriveSourceLang`), `src/content/main.js` (`processEntries` sourceLang param), `src/background/service-worker.js` / `translator.js` (`options.src`, cache key), `tests/unit/subtitle-extractor.test.js`, `DEFERRED.md` (LanguageDetector follow-up); enables Phase B / Decision 15 restoration.

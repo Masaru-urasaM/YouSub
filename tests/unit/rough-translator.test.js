@@ -12,6 +12,11 @@ beforeEach(() => {
   delete self.translation;
   delete self.ai;
   originalFetch = globalThis.fetch;
+  // RoughTranslator must NEVER reach the network: it is on-device only, with no
+  // third-party fallback (privacy). Any fetch call is a regression.
+  globalThis.fetch = jest.fn(() => {
+    throw new Error('RoughTranslator must not perform any network request');
+  });
 });
 
 afterEach(() => {
@@ -20,16 +25,15 @@ afterEach(() => {
   delete self.ai;
 });
 
-// ─── Tier 1: Chrome Translator API ──────────────────────────
+// ─── Chrome on-device Translator ────────────────────────────
 
-describe('Tier 1: Chrome Translator API', () => {
+describe('Chrome on-device Translator', () => {
   test('uses Chrome Translator when available (translation.canTranslate)', async () => {
     const mockTranslator = { translate: jest.fn(async () => 'Xin chao') };
     self.translation = {
       canTranslate: jest.fn(async () => 'readily'),
       createTranslator: jest.fn(async () => mockTranslator),
     };
-    globalThis.fetch = jest.fn();
 
     const result = await RoughTranslator.translate('Hello', 'en', 'vi');
 
@@ -48,7 +52,6 @@ describe('Tier 1: Chrome Translator API', () => {
         create: jest.fn(async () => mockTranslator),
       },
     };
-    globalThis.fetch = jest.fn();
 
     const result = await RoughTranslator.translate('Hello', 'en', 'fr');
 
@@ -62,7 +65,6 @@ describe('Tier 1: Chrome Translator API', () => {
       canTranslate: jest.fn(async () => 'after-download'),
       createTranslator: jest.fn(async () => mockTranslator),
     };
-    globalThis.fetch = jest.fn();
 
     const result = await RoughTranslator.translate('Hello', 'en', 'es');
 
@@ -77,7 +79,6 @@ describe('Tier 1: Chrome Translator API', () => {
       canTranslate,
       createTranslator: jest.fn(async () => mockTranslator),
     };
-    globalThis.fetch = jest.fn();
 
     await RoughTranslator.translate('Hello', 'en', 'vi');
     await RoughTranslator.translate('World', 'en', 'vi');
@@ -92,7 +93,6 @@ describe('Tier 1: Chrome Translator API', () => {
       canTranslate: jest.fn(async () => 'readily'),
       createTranslator,
     };
-    globalThis.fetch = jest.fn();
 
     await RoughTranslator.translate('Hello', 'en', 'vi');
     await RoughTranslator.translate('World', 'en', 'vi');
@@ -100,7 +100,57 @@ describe('Tier 1: Chrome Translator API', () => {
     expect(createTranslator).toHaveBeenCalledTimes(1);
   });
 
-  test('falls back to Google when Chrome Translator fails for a text', async () => {
+  test('returns null when on-device translation yields an empty result', async () => {
+    const mockTranslator = { translate: jest.fn(async () => '') };
+    self.translation = {
+      canTranslate: jest.fn(async () => 'readily'),
+      createTranslator: jest.fn(async () => mockTranslator),
+    };
+
+    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
+
+    expect(result).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test('returns null when the translator cannot be created', async () => {
+    self.translation = {
+      canTranslate: jest.fn(async () => 'readily'),
+      createTranslator: jest.fn(async () => null),
+    };
+
+    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
+
+    expect(result).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// ─── No network fallback (privacy) ──────────────────────────
+
+describe('No network fallback (privacy)', () => {
+  test('returns null when on-device Translator is unavailable, never calls network', async () => {
+    // No self.translation / self.ai → availability check returns false.
+    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
+
+    expect(result).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test('returns null when canTranslate reports "no", never creates a translator or calls network', async () => {
+    self.translation = {
+      canTranslate: jest.fn(async () => 'no'),
+      createTranslator: jest.fn(),
+    };
+
+    const result = await RoughTranslator.translate('Hello', 'en', 'es');
+
+    expect(result).toBeNull();
+    expect(self.translation.createTranslator).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test('returns null when on-device translation throws, with no network fallback', async () => {
     const mockTranslator = {
       translate: jest.fn(async () => {
         throw new Error('model error');
@@ -110,78 +160,11 @@ describe('Tier 1: Chrome Translator API', () => {
       canTranslate: jest.fn(async () => 'readily'),
       createTranslator: jest.fn(async () => mockTranslator),
     };
-    globalThis.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => [[['Xin chao']]],
-    }));
-
-    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
-
-    expect(result).toBe('Xin chao');
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ─── Tier 2: Google Translate Fallback ──────────────────────
-
-describe('Tier 2: Google Translate fallback', () => {
-  test('uses Google when Chrome Translator unavailable', async () => {
-    globalThis.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => [[['Xin chao']]],
-    }));
-
-    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
-
-    expect(result).toBe('Xin chao');
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-  });
-
-  test('uses Google when canTranslate returns no', async () => {
-    self.translation = {
-      canTranslate: jest.fn(async () => 'no'),
-      createTranslator: jest.fn(),
-    };
-    globalThis.fetch = jest.fn(async () => ({
-      ok: true,
-      json: async () => [[['Hola']]],
-    }));
-
-    const result = await RoughTranslator.translate('Hello', 'en', 'es');
-
-    expect(result).toBe('Hola');
-    expect(self.translation.createTranslator).not.toHaveBeenCalled();
-  });
-
-  test('returns null when Google returns non-OK status', async () => {
-    globalThis.fetch = jest.fn(async () => ({ ok: false, status: 429 }));
 
     const result = await RoughTranslator.translate('Hello', 'en', 'vi');
 
     expect(result).toBeNull();
-  });
-});
-
-// ─── Tier 3: Both fail ─────────────────────────────────────
-
-describe('Tier 3: both tiers fail', () => {
-  test('returns null when both Chrome and Google fail', async () => {
-    const mockTranslator = {
-      translate: jest.fn(async () => {
-        throw new Error('fail');
-      }),
-    };
-    self.translation = {
-      canTranslate: jest.fn(async () => 'readily'),
-      createTranslator: jest.fn(async () => mockTranslator),
-    };
-    globalThis.fetch = jest.fn(async () => {
-      throw new Error('network error');
-    });
-
-    const result = await RoughTranslator.translate('Hello', 'en', 'vi');
-
-    expect(result).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test('returns null for empty input', async () => {
@@ -195,29 +178,44 @@ describe('Tier 3: both tiers fail', () => {
 
 describe('translateBatch', () => {
   test('returns array of correct length with mixed results', async () => {
-    let callCount = 0;
-    globalThis.fetch = jest.fn(async () => {
-      callCount++;
-      if (callCount === 2) throw new Error('fail');
-      return { ok: true, json: async () => [[['result']]] };
-    });
+    const mockTranslator = {
+      translate: jest.fn(async (text) => {
+        if (text === 'World') throw new Error('fail');
+        return `t:${text}`;
+      }),
+    };
+    self.translation = {
+      canTranslate: jest.fn(async () => 'readily'),
+      createTranslator: jest.fn(async () => mockTranslator),
+    };
 
     const results = await RoughTranslator.translateBatch(['Hello', 'World', 'Test'], 'en', 'vi');
 
     expect(results).toHaveLength(3);
-    expect(results[0]).toBe('result');
+    expect(results[0]).toBe('t:Hello');
     expect(results[1]).toBeNull();
-    expect(results[2]).toBe('result');
+    expect(results[2]).toBe('t:Test');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  test('returns all nulls when all translations fail', async () => {
-    globalThis.fetch = jest.fn(async () => {
-      throw new Error('fail');
-    });
-
+  test('returns all nulls when on-device translation is unavailable', async () => {
     const results = await RoughTranslator.translateBatch(['A', 'B'], 'en', 'vi');
 
     expect(results).toEqual([null, null]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test('preserves order for all-successful translations', async () => {
+    const mockTranslator = { translate: jest.fn(async (text) => `t:${text}`) };
+    self.translation = {
+      canTranslate: jest.fn(async () => 'readily'),
+      createTranslator: jest.fn(async () => mockTranslator),
+    };
+
+    const results = await RoughTranslator.translateBatch(['A', 'B', 'C'], 'en', 'vi');
+
+    expect(results).toEqual(['t:A', 't:B', 't:C']);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test('handles empty array', async () => {

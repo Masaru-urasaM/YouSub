@@ -32,13 +32,17 @@ jest.unstable_mockModule('../../src/background/providers.js', () => ({
 
 // Clean 1:1 pass-through: no merges, nothing pending. Keeps translate()'s
 // post-parse path deterministic and free of RoughTranslator/network calls.
+// Named so the delegate-forwarding tests can inspect fix()'s 5th argument (the
+// rough-translate delegate built by finalizeSuccessfulBatch). The constructor
+// implementation survives jest.clearAllMocks() (only mockReset would drop it, and
+// the config sets no resetMocks), so it stays a valid 1:1 pass-through per test.
+const fixFn = jest.fn(async (segments, outputLines) => ({
+  lines: [...outputLines],
+  pendingIndices: [],
+}));
+
 jest.unstable_mockModule('../../src/background/merge-fixer.js', () => ({
-  MergeFixer: {
-    fix: jest.fn(async (segments, outputLines) => ({
-      lines: [...outputLines],
-      pendingIndices: [],
-    })),
-  },
+  MergeFixer: { fix: fixFn },
 }));
 
 const { translate } = await import('../../src/background/translator.js');
@@ -311,5 +315,47 @@ describe('translate() characterization', () => {
     expect(result.success).toBe(true);
     expect(result.translated).toEqual(['Hello', 'World']);
     expect(batchCallCount()).toBe(1);
+  });
+
+  // ── Behavior 9: rough-translate delegate forwarding (Phase B-d seam) ──
+  // finalizeSuccessfulBatch builds the SW->content rough-translate delegate from
+  // (tabId, options.src) and forwards it as MergeFixer.fix's 5th argument. That
+  // wiring is otherwise mocked away, so assert it directly on the recorded fix()
+  // call — a dropped/undefined forward would silently disable on-device rough
+  // back-translation on the real path yet pass every other test.
+  test('forwards a delegate function to MergeFixer.fix when a tabId + concrete src are present', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'dk1', model: 'gpt-4o-mini' }]);
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+    // tabId is translate()'s 4th positional argument.
+    await translate(segments, 'en', TGT, 42);
+
+    expect(fixFn).toHaveBeenCalledTimes(1);
+    const args = fixFn.mock.calls[0];
+    expect(args[2]).toBe('en'); // options.src threaded through
+    expect(args[3]).toBe(TGT); // options.tgt threaded through
+    expect(typeof args[4]).toBe('function'); // the built delegate
+  });
+
+  test('passes no delegate (undefined) when src === "auto" — on-device stays disabled', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'dk2', model: 'gpt-4o-mini' }]);
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+    await translate(segments, 'auto', TGT, 42);
+
+    expect(fixFn).toHaveBeenCalledTimes(1);
+    // Assert the slot directly: toHaveBeenCalledWith arg-arity matching against an
+    // explicit trailing `undefined` is ambiguous.
+    expect(fixFn.mock.calls[0][4]).toBeUndefined();
+  });
+
+  test('passes no delegate (undefined) when there is no tabId', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'dk3', model: 'gpt-4o-mini' }]);
+
+    const segments = [seg('Hello', 0), seg('World', 1000)];
+    await translate(segments, 'en', TGT, null);
+
+    expect(fixFn).toHaveBeenCalledTimes(1);
+    expect(fixFn.mock.calls[0][4]).toBeUndefined();
   });
 });

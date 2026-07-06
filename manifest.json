@@ -14,8 +14,7 @@
     "https://api.deepseek.com/*",
     "https://api.x.ai/*",
     "https://api.mistral.ai/*",
-    "https://openrouter.ai/*",
-    "https://translate.googleapis.com/*"
+    "https://openrouter.ai/*"
   ],
   "optional_host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "background": {
@@ -66,8 +65,10 @@
         "src/content/overlay.js",
         "src/content/sync-engine.js",
         "src/content/main.js",
+        "src/content/rough-translate-bridge.js",
         "src/content/main-world-extractor.js",
-        "src/content/main-world-fetcher.js"
+        "src/content/main-world-fetcher.js",
+        "src/content/main-world-translator.js"
       ],
       "matches": ["*://*.youtube.com/*"]
     }

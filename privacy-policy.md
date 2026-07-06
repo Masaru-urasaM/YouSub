@@ -20,7 +20,7 @@ YouSub does **NOT** collect, store, or transmit any personal data to external se
 
 - **API Keys**: User-provided LLM API keys (e.g., OpenAI, Groq, Google Gemini, Anthropic, etc.) are stored in `chrome.storage.local` on your device only. They are never sent to any server other than the respective API provider you configured.
 - **Translation Cache**: Translated subtitle text is cached locally in `chrome.storage.local` to avoid redundant API calls.
-- **User Preferences**: Display settings (font size, color, position) are stored locally in `chrome.storage.sync`.
+- **User Preferences**: Display settings (font size, color, position) are stored locally in `chrome.storage.local`.
 
 ### What YouSub accesses on web pages:
 
@@ -30,7 +30,13 @@ YouSub does **NOT** collect, store, or transmit any personal data to external se
 
 YouSub sends subtitle text **only** to the LLM API provider that **you** configure (e.g., OpenAI, Groq, Google Gemini, Anthropic, DeepSeek, xAI, Mistral, OpenRouter, or your local Ollama instance). No data is sent to any other external service.
 
+For internal subtitle-alignment checks, YouSub may use Chrome's built-in **on-device** translation API. This runs locally on your device and does **not** transmit any subtitle text over the network.
+
 The developer of YouSub has **no access** to your API keys, your translation history, or any other data.
+
+## Limited Use
+
+YouSub's handling of user data complies with the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq), including the Limited Use requirements. Data accessed by YouSub (subtitle text and your API keys) is used **solely** to provide the in-extension translation feature, is processed only on your device and sent only to the LLM provider **you** configure, and is **never** sold, transferred to third parties, or used for advertising, profiling, or any purpose unrelated to the extension's core function.
 
 ## Third-Party Services
 

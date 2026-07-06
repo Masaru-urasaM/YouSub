@@ -208,12 +208,13 @@ async function handleRequest(request, sender) {
 
   // 3. YOUSUB_CHECK_CACHE
   if (request.type === 'YOUSUB_CHECK_CACHE') {
-    const cached = await Cache.get(
-      request.videoId,
-      request.sourceLang || 'auto',
-      request.targetLang
-    );
-    return { exists: !!cached };
+    // Source-language-agnostic: this probe fires before extraction, so the concrete
+    // source language is unknown. Match any cached translation for (videoId,
+    // targetLang) so auto-start still fires after source languages entered the cache
+    // key (Decision 16 / Phase B-c). The subsequent stream serve uses the exact
+    // (videoId, sl, tl) key once extraction derives the concrete source language.
+    const exists = await Cache.hasAnyForVideoTarget(request.videoId, request.targetLang);
+    return { exists };
   }
 
   // 4. YOUSUB_CLEAR_VIDEO_CACHE

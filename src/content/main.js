@@ -3,6 +3,7 @@ import { PageDetector } from './page-detector.js';
 import { VideoBinder } from './video-binder.js';
 import { SubtitleExtractor } from './subtitle-extractor.js';
 import { SubtitleParser } from './subtitle-parser.js';
+import { RoughTranslateBridge } from './rough-translate-bridge.js';
 import { Overlay } from './overlay.js';
 import { SyncEngine } from './sync-engine.js';
 import { TrustedTypes } from '../shared/trusted-types.js';
@@ -188,7 +189,7 @@ function requestTranslationStreaming(
 // Main flow
 // ---------------------------------------------------------------------------
 
-async function processEntries(entries, videoId, targetLang) {
+async function processEntries(entries, videoId, targetLang, sourceLang = 'auto') {
   try {
     devLog('[YouSub] Main: processEntries started. Count:', entries.length);
     if (!entries || entries.length === 0) return;
@@ -219,7 +220,7 @@ async function processEntries(entries, videoId, targetLang) {
     response = await requestTranslationStreaming(
       entries,
       videoId,
-      'auto',
+      sourceLang,
       targetLang,
       (partialBatch, startIndex) => {
         SyncEngine.updatePartial(partialBatch, startIndex);
@@ -315,7 +316,7 @@ async function startSubtitlePipeline(videoId, targetLang) {
     Overlay.setLoading(true);
     Overlay.show();
 
-    SubtitleExtractor.extract(async function (tracks, parsedEntries, error) {
+    SubtitleExtractor.extract(async function (tracks, parsedEntries, error, sourceLang) {
       try {
         devLog(
           '[YouSub] Main: Extractor results received. Entries:',
@@ -323,11 +324,13 @@ async function startSubtitlePipeline(videoId, targetLang) {
           'Tracks:',
           tracks ? tracks.length : 0,
           'Error:',
-          error
+          error,
+          'SourceLang:',
+          sourceLang
         );
 
         if (parsedEntries && parsedEntries.length > 0) {
-          await processEntries(parsedEntries, videoId, targetLang);
+          await processEntries(parsedEntries, videoId, targetLang, sourceLang);
           return;
         }
 
@@ -346,7 +349,9 @@ async function startSubtitlePipeline(videoId, targetLang) {
               const entries = await SubtitleParser.fetch(selectedTrack.baseUrl);
               if (entries && entries.length > 0) {
                 devLog('[YouSub] Main: Fallback fetch SUCCESS. Entries:', entries.length);
-                await processEntries(entries, videoId, targetLang);
+                // The fallback path fetched a specific track, so its languageCode is
+                // the authoritative source language (main.js:114 coerces '' → 'auto').
+                await processEntries(entries, videoId, targetLang, selectedTrack.languageCode);
                 return;
               }
             } catch (fetchErr) {
@@ -455,6 +460,16 @@ if (!_messageListenerRegistered) {
   _messageListenerRegistered = true;
   chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const currentVideoId = PageDetector.getCurrentVideoId();
+
+    // Rough back-translation delegated from the service worker (MergeFixer
+    // verification). Runs the on-device Translator in the page main world and
+    // replies with { translations } (Array<string|null>, length === texts.length).
+    if (request.type === 'YOUSUB_ROUGH_TRANSLATE') {
+      RoughTranslateBridge.translateBatch(request.texts, request.src, request.tgt)
+        .then((translations) => sendResponse({ translations }))
+        .catch(() => sendResponse({ translations: (request.texts || []).map(() => null) }));
+      return true; // async sendResponse — keep the message channel open
+    }
 
     if (
       request.type === 'YOUSUB_START_TRANSLATION' ||

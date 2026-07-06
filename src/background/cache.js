@@ -52,6 +52,41 @@ export const Cache = {
   },
 
   /**
+   * Source-language-agnostic existence check: is there any cached translation for
+   * (videoId, tl), regardless of source language?
+   *
+   * The auto-start cache probe (YOUSUB_CHECK_CACHE) fires on page enter — BEFORE
+   * extraction — so the concrete source language is not yet known. Since source
+   * languages began participating in the per-entry cache key (Decision 16 / Phase
+   * B-c), a probe pinned to 'auto' would miss entries stored under a concrete code
+   * (e.g. 'en' for a single-track video) and silently stop auto-starting.
+   *
+   * Reads ONLY the metadata index (a single storage key). This runs on every page
+   * enter, so it must NOT deserialize the whole cache (get(null) would pull every
+   * cached subtitle payload). TTL is intentionally not checked here: a match only
+   * triggers auto-start, and the subsequent stream/request serve re-checks TTL via
+   * Cache.get (expired => miss => re-translate). So a stale metadata entry costs at
+   * most one correct re-translation, never a wrong serve.
+   *
+   * @param {string} videoId
+   * @param {string} tl Target Language
+   * @returns {Promise<boolean>}
+   */
+  async hasAnyForVideoTarget(videoId, tl) {
+    if (!videoId) return false;
+    try {
+      const res = await browser.storage.local.get(META_KEY);
+      const keys = (res[META_KEY] && res[META_KEY].keys) || [];
+      // Structured match (not string-prefix) on the metadata index, so videoIds that
+      // are prefixes of one another cannot collide.
+      return keys.some((k) => k.videoId === videoId && k.tl === tl);
+    } catch (e) {
+      Logger.error('Cache', `Error scanning cache existence: ${e.message}`);
+      return false;
+    }
+  },
+
+  /**
    * Save translated entries to cache.
    * @param {string} videoId
    * @param {string} sl

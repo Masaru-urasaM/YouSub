@@ -38,6 +38,12 @@ const MAX_FORCE_TIMEOUT_MS = 600000; // hard ceiling (10 min) — never run fore
 const MAX_SWEEP_ROUNDS = 3;
 const SWEEP_MAX_WAIT_MS = 15000; // cap on waiting for key cooldowns before a sweep retry
 
+// Phase B-d: backstop timeout for the SW->content rough back-translation delegate
+// (MergeFixer merge verification). The content bridge answers within its own 2500ms
+// (all-null on its own timeout), so this 3000ms only fires if the content listener
+// never responds at all (e.g. the tab navigated away mid-batch).
+const ROUGH_DELEGATE_TIMEOUT_MS = 3000;
+
 // Phase 64 (c): absolute backstop scaled by transcript length.
 function computeForceTimeoutMs(segmentCount) {
   return Math.min(
@@ -1038,6 +1044,39 @@ function parseJsonResponse(responseText, segments) {
   return { lines: result, validCount, hadMismatch: rawLines.length !== expected || hadReorder };
 }
 
+// Phase B-d: build the SW->content rough back-translation delegate for MergeFixer's
+// merge verification. Chrome's on-device Translator runs in a document / main-world
+// context, NOT the service worker, so the SW delegates to the content script via
+// tabs.sendMessage; the content bridge runs the on-device Translator and replies.
+// Returns undefined — so MergeFixer.fix falls back to its in-worker RoughTranslator
+// seam (all-null in the SW today) — when delegation is impossible: no tabId, or an
+// unknown source language ('auto', which the on-device Translator rejects). The
+// delegate honors the RoughTranslator contract: resolves to Array<string|null> of
+// length === texts.length and NEVER rejects (any failure => all-null).
+function buildRoughTranslateDelegate(tabId, src) {
+  if (!tabId || !src || src === 'auto') return undefined;
+  return async (texts, s, t) => {
+    const allNull = () => texts.map(() => null);
+    try {
+      const resp = await Promise.race([
+        browser.tabs.sendMessage(tabId, {
+          type: 'YOUSUB_ROUGH_TRANSLATE',
+          texts,
+          src: s,
+          tgt: t,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('RoughDelegateTimeout')), ROUGH_DELEGATE_TIMEOUT_MS)
+        ),
+      ]);
+      const arr = resp && resp.translations;
+      return Array.isArray(arr) && arr.length === texts.length ? arr : allNull();
+    } catch {
+      return allNull();
+    }
+  };
+}
+
 // Phase 75c: shared post-success pipeline (merge-fix -> sanitize -> untranslated
 // verify -> final sanitize). Extracted verbatim from the two identical blocks
 // that followed a successful JSON parse and a successful text parse in
@@ -1056,11 +1095,13 @@ async function finalizeSuccessfulBatch(
   if (options._skipMergeFix) {
     fixedLines = rawLines;
   } else {
+    const roughTranslate = buildRoughTranslateDelegate(tabId, options.src || 'auto');
     const fixResult = await MergeFixer.fix(
       segments,
       rawLines,
       options.src || 'auto',
-      options.tgt || 'vi'
+      options.tgt || 'vi',
+      roughTranslate
     );
     fixedLines = fixResult.lines;
     const pendingCount = fixResult.pendingIndices.length;
@@ -2128,4 +2169,7 @@ export const _internals = {
   sortGroupsByHealth,
   selectGroupForBatch,
   MAX_PAYLOAD_BYTES,
+  // Phase B-d: SW->content rough back-translation delegate (merge verification)
+  buildRoughTranslateDelegate,
+  ROUGH_DELEGATE_TIMEOUT_MS,
 };

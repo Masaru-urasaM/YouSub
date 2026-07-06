@@ -326,13 +326,37 @@ async function verifyAndRefineMerge(
   segments,
   mergedText,
   src,
-  tgt
+  tgt,
+  roughTranslate
 ) {
   const textsToTranslate = [];
   for (let j = 0; j <= maxScan; j++) {
     textsToTranslate.push(segments[position + j].text);
   }
-  const roughAll = await RoughTranslator.translateBatch(textsToTranslate, src, tgt);
+  // `roughTranslate` (optional) is an injected delegate with the SAME contract as
+  // RoughTranslator.translateBatch: Promise<Array<string|null>> of length ===
+  // texts.length, never rejecting. When absent, fall back to the in-worker seam.
+  let roughAll;
+  try {
+    roughAll = roughTranslate
+      ? await roughTranslate(textsToTranslate, src, tgt)
+      : await RoughTranslator.translateBatch(textsToTranslate, src, tgt);
+  } catch {
+    // Contract says the delegate never rejects; if it does anyway, degrade rather
+    // than let the throw abort the whole batch's finalization.
+    roughAll = null;
+  }
+  // Defensive coercion (Blocker 2): downstream indexes roughAll[j] and calls
+  // wordCount/extractAnchorWords on it (which assume string|null), so any contract
+  // violation must degrade to all-null rather than corrupt or crash the verification.
+  if (!Array.isArray(roughAll) || roughAll.length !== textsToTranslate.length) {
+    roughAll = textsToTranslate.map(() => null);
+  } else {
+    // Normalize element types: only strings survive; a non-string element (delegate
+    // breaking its Array<string|null> contract) becomes null. No-op for the in-worker
+    // seam, which already returns Array<string|null>.
+    roughAll = roughAll.map((r) => (typeof r === 'string' ? r : null));
+  }
 
   const roughCurrent = roughAll[0];
   if (!roughCurrent) {
@@ -458,7 +482,7 @@ export const MergeFixer = {
     return merges;
   },
 
-  async fix(segments, outputLines, src, tgt) {
+  async fix(segments, outputLines, src, tgt, roughTranslate) {
     const lines = [...outputLines];
     const N = segments.length;
 
@@ -476,7 +500,8 @@ export const MergeFixer = {
             segments,
             lines[position],
             src,
-            tgt
+            tgt,
+            roughTranslate
           );
           if (verifyResult.verified) {
             confirmedMerges.set(position, verifyResult.absorbed);
@@ -533,7 +558,8 @@ export const MergeFixer = {
           segments,
           mergedText,
           src,
-          tgt
+          tgt,
+          roughTranslate
         );
 
         if (!verifyResult.verified) continue;
