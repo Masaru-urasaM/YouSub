@@ -6,9 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_Nothing unreleased. Version 0.2.3 (below) is built and awaiting store upload._
+_Nothing unreleased. Version 0.2.4 (below) is built and awaiting store upload._
 
-## [0.2.3] - 2026-07-06
+## [0.2.4] - 2026-07-06
 
 ### Phase B — Restore on-device rough back-translation for merge verification (best-effort) (2026-07-06)
 
@@ -48,6 +48,10 @@ _Nothing unreleased. Version 0.2.3 (below) is built and awaiting store upload._
 **Tests**: `tests/unit/rough-translator.test.js` rewritten — dropped the obsolete Google-fallback tests, added assertions that `RoughTranslator` **never** performs a network request, plus on-device empty-result / creation-failure / batch-order cases. Suite total **468 → 469** (net +1; monotonic, Rule 6). Full suite **469/469 green**, ESLint 0, Prettier clean. `merge-fixer.test.js` unaffected (it stubs `RoughTranslator.translateBatch`).
 
 **Manual follow-up (developer)**: update the canonical published privacy-policy gist (linked by the store listings) to match `privacy-policy.md`.
+
+## [0.2.3] - 2026-06-30
+
+> Built and committed (`e7dde7a`) but **never uploaded to the store**; superseded by 0.2.4 (which folds in the [Privacy P0] fix + Phase B above). Retained here as the historical build boundary.
 
 ### [Hotfix] Chrome dev-load warning `'background.scripts' requires manifest version of 2 or lower` (2026-06-25)
 

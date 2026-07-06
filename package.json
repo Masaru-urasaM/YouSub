@@ -1,6 +1,6 @@
 {
   "name": "yousub",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Real-time AI subtitle translator for YouTube (BYOK, multi-provider LLM)",
   "type": "module",
   "private": true,
