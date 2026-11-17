@@ -1,4 +1,4 @@
-import { describe, test, expect } from '@jest/globals';
+import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { SubtitleParser } from '../../src/content/subtitle-parser.js';
 
 /**
@@ -87,5 +87,150 @@ describe('SubtitleParser Module', () => {
   test('should return empty array on invalid input', () => {
     expect(SubtitleParser.parseJson3(null)).toEqual([]);
     expect(SubtitleParser.parseXml('invalid xml')).toEqual([]);
+  });
+
+  test('parseXml skips empty text or zero duration entries and recovers if DOMParser throws', () => {
+    const xmlText = `
+      <timedtext><body>
+        <text start="1.0" dur="0">Zero dur</text>
+        <text start="2.0" dur="1.5">   </text>
+        <text start="3.0" dur="2.0">Line\nOne</text>
+      </body></timedtext>`;
+    expect(SubtitleParser.parseXml(xmlText)).toEqual([
+      { startMs: 3000, endMs: 5000, text: 'Line One' },
+    ]);
+
+    const origDOMParser = global.DOMParser;
+    global.DOMParser = jest.fn(() => {
+      throw new Error('DOMParser broken');
+    });
+    expect(SubtitleParser.parseXml('<timedtext></timedtext>')).toEqual([]);
+    global.DOMParser = origDOMParser;
+  });
+
+  describe('SubtitleParser.fetch() pipeline & fallbacks', () => {
+    let postSpy;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      chrome.runtime.lastError = null;
+    });
+
+    afterEach(() => {
+      if (postSpy) {
+        postSpy.mockRestore();
+        postSpy = null;
+      }
+      jest.useRealTimers();
+    });
+
+    test('injects main-world-fetcher once and resolves via main-world JSON3', async () => {
+      postSpy = jest.spyOn(window, 'postMessage').mockImplementation((data) => {
+        if (data && data.type === 'YOUSUB_FETCH_REQUEST') {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: window,
+              data: {
+                type: 'YOUSUB_FETCH_RESPONSE',
+                requestId: data.requestId,
+                success: true,
+                text: JSON.stringify({
+                  events: [{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'Hi' }] }],
+                }),
+              },
+            })
+          );
+        }
+      });
+
+      const promise = SubtitleParser.fetch('https://youtube.com/api/timedtext?v=1');
+      const script = document.querySelector('script[src*="main-world-fetcher.js"]');
+      expect(script).not.toBeNull();
+      script.onload();
+      expect(document.querySelector('script[src*="main-world-fetcher.js"]')).toBeNull();
+
+      const entries = await promise;
+      expect(entries).toEqual([{ startMs: 0, endMs: 1000, text: 'Hi' }]);
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test('falls back from JSON3 failure to main-world XML', async () => {
+      postSpy = jest.spyOn(window, 'postMessage').mockImplementation((data) => {
+        if (!data || data.type !== 'YOUSUB_FETCH_REQUEST') return;
+        const isJson3 = data.url.includes('&fmt=json3');
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            source: window,
+            data: isJson3
+              ? {
+                  type: 'YOUSUB_FETCH_RESPONSE',
+                  requestId: data.requestId,
+                  success: true,
+                  text: 'not-json',
+                }
+              : {
+                  type: 'YOUSUB_FETCH_RESPONSE',
+                  requestId: data.requestId,
+                  success: true,
+                  text: '<timedtext><body><text start="1" dur="2">From XML</text></body></timedtext>',
+                },
+          })
+        );
+      });
+
+      const entries = await SubtitleParser.fetch('https://youtube.com/api/timedtext?v=2');
+      expect(entries).toEqual([{ startMs: 1000, endMs: 3000, text: 'From XML' }]);
+    });
+
+    test('falls back to background YOUSUB_FETCH_TEXT when main-world JSON3 & XML fail', async () => {
+      postSpy = jest.spyOn(window, 'postMessage').mockImplementation((data) => {
+        if (!data || data.type !== 'YOUSUB_FETCH_REQUEST') return;
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            source: window,
+            data: {
+              type: 'YOUSUB_FETCH_RESPONSE',
+              requestId: data.requestId,
+              success: false,
+              error: 'blocked',
+            },
+          })
+        );
+      });
+
+      chrome.runtime.sendMessage.mockImplementation((_msg, cb) => {
+        cb({
+          success: true,
+          text: JSON.stringify({
+            events: [{ tStartMs: 500, dDurationMs: 500, segs: [{ utf8: 'From BG' }] }],
+          }),
+        });
+      });
+
+      const entries = await SubtitleParser.fetch('https://youtube.com/api/timedtext?v=3');
+      expect(entries).toEqual([{ startMs: 500, endMs: 1000, text: 'From BG' }]);
+    });
+
+    test('returns [] when main-world times out and background returns lastError or invalid JSON', async () => {
+      jest.useFakeTimers();
+      postSpy = jest.spyOn(window, 'postMessage').mockImplementation(() => {});
+      chrome.runtime.lastError = { message: 'bg disconnected' };
+      chrome.runtime.sendMessage.mockImplementation((_msg, cb) => cb(null));
+
+      const promise = SubtitleParser.fetch('https://youtube.com/api/timedtext?v=4');
+      // Two 10s main-world timeouts (JSON3 + XML) + 50ms post delays
+      await jest.advanceTimersByTimeAsync(21000);
+      const entries = await promise;
+      expect(entries).toEqual([]);
+
+      // Also exercise background invalid JSON catch branch
+      chrome.runtime.lastError = null;
+      chrome.runtime.sendMessage.mockImplementation((_msg, cb) =>
+        cb({ success: true, text: '{bad-json' })
+      );
+      const p2 = SubtitleParser.fetch('https://youtube.com/api/timedtext?v=5');
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(await p2).toEqual([]);
+    });
   });
 });

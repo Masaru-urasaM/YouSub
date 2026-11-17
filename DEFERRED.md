@@ -6,17 +6,6 @@
 
 ---
 
-### D5 — 18 npm-audit vulnerabilities in dev-only transitive deps (high-severity `ws` now fixed)
-
-**Deferred**: 2026-06-24 (Phase 73) · **Updated**: 2026-06-25 (DEFERRED-backlog pass — high-severity `ws` closed)
-**Effort**: Medium (the remainder needs a breaking jest/babel major migration)
-**Progress (2026-06-25)**: the one **high**-severity advisory — `ws` (`GHSA-58qx-3vcg-4xpx` uninitialized-memory + `GHSA-96hv-2xvq-fx4p` memory-exhaustion DoS), pulled transitively by `jest-environment-jsdom → jsdom@26 → ws@8.20.0` — was closed **surgically** via a `package.json` `overrides: { "ws": "^8.21.0" }` entry (8.20.0 → 8.21.0). Dev-only, full suite stays **458/458** green, lockfile diff is 3 lines. Audit count 19 → **18**.
-**Why the rest stays deferred**: the remaining 18 (1 low / 17 moderate) are all transitive deps of the **dev** toolchain (`babel-jest` → `@jest/transform` → `babel-plugin-istanbul`, etc.), **not shipped** in the extension ZIP — no user-facing exposure. **Empirically verified**: a plain `npm audit fix` (no `--force`) reshuffles jest's internal packages and **breaks the entire test suite** (`TypeError: this._moduleMocker.clearMocksOnScope is not a function` — jest-runtime/jest-mock version desync); it was reverted. `--force` would pull breaking jest/babel majors.
-**Dependency**: a deliberate jest (and/or babel) major-version migration, with the suite re-validated after.
-**Revisit when**: a dedicated tooling-maintenance pass that can absorb a jest major bump. Low priority — dev-only, not shipped.
-
----
-
 ### D8 — Detect transcript source language via `LanguageDetector` (replace conservative single-track heuristic)
 
 **Deferred**: 2026-07-01 (Phase B-c)
@@ -28,22 +17,13 @@
 
 ---
 
-### D9 — No unit harness for `main.js` (sourceLang threading + rough-translate onMessage handler)
-
-**Deferred**: 2026-07-01 (Phase B-c adversarial review, finding #6) · **Updated**: 2026-07-06 (Phase B-d review folded in finding `coverage-3`)
-**Effort**: Medium (stand up a `main.js` test harness — heavy top-level side effects + many content-module imports make it non-trivial to load in jsdom)
-**What**: The correctness-critical, cache-key-stability logic — the pure `deriveSourceLang(tracks)` and `Cache.hasAnyForVideoTarget` — is fully unit-tested. Two seams inside `main.js` remain untested because no `main.js` unit-test file exists (the module has heavy top-level side effects and imports — `TrustedTypes.init()`, `PageDetector.onNavigate(...)`, 9 content-module imports — and the chrome mock's `onMessage.addListener` is a bare no-op that never stores the listener):
-- **sourceLang threading**: `processEntries(entries, videoId, targetLang, sourceLang='auto')`, `startSubtitlePipeline`'s two paths (DOM-scrape passes the derived `sourceLang`; fallback-fetch passes `selectedTrack.languageCode`), and the `sourceLang || 'auto'` coercion posted to the SW (`main.js:114`). A silent regression here could post a wrong-language `sourceLang` to the SW / cache.
-- **`YOUSUB_ROUGH_TRANSLATE` onMessage handler** (`main.js:467-472`, Phase B-d): the content-side hop the SW delegate targets — `RoughTranslateBridge.translateBatch(...).then(sendResponse({translations})).catch(all-null)` + `return true` (keeps the async channel open). Surviving mutations (per the 2026-07-06 review, `coverage-3`): dropping `return true` closes the channel early (SW delegate times out to all-null → on-device rough translation silently disabled); dropping the `.catch` leaves the SW delegate hanging until its 3s timeout. The endpoints it wires ARE tested in isolation — `RoughTranslateBridge.translateBatch` (`rough-translate-bridge.test.js`) and the SW-side `buildRoughTranslateDelegate` (`rough-delegate.test.js`) — only the `main.js` wrapper that calls the bridge and shapes the reply is uncovered.
-**Why deferred**: consistent with how the codebase already treats `main.js` (integration/in-browser verified, not unit-tested); the derivation, probe, bridge, and delegate logic — the parts with real branching — are unit-tested. Both `main.js` seams are straight pass-through, and the Phase B-d review confirmed the handler code itself is correct (all four findings were coverage gaps, zero code defects). Standing up a partial `main.js` harness risks leaking observers/timers into the jest environment (destabilizing unrelated suites), so it is a deliberate architectural decision, not a quick add.
-**Dependency**: a `main.js` (or content-entry) unit-test harness (capture the `onMessage` listener via an enhanced chrome mock + neutralize the top-level side effects), or an integration/e2e harness that can drive `SubtitleExtractor.extract`'s callback and `chrome.runtime.onMessage`.
-**Revisit when**: a `main.js` test harness is introduced (would unblock both seams + other content-entry coverage), or at the B-d in-browser verification pass — assert `requestTranslationStreaming` is posted with the expected `sourceLang` for single-track / multi-track / fallback-fetch inputs (plus the `'' → 'auto'` coercion), and drive `onMessage` with a `YOUSUB_ROUGH_TRANSLATE` request asserting `sendResponse({translations})` of `length === texts.length` and `return true`.
-
----
-
 ## Resolved
 
 > Tombstones kept for traceability (Rule 8 — removed from the active list above).
+
+- **D9** — No unit harness for `main.js` (`sourceLang` threading + `YOUSUB_ROUGH_TRANSLATE` `onMessage` handler). **Resolved 2026-11-17**: enhanced `tests/mocks/chrome.js` (`runtime.onMessage._listeners`, `runtime.onConnect`, `runtime.connect`, `storage.onChanged._listeners`) and added `tests/unit/main.test.js` mocking `page-detector`, `video-binder`, `subtitle-extractor`, `subtitle-parser`, `rough-translate-bridge`, `overlay`, and `sync-engine` (zero leaked observers/timers). Covers `YOUSUB_ROUGH_TRANSLATE` (`return true`, length preservation, `.catch` → all-null), DOM-scrape + fallback-fetch `sourceLang` threading (`'' → 'auto'`), streaming watchdog/partial preservation, and `PageDetector` lifecycle (`main.js` 0% → 92.1% lines, 100% functions).
+
+- **D5** — `npm audit` vulnerabilities in dev toolchain (18 in 2026-06; re-triaged 2026-11-17 at 16 = 1 low / 11 moderate / 4 high). **Resolved 2026-11-17**: bumped direct dev dep `adm-zip` `^0.5.17` → `^0.6.1` (closed high advisory on release packager; both Chrome + Firefox ZIPs `[VERIFY OK]`), bumped minor dev deps (`jest`/`@jest/globals`/`jest-environment-jsdom` `30.3.0` → `30.5.2`, `eslint`/`@eslint/js` `9.39.4` → `9.39.5`, `globals` `17.7` → `17.14`, `prettier` `3.8.4` → `3.10.1`), and added version-scoped `package.json` `overrides` (`"glob@>=9.0.0": "^14.0.6"`, `"minimatch@>=7.0.0": "^11.0.9"`) alongside existing `"ws": "^8.21.0"` so ESLint's `minimatch@3.1.5` stayed untouched while Jest's `glob`/`minimatch` subtree moved to patched releases. Verified: `npm audit` **0 vulnerabilities**, ESLint 0, Prettier clean, 521/521 tests green, `npm run package` `[VERIFY OK]`.
 
 - **D4** — Personal résumé `.docx` in git history. **Resolved 2026-06-25** (developer-approved destructive scrub during the DEFERRED-backlog pass). Rewrote the entire local history with `git filter-repo --invert-paths` to purge 4 untracked-but-historical blobs: the résumé `assets/icons/グエンバンフアン履歴書.docx` (matched via `regex:.*\.docx$` to dodge a non-ASCII paths-file matching quirk, caught by the mandatory dry-run) plus the 3 junk binaries Phase 73 had `git rm --cached`'d (`icon128-original.png`, `icons.zip`, `tests/unit/jest_output.txt`). **All 44 commits preserved** (only blobs removed); hashes changed (HEAD `883800d` → `9428c69`); branch `master` + working tree intact; suite **468/468** green; build **VERIFY OK**. A full-history `git bundle` backup (`../yousub-pre-d4-scrub.bundle`) was created **and restore-verified** (test-clone, 44 commits, blob present) before the rewrite. Local-only (no remote); on-disk untracked copies remain (gitignored).
 

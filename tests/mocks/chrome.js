@@ -125,9 +125,20 @@ global.chrome = {
     // WebExtensions also exposes change events at the storage level
     // (chrome.storage.onChanged) — src/content/overlay.js subscribes here.
     onChanged: {
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
+      _listeners: [],
+      addListener: jest.fn((fn) => {
+        global.chrome.storage.onChanged._listeners.push(fn);
+      }),
+      removeListener: jest.fn((fn) => {
+        const list = global.chrome.storage.onChanged._listeners;
+        const idx = list.indexOf(fn);
+        if (idx !== -1) list.splice(idx, 1);
+      }),
     },
+  },
+  permissions: {
+    contains: jest.fn(() => Promise.resolve(false)),
+    request: jest.fn(() => Promise.resolve(true)),
   },
   runtime: {
     id: 'mock-extension-id',
@@ -135,9 +146,34 @@ global.chrome = {
       if (callback) callback({ success: true });
       return Promise.resolve({ success: true });
     }),
+    connect: jest.fn(({ name } = {}) => ({
+      name: name || '',
+      postMessage: jest.fn(),
+      disconnect: jest.fn(),
+      onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
+      onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+    })),
+    onConnect: {
+      _listeners: [],
+      addListener: jest.fn((fn) => {
+        global.chrome.runtime.onConnect._listeners.push(fn);
+      }),
+      removeListener: jest.fn((fn) => {
+        const list = global.chrome.runtime.onConnect._listeners;
+        const idx = list.indexOf(fn);
+        if (idx !== -1) list.splice(idx, 1);
+      }),
+    },
     onMessage: {
-      addListener: jest.fn(),
-      removeListener: jest.fn(),
+      _listeners: [],
+      addListener: jest.fn((fn) => {
+        global.chrome.runtime.onMessage._listeners.push(fn);
+      }),
+      removeListener: jest.fn((fn) => {
+        const list = global.chrome.runtime.onMessage._listeners;
+        const idx = list.indexOf(fn);
+        if (idx !== -1) list.splice(idx, 1);
+      }),
     },
     openOptionsPage: jest.fn(),
     getURL: jest.fn((path) => `chrome-extension://mock-id/${path}`),
@@ -145,9 +181,23 @@ global.chrome = {
   },
   tabs: {
     query: jest.fn(() => Promise.resolve([{ id: 1, url: 'https://youtube.com/watch?v=123' }])),
+    create: jest.fn(() => Promise.resolve({ id: 2 })),
     sendMessage: jest.fn(() => Promise.resolve()),
   },
 };
+
+// Silence expected SUT console noise during unit runs so real Jest failures
+// stand out cleanly (Rule 6 machine-readable output). Override with
+// YOUSUB_TEST_VERBOSE_CONSOLE=1 when debugging a specific suite.
+if (!process.env.YOUSUB_TEST_VERBOSE_CONSOLE) {
+  console.log = jest.fn();
+  console.warn = jest.fn();
+  console.error = jest.fn();
+  console.info = jest.fn();
+  console.debug = jest.fn();
+  console.group = jest.fn();
+  console.groupEnd = jest.fn();
+}
 
 // Unified API for cross-browser support
 global.browser = global.chrome;

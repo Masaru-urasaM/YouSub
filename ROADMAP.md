@@ -68,17 +68,17 @@ All planned work is complete. There are **no active or queued roadmap phases**.
 
 **Project state**:
 - **Phases 0-77 complete** (Milestones M1-M7). M7 (Professionalization & Hardening) finished 2026-06-25 — full detail archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
-- **Post-M7 DEFERRED backlog (D1–D7) cleared** (2026-06-25). See `DEFERRED.md` "Resolved" + `CHANGELOG.md`.
-- **Version 0.2.4** built + committed (2026-07-06; folds in the [Privacy P0] fix + Phase B on-device-verification restore over the built-but-unshipped 0.2.3 base); both Chrome + Firefox ZIPs `[VERIFY OK]`; **521/521 tests** green; ESLint 0; Prettier clean.
+- **Post-M7 DEFERRED backlog cleared** — D1–D7 cleared 2026-06-25; **D5** (npm audit) and **D9** (`main.js` harness) resolved 2026-11-17 during the `TODO.md` technical-debt pass. Only **D8** (`LanguageDetector`) remains deferred pending on-device model residency.
+- **Technical Debt Hardening Pass (2026-11-17)**: `npm audit` **0 vulnerabilities**, **583/583 tests** green across 36 suites, global coverage **90.1% lines / 88.8% stmts / 75.1% branches / 88.8% funcs** (threshold ratcheted to `84/72/84/85`, exceeding Milestone-7 exit target ≥ 70%), `translator.js` and `tab-translation.js` modularized, `npm run test:log` + `npm run verify` + `.husky/pre-push` added, both v0.2.4 ZIPs rebuilt (`[VERIFY OK]`, ZIP size reduced via `preview_bg.jpg` optimization & unused `logo_618.png` exclusion).
 
 **Pending — manual, developer only (cannot be automated)**:
-1. **Upload `dist/yousub-v0.2.4-chrome.zip`** (and the Firefox ZIP if/when releasing there) to the store. This is the only step that puts 0.2.4 in users' hands.
-2. **Update the published privacy-policy gist** (linked by the store listings) to match the in-repo `privacy-policy.md` — required by the [Privacy P0] fix (storage-area correction + on-device/no-network transparency note + Limited-Use disclosure).
-3. **Recommended browser smoke-test before upload**: one normal video + one Shorts with a live API key, to confirm the real translation path (carried from DEFERRED D6 — the harness stubs the sanitize / foreign-script / untranslated / MergeFixer cascades). For Phase B specifically, open the page main-world console and check `'Translator' in window` + `await Translator.availability({sourceLanguage:'en',targetLanguage:'vi'})`; if it reports `available`, confirm a `YOUSUB_ROUGH_TRANSLATE` round-trip fires (single-track video, concrete src). `unavailable`/`downloadable` is expected and degrades cleanly to the offline heuristic.
-4. **After 0.2.4 is live**, update the "shipped v0.2.2 on the Chrome Web Store" lines in `CLAUDE.md` / `README.md` / `YOUSUB_PROJECT_SPEC.md` (left at 0.2.2 now because 0.2.4 is not yet published).
+1. **Upload `dist/yousub-v0.2.4-chrome.zip`** (and the Firefox ZIP if/when releasing there) to the store. This is the only step that puts 0.2.4 in users' hands. (The published privacy-policy gist `15f9846972ccb68a120d29e988f42847` was synced to `privacy-policy.md` on 2026-11-17.)
+2. **Recommended browser smoke-test before upload**: one normal video + one Shorts with a live API key, to confirm the real translation path (carried from DEFERRED D6 — the harness stubs the sanitize / foreign-script / untranslated / MergeFixer cascades). For Phase B specifically, open the page main-world console and check `'Translator' in window` + `await Translator.availability({sourceLanguage:'en',targetLanguage:'vi'})`; if it reports `available`, confirm a `YOUSUB_ROUGH_TRANSLATE` round-trip fires (single-track video, concrete src). `unavailable`/`downloadable` is expected and degrades cleanly to the offline heuristic.
+3. **After 0.2.4 is live**, update the "shipped v0.2.2 on the Chrome Web Store" lines in `CLAUDE.md` / `README.md` / `YOUSUB_PROJECT_SPEC.md` (left at 0.2.2 now because 0.2.4 is not yet published).
+4. **Personal/repo hygiene on disk**: move `assets/icons/グエンバンフアン履歴書.docx` (and optionally `icons.zip`, `icon128-original.png`) outside the workspace.
 
 **Open backlog (deferred, not scheduled)**:
-- **DEFERRED D5** — 18 dev-only npm-audit vulnerabilities in the jest/eslint toolchain (not shipped in the extension ZIP). Needs a deliberate jest/babel major-version migration; `npm audit fix` empirically breaks the jest toolchain. Revisit at a dedicated tooling-maintenance pass. See `DEFERRED.md`.
+- **DEFERRED D8** — `LanguageDetector` source-language detection (revisit once on-device `Translator` models are observed resident as `'available'`). See `DEFERRED.md`.
 
 **To start new work**: the developer proposes a new phase here (`Execute Phase 78: <title>`), and the AI follows the `CLAUDE.md` Present → Discuss → Choose → Plan → Code workflow.
 

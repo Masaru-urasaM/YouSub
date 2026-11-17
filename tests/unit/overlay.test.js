@@ -21,9 +21,11 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
  */
 
 // ResizeObserver shim — required before the module's setupPlayerObserver runs.
+let lastResizeObserver = null;
 class MockResizeObserver {
   constructor(cb) {
     this.cb = cb;
+    lastResizeObserver = this;
   }
   observe() {}
   unobserve() {}
@@ -382,6 +384,159 @@ describe('Overlay Module', () => {
       createPlayer();
       Overlay.show();
       expect(document.getElementById('yousub-overlay')).not.toBeNull();
+    });
+  });
+
+  describe('drag move, corner resize, Shorts & ResizeObserver clamping (T9)', () => {
+    function setupPlayerMetrics(player, { left = 0, top = 0, width = 1000, height = 500 } = {}) {
+      Object.defineProperty(player, 'clientWidth', { configurable: true, value: width });
+      Object.defineProperty(player, 'clientHeight', { configurable: true, value: height });
+      player.getBoundingClientRect = () => ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+      });
+    }
+
+    function setupContainerMetrics(
+      container,
+      { left = 200, top = 350, width = 600, height = 80 } = {}
+    ) {
+      Object.defineProperty(container, 'offsetWidth', { configurable: true, value: width });
+      Object.defineProperty(container, 'offsetHeight', { configurable: true, value: height });
+      container.getBoundingClientRect = () => ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+      });
+    }
+
+    function attachPointerCaptureStubs(el) {
+      el.setPointerCapture = jest.fn();
+      el.releasePointerCapture = jest.fn();
+    }
+
+    function firePointer(el, type, { clientX = 0, clientY = 0, pointerId = 1 } = {}) {
+      const evt = new window.Event(type, { bubbles: true, cancelable: true });
+      evt.clientX = clientX;
+      evt.clientY = clientY;
+      evt.pointerId = pointerId;
+      el.dispatchEvent(evt);
+    }
+
+    test('move handle drags overlay, clamps within player bounds, and saves layout on pointerup', async () => {
+      const player = document.getElementById('movie_player');
+      setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
+      Overlay.show();
+      await flushMicrotasks();
+
+      const container = document.getElementById('yousub-overlay');
+      setupContainerMetrics(container, { left: 200, top: 300, width: 400, height: 60 });
+      const moveHandle = container.querySelector('.yousub-handle-move');
+      attachPointerCaptureStubs(moveHandle);
+
+      // Start drag at (250, 320), move way beyond right/bottom edge to test clamping
+      firePointer(moveHandle, 'pointerdown', { clientX: 250, clientY: 320, pointerId: 7 });
+      expect(container.classList.contains('yousub-dragging')).toBe(true);
+      expect(container.classList.contains('yousub-custom-position')).toBe(true);
+
+      firePointer(moveHandle, 'pointermove', { clientX: 1500, clientY: 900, pointerId: 7 });
+      // Clamped max left = 1000 - 400 = 600 (60%), max top = 500 - 60 = 440 (88%)
+      expect(container.style.left).toBe('60%');
+      expect(container.style.top).toBe('88%');
+
+      firePointer(moveHandle, 'pointerup', { clientX: 1500, clientY: 900, pointerId: 7 });
+      expect(container.classList.contains('yousub-dragging')).toBe(false);
+      await flushMicrotasks();
+      expect(chrome.storage.local.store.yousub_overlay_layout.regular).toMatchObject({
+        customMode: true,
+        leftPct: 60,
+        topPct: 88,
+      });
+    });
+
+    test('nw and se resize handles enforce minimum dimensions and clamp to player', async () => {
+      const player = document.getElementById('movie_player');
+      setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
+      Overlay.show();
+      await flushMicrotasks();
+
+      const container = document.getElementById('yousub-overlay');
+      setupContainerMetrics(container, { left: 200, top: 200, width: 300, height: 80 });
+
+      // NW handle shrink past minimum (200x40)
+      const nw = container.querySelector('.yousub-handle-nw');
+      attachPointerCaptureStubs(nw);
+      firePointer(nw, 'pointerdown', { clientX: 200, clientY: 200, pointerId: 1 });
+      firePointer(nw, 'pointermove', { clientX: 450, clientY: 270, pointerId: 1 });
+      expect(container.style.width).toBe('20%'); // min 200 / 1000 = 20%
+      expect(container.style.minHeight).toBe('40px'); // min height 40px
+      expect(container.style.left).toBe('30%'); // 200 + 300 - 200 = 300 (30%)
+      firePointer(nw, 'pointerup', { clientX: 450, clientY: 270, pointerId: 1 });
+
+      // SE handle expand
+      setupContainerMetrics(container, { left: 200, top: 200, width: 300, height: 80 });
+      const se = container.querySelector('.yousub-handle-se');
+      attachPointerCaptureStubs(se);
+      firePointer(se, 'pointerdown', { clientX: 500, clientY: 280, pointerId: 2 });
+      firePointer(se, 'pointermove', { clientX: 700, clientY: 380, pointerId: 2 });
+      expect(container.style.width).toBe('50%'); // 500 / 1000 = 50%
+      expect(container.style.minHeight).toBe('180px');
+      firePointer(se, 'pointercancel', { clientX: 700, clientY: 380, pointerId: 2 });
+      expect(container.classList.contains('yousub-dragging')).toBe(false);
+    });
+
+    test('ResizeObserver reclamps stored custom layout and storage onChanged updates styles', async () => {
+      chrome.storage.local.store = {
+        yousub_overlay_layout: {
+          regular: { customMode: true, leftPct: 90, topPct: 90, widthPct: 40, minHeightPx: 60 },
+        },
+      };
+      const player = document.getElementById('movie_player');
+      setupPlayerMetrics(player, { width: 1000, height: 500 });
+      Overlay.show();
+
+      const container = document.getElementById('yousub-overlay');
+      setupContainerMetrics(container, { width: 400, height: 100 });
+      await flushMicrotasks();
+
+      // reclampToPlayer ran on loadLayout + runs again when ResizeObserver fires
+      expect(container.style.left).toBe('60%'); // clamped so 60% + 40% <= 100%
+      expect(container.style.top).toBe('80%'); // 500 - 100 = 400 -> 80%
+
+      lastResizeObserver.cb();
+      expect(container.style.left).toBe('60%');
+
+      // Storage onChanged live style update
+      const onChangedFn = chrome.storage.onChanged._listeners.at(-1);
+      onChangedFn(
+        { yousub_appearance: { newValue: { fontColor: 'green', posBottom: 45 } } },
+        'local'
+      );
+      expect(document.getElementById('yousub-text-translated').style.color).toBe('green');
+      expect(container.style.getPropertyValue('--yousub-pos-bottom')).toBe('45px');
+    });
+
+    test('status auto-remove timer removes status message and stale player destroys overlay', () => {
+      jest.useFakeTimers();
+      Overlay.showStatus('Temp', 'info', 1000);
+      expect(document.querySelectorAll('.yousub-status-msg')).toHaveLength(1);
+      jest.advanceTimersByTime(1000);
+      expect(document.querySelectorAll('.yousub-status-msg')).toHaveLength(0);
+
+      // Detach player -> stale check destroys and recreates on show()
+      const oldPlayer = document.getElementById('movie_player');
+      oldPlayer.remove();
+      createPlayer();
+      Overlay.show();
+      expect(document.getElementById('yousub-overlay')).not.toBeNull();
+      jest.useRealTimers();
     });
   });
 });

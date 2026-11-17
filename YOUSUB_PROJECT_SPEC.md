@@ -2,9 +2,9 @@
 
 > **Document purpose**: This is the single source of truth for the YouSub project. It is written as an AI-readable prompt/specification so that any AI coding assistant (Gemini, Claude, etc.) can read this document and understand the full scope, architecture, decisions, and constraints of the project. It is also readable by human developers.
 >
-> **Document version**: 2.2
-> **Last updated**: 2026-06-23
-> **Status**: **STABLE** — v0.2.2 (product version; corrected from a stale "v0.4.0" label — see CHANGELOG Phase 65)
+> **Document version**: 2.5
+> **Last updated**: 2026-11-17
+> **Status**: **STABLE** — shipped **v0.2.2** (Chrome Web Store); local **v0.2.4** built and awaiting store upload
 >
 > **Structure**: This file is the navigation hub and architecture reference. For active/pending development phases, see [ROADMAP.md](ROADMAP.md). For completed phases, see [ROADMAP_DONE.md](ROADMAP_DONE.md).
 
@@ -124,9 +124,9 @@ Options Page (UI)                chrome.storage.local              Background Wo
 | Manifest version | V3 | Current standard, required for Chrome Web Store |
 | Language | Vanilla JS (ES2020+) | Lightweight, no build step needed |
 | Framework | None | Project scope doesn't justify framework overhead |
-| State management | chrome.storage API | Native extension API, syncs across devices |
-| Build system | None | Plain files loaded by manifest.json, no bundler |
-| Module pattern | IIFE + shared namespace `window.YouSub` | Works in content script isolated world without build tools |
+| State management | `chrome.storage.local` + `storage.session` | Local for keys/settings/cache; session memory buffer for logs |
+| Build system | None (packaging script only) | Plain ESM files loaded natively; `scripts/package.js` builds store ZIPs |
+| Module pattern | ESM (`loader.js` dynamic `import()`) + `window.YouSub` shim | Native ES modules in content script; shim kept for compatibility |
 | Background worker modules | ES modules (`"type": "module"`) | Supported natively in MV3 service workers |
 | Translation engine | Multi-provider LLM (user's own API key) | Professional quality, user controls cost and provider |
 | API key storage | `chrome.storage.local` (no encryption) | Chrome extension storage is sandboxed per-extension |
@@ -143,47 +143,57 @@ YouSub/
 |   |   +-- main.js                     # Orchestrates all content modules (ESM, imported by loader.js)
 |   |   +-- page-detector.js            # YouTube page detection + SPA navigation
 |   |   +-- video-binder.js             # Find and monitor <video> element
-|   |   +-- subtitle-extractor.js       # Extract subtitle tracks from page data
+|   |   +-- subtitle-extractor.js       # Extract subtitle tracks + conservative sourceLang
 |   |   +-- subtitle-parser.js          # Parse timedtext JSON3/XML into normalized format
-|   |   +-- overlay.js                  # Overlay UI creation, update, destroy (+ inline status messages)
+|   |   +-- rough-translate-bridge.js   # Content bridge to MAIN-world on-device Translator
+|   |   +-- overlay.js                  # Overlay UI, drag/resize layout, status messages
 |   |   +-- sync-engine.js              # Synchronization: timeupdate -> subtitle lookup
 |   |   +-- overlay.css                 # Overlay styles
 |   |   +-- main-world-extractor.js     # MAIN world script (web accessible)
 |   |   +-- main-world-fetcher.js       # MAIN world fetch helper (web accessible)
+|   |   +-- main-world-translator.js    # MAIN world on-device Translator IIFE (web accessible)
 |   +-- background/                     # Background service worker
-|   |   +-- service-worker.js           # Entry point — message handler
-|   |   +-- translator.js              # Multi-provider translation engine
-|   |   +-- providers.js               # Provider registry & API implementations
-|   |   +-- api-manager.js             # API key manager + failover logic
-|   |   +-- health.js                  # Provider health tracking + circuit breaker
+|   |   +-- service-worker.js           # Entry point — message & streaming port router
+|   |   +-- translator.js               # Translation orchestrator & completeness sweep
+|   |   +-- translator-prompts.js       # Prompt builders, JSON/text parsers, sanitization
+|   |   +-- translator-quality.js       # MergeFixer retranslation, LLM verify, debug batch log
+|   |   +-- translator-failover.js      # Key grouping, cooldowns, retry loop, Groq waterfall
+|   |   +-- providers.js                # Provider registry & API implementations
+|   |   +-- api-manager.js              # API key manager + failover logic
+|   |   +-- health.js                   # Provider health tracking + circuit breaker
 |   |   +-- cache.js                    # Translation cache (chrome.storage.local)
 |   |   +-- merge-fixer.js              # Detect & repair merged/misaligned translated lines
-|   |   +-- rough-translator.js         # 3-tier rough-translation fallback
+|   |   +-- rough-translator.js         # Inert worker seam (Privacy P0: zero network fallback)
 |   +-- options/                        # Options page (full settings UI)
 |   |   +-- options.html                # Options page shell
 |   |   +-- options.css                 # Options page styles (dark theme)
-|   |   +-- options.js                  # Options page logic + tab controller
-|   |   +-- tab-translation.js          # Translation tab (API keys, language)
-|   |   +-- tab-appearance.js           # Appearance tab (font, color, position)
+|   |   +-- options.js                  # Options page logic + ARIA tab controller
+|   |   +-- options-modal.js            # Shared accessible confirmation dialog
+|   |   +-- tab-translation.js          # Translation tab state, failover toggles, cache clear
+|   |   +-- translation-row.js          # API key row rendering, quota/health badges, Ollama
+|   |   +-- tab-appearance.js           # Appearance tab (font, color, position, live preview)
 |   |                                   # (About tab markup is inline in options.html — no separate module)
 |   +-- popup/                          # Extension popup (quick actions)
 |   |   +-- popup.html                  # Popup page (simplified)
-|   |   +-- popup.css                 # Popup styles
+|   |   +-- popup.css                   # Popup styles
 |   |   +-- popup.js                    # Popup logic
 |   +-- shared/                         # Shared between content/background/popup/options
 |   |   +-- constants.js                # Shared constants (message types, defaults)
+|   |   +-- i18n.js                     # chrome.i18n DOM localization helper
 |   |   +-- providers-registry.js       # Provider/model definitions (shared data)
 |   |   +-- logger.js                   # Structured JSONL logging
 |   |   +-- trusted-types.js            # Trusted Types policy (safe innerHTML sinks)
-|   |   +-- utils.js                    # Shared helpers (e.g. sanitizeKey)
+|   |   +-- utils.js                    # Shared helpers (escapeHtml)
 |   |   +-- libs/
 |   |       +-- browser-polyfill.js     # Vendored webextension-polyfill (cross-browser)
 |   +-- debug/                          # Advanced diagnostics panel (opened from the popup)
 |       +-- debug.html                  # Log viewer UI
 |       +-- debug.css                   # Log viewer styles
 |       +-- debug.js                    # Log viewer logic
++-- _locales/                           # Extension UI localization catalogs (en, ja)
 +-- assets/
-|   +-- icons/                          # Extension icons (icon16/19/32/38/48/128.png)
+|   +-- icons/                          # Extension icons (icon16/19/32/38/48/128/618.png)
+|   +-- preview_bg.jpg                  # Options appearance live-preview backdrop
 +-- tests/                              # Test files (Phase 21+)
 |   +-- unit/
 |   +-- integration/
@@ -241,6 +251,7 @@ manifest.json
   |       +-- import src/content/video-binder.js
   |       +-- import src/content/subtitle-extractor.js
   |       +-- import src/content/subtitle-parser.js
+  |       +-- import src/content/rough-translate-bridge.js
   |       +-- import src/content/overlay.js
   |       +-- import src/content/sync-engine.js
   |     (each module also self-registers on the window.YouSub shim)
@@ -248,9 +259,12 @@ manifest.json
   |     loader.js can import() them and the page-context scripts can be injected.
   |
   +-- background.service_worker (ES modules, import/export):
-  |     src/background/service-worker.js  <- Entry point
+  |     src/background/service-worker.js  <- Entry point (message + stream port router)
   |       +-- import src/background/providers.js     (API implementations)
-  |       +-- import src/background/translator.js    (translation engine)
+  |       +-- import src/background/translator.js    (orchestrator & completeness sweep)
+  |       |     +-- import src/background/translator-prompts.js   (prompts, parsers, sanitize)
+  |       |     +-- import src/background/translator-quality.js   (MergeFixer verify, retranslate)
+  |       |     +-- import src/background/translator-failover.js  (key rotation, cooldowns, Groq)
   |       |     +-- import src/background/merge-fixer.js / rough-translator.js
   |       +-- import src/background/api-manager.js   (key management + failover)
   |       +-- import src/background/health.js        (circuit breaker)
@@ -259,9 +273,11 @@ manifest.json
   +-- options_page:
   |     src/options/options.html
   |       +-- src/options/options.css
-  |       +-- src/options/options.js           (tab controller)
-  |       +-- src/options/tab-translation.js   (API keys, language)
-  |       +-- src/options/tab-appearance.js    (font, color, position)
+  |       +-- src/options/options.js           (ARIA tab controller + global settings)
+  |       +-- src/options/tab-translation.js   (API keys, failover, cache management)
+  |       |     +-- import src/options/translation-row.js (row UI, quota/health, Ollama)
+  |       |     +-- import src/options/options-modal.js   (shared accessible dialog)
+  |       +-- src/options/tab-appearance.js    (font, color, position, live preview)
   |       (About tab markup is inline in options.html — no separate module)
   |
   +-- action.default_popup:
@@ -275,16 +291,19 @@ manifest.json
 ## 3. Feature Specifications
 
 ### 3.1 Subtitle Extraction
-**Summary**: Uses a MAIN world injection strategy to trigger and scrape the YouTube Transcript Panel DOM. This bypasses Bot Detection (POT Tokens) and CORS issues that plague direct JSON/XML fetch attempts.
+**Summary**: Uses a MAIN-world injection strategy (`main-world-extractor.js`) to open and scrape YouTube's Transcript Panel DOM (EN + JA locale-resilient selectors), bypassing POT-token bot checks and CORS issues. Falls back to metadata caption track discovery, YouTube Innertube API (`POST /youtubei/v1/player` for Shorts), and XHR/background timedtext JSON3/XML parsing (`main-world-fetcher.js` + `SubtitleParser`). Derives conservative `sourceLang` (`deriveSourceLang`) for downstream verification.
 
-### 3.2 Translation Engine
-**Summary**: A "Bring Your Own Key" (BYOK) multi-provider engine supporting OpenAI, Gemini, Anthropic, etc. Features Batch Translation (preserving line counts), failover intelligence, and a circuit-breaker health management system.
+### 3.2 Translation Engine & Quality Pipeline
+**Summary**: A "Bring Your Own Key" (BYOK) multi-provider engine (`translator.js`, `providers.js`) supporting OpenAI, Gemini, Anthropic, Groq, DeepSeek, xAI, Mistral, OpenRouter, and local Ollama (`optional_host_permissions`). Features context-summary pre-analysis, JSON structured output / `[HH:MM:SS]` fallback parsing, SSE streaming mode, two-tier round-robin key-group + model rotation (`api-manager.js`, `translator-failover.js`), Groq payload-size waterfall splitting, health tracking with exponential circuit breaking (`health.js`), and a 150s idle watchdog + 3-round cooldown-aware completeness sweep (`_translateInternal`).
 
-### 3.3 Dynamic Overlay Controller
-**Summary**: An high-performance injected `<div>` overlapping the YouTube video frame. Features **Glassmorphism** for premium aesthetics and hardware-accelerated **Fade/Slide transitions**. Listens to the HTML5 `<video>` tag's `timeupdate` event to render translated text precisely on cue with $O(1)$ lookup performance.
+### 3.3 Post-Translation Verification (`MergeFixer` & On-Device `RoughTranslator`)
+**Summary**: Detects line merges and cascade shifts via multi-signal weighted offline scoring (token anchors, terminal punctuation alignment, length ratio) plus foreign-script contamination and untranslated-line LLM verification (`translator-quality.js`). Back-translation verification runs opportunistically on-device via Chrome's MAIN-world `Translator` global (`main-world-translator.js` ← `rough-translate-bridge.js` ← SW delegate) with **zero third-party network egress** (Privacy P0 / Decisions 15–16).
 
-### 3.4 Cross-Browser Engine
-**Summary**: Unified codebase supporting **Chrome, Firefox, and Edge**. Uses `webextension-polyfill` to provide a standardized `browser.*` namespace and handles hybrid background scripts (Service Worker vs. Event Script) seamlessly.
+### 3.4 Dynamic Overlay Controller & Sync Engine
+**Summary**: Injected `#yousub-overlay` inside `#movie_player` (and Shorts active reel), styled with glassmorphism and dual CSS positioning modes (default centered bottom vs. custom draggable/resizable percentage coordinates saved per regular/Shorts layout). `SyncEngine` synchronizes translated + optional dual original text with `timeupdate`, preserving partial batches on incomplete runs and rendering Trusted Types–sanitized status toasts.
+
+### 3.5 Cache, Diagnostics & Localization
+**Summary**: LRU/TTL translation cache (`cache.js`, 30-day TTL, source-language-agnostic auto-start existence probe) stored in `chrome.storage.local`. Structured JSONL session logging (`logger.js` in `storage.session` + `ERROR` dual-write to `storage.local`), a popup-launched Batch Debugger (`src/debug/`), full EN/JA UI localization (`_locales/`, `i18n.js`), and cross-browser Chrome/Firefox/Edge compatibility via `webextension-polyfill`.
 
 ---
 
@@ -442,7 +461,7 @@ Response: { "content": [{ "text": "translated text" }] }
 | Isolated World | Content scripts cannot access page's JS variables. |
 | MAIN World | Page's own JS context. Accessible via `<script>` injection. |
 | Message Passing | `chrome.runtime.sendMessage` for content <-> background communication. |
-| chrome.storage | `sync` for settings (syncs across devices), `local` for larger data. |
+| `chrome.storage` | `local` for keys, settings, and translation cache; `session` for runtime logs. |
 | Options Page | Full-page settings UI opened via right-click -> "Options" on extension icon. |
 
 ## Appendix D: Chrome DevTools Commands

@@ -6,7 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_Nothing unreleased. Version 0.2.4 (below) is built and awaiting store upload._
+### Technical Debt Hardening Pass (`TODO.md` T1–T17, T19–T21) (2026-11-17)
+
+**Added**
+
+- `tests/unit/main.test.js` (resolves DEFERRED **D9**): harnesses `src/content/main.js` without timer/observer leaks; covers `YOUSUB_ROUGH_TRANSLATE` (`return true`, length preservation, `.catch` → all-null), DOM-scrape + fallback-fetch `sourceLang` threading (`'' → 'auto'`), streaming idle watchdog/partial preservation, and `PageDetector` lifecycle.
+- `tests/unit/service-worker.test.js` — unit tests for all `runtime.onMessage` handlers and `yousub-stream` port lifecycle/disconnect abort.
+- `tests/unit/translator-advanced.test.js` — characterization tests for streaming (`Providers.chatStream`), MergeFixer/foreign-script retranslation, untranslated LLM verification, 3-round completeness sweep, Groq oversized waterfall, and 413 context-strip retry.
+- `tests/unit/popup-ui.test.js`, `tests/unit/options-ui.test.js`, `tests/unit/debug-ui.test.js` — jsdom UI glue tests mounted against the real HTML pages (`popup.html`, `options.html`, `debug.html`).
+- `tests/unit/main-world-fetcher.test.js`, `tests/unit/main-world-extractor.test.js` — MAIN-world IIFE tests with mocked `XMLHttpRequest` and YouTube watch/Shorts/Innertube fixtures.
+- `src/background/translator-prompts.js`, `src/background/translator-quality.js`, `src/background/translator-failover.js` — cohesive DAG split extracted from `translator.js` (Rule 12 honored: `MAX_LINES_PER_BATCH` stays 50; `_internals` preserved identically).
+- `src/options/options-modal.js`, `src/options/translation-row.js` — extracted shared accessible modal and row/health-badge helpers from `tab-translation.js`.
+- `scripts/test-log.js` (`npm run test:log`, Rule 6.5) — writes test runs to `logs/jest-latest.log` and structured JSON to `logs/jest-latest.json`.
+- `npm run verify` script + `.husky/pre-push` hook mirroring `.github/workflows/test.yml` (`lint` + `format:check` + `test:log` + `package`).
+
+**Changed**
+
+- **Dependencies & security (T1–T4, resolves DEFERRED D5)**: bumped `adm-zip` `^0.5.17` → `^0.6.1`, updated minor dev deps (`jest`/`@jest/globals`/`jest-environment-jsdom` `30.3.0` → `30.5.2`, `eslint`/`@eslint/js` `9.39.4` → `9.39.5`, `globals` `17.7` → `17.14`, `prettier` `3.8.4` → `3.10.1`), and added version-scoped `package.json` `overrides` (`"glob@>=9.0.0": "^14.0.6"`, `"minimatch@>=7.0.0": "^11.0.9"`). `npm audit`: **0 vulnerabilities** (down from 16 = 1 low / 11 moderate / 4 high).
+- `tests/mocks/chrome.js` — silenced expected SUT `console.{log,warn,error,info,debug,group,groupEnd}` noise during tests (override with `YOUSUB_TEST_VERBOSE_CONSOLE=1`); added `_listeners` tracking on `runtime.onMessage`, `runtime.onConnect`, `storage.onChanged` plus `runtime.connect`, `permissions`, `tabs.create` mocks.
+- `tests/unit/subtitle-parser.test.js`, `tests/unit/overlay.test.js` — added fetch pipeline/fallback and drag/resize/clamping/Shorts/ResizeObserver coverage.
+- `jest.config.cjs` — ratcheted global `coverageThreshold` from `38/34/36/38` → `84/72/84/85` (exceeds Milestone-7 exit target ≥ 70%).
+- `assets/preview_bg.jpg` (1.15 MB → 132 KB at 640x640 Q82) + `scripts/package.js` excludes unused `assets/logo_618.png`.
+- Docs synced (`CLAUDE.md`, `YOUSUB_PROJECT_SPEC.md`, `DEFERRED.md`, `ROADMAP.md`, `MEMORY.md`, `TODO.md`); cleaned scratch files `tmp/test_logic.js`, `tmp/test_parser.js`, `tests/unit/jest_output.txt` (preserved personal/source files in `assets/icons/` untouched on disk for manual developer handling).
+- Synced published privacy-policy gist (`15f9846972ccb68a120d29e988f42847`) with `privacy-policy.md`, created private GitHub repository `Masaru-urasaM/YouSub`, and slimmed `TODO.md` after clearing the technical-debt backlog.
+
+**Tests**: 521 → **583** (+62 tests across 36 suites; monotonic, Rule 6). Coverage: **88.76% stmts / 75.12% branches / 88.79% funcs / 90.14% lines** (up from 47.34% / 43.99% / 44.42% / 47.26%). ESLint 0, Prettier clean, `npm audit` 0 vulnerabilities, `npm run package` `[VERIFY OK]`.
 
 ## [0.2.4] - 2026-07-06
 

@@ -23,7 +23,7 @@ const excludeList = [
   'jest.config.cjs',
 ];
 
-const assetExcludePatterns = [/\.zip$/i, /-original\./i, /\.docx$/i, /\.doc$/i];
+const assetExcludePatterns = [/\.zip$/i, /-original\./i, /\.docx$/i, /\.doc$/i, /^logo_618\.png$/i];
 
 // ---------------------------------------------------------------------------
 // Pre-build validation

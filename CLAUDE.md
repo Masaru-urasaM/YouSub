@@ -8,7 +8,7 @@
 
 **YouSub** — a shipped Manifest V3 browser extension (v0.2.2, Chrome Web Store) that intercepts YouTube's native transcripts, translates them with the user's own LLM API keys (BYOK, multi-provider), and renders a synced, customizable subtitle overlay (including a dual original + translated mode).
 
-**Tech Stack**: Manifest V3, vanilla JavaScript (ES2020+ ESM), **no build step**; background service worker (`type: module`); Jest + jsdom tests; ESLint 9 + Prettier + husky/lint-staged. See `YOUSUB_PROJECT_SPEC.md` for the full architecture and `README.md` for a quickstart. **Status**: Milestone 7 — Professionalization & Hardening.
+**Tech Stack**: Manifest V3, vanilla JavaScript (ES2020+ ESM), **no build step**; background service worker (`type: module`); Jest + jsdom tests (`npm run test:log` writes machine-readable `logs/jest-latest.json` + `logs/jest-latest.log`); ESLint 9 + Prettier + husky/lint-staged. See `YOUSUB_PROJECT_SPEC.md` for the full architecture and `README.md` for a quickstart. **Status**: Post-M7 Maintenance & Tech-Debt Hardening (local v0.2.4 built; awaiting Chrome Web Store upload).
 
 ## MANDATORY WORKFLOW — User-Driven Development
 
@@ -171,7 +171,7 @@ All projects MUST implement structured debug logging that Claude can parse direc
 **Design**:
 - Ring buffer rotation (N files x M MB) — prevent unbounded growth
 - Buffered writes with periodic flush
-- Document log retrieval path in project Claude.md
+- Document log retrieval path in project Claude.md (`npm run test:log` writes `logs/jest-latest.log` and `logs/jest-latest.json`; extension runtime logs export as JSONL from Options → About)
 - Claude reads logs directly to diagnose issues from developer testing
 
 ## Rule 10: Roadmap Management and Archiving

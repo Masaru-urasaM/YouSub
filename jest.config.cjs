@@ -19,10 +19,10 @@ module.exports = {
   // Milestone-7 exit target is ≥70%. Do not lower these.
   coverageThreshold: {
     global: {
-      statements: 38,
-      branches: 34,
-      functions: 36,
-      lines: 38,
+      statements: 84,
+      branches: 72,
+      functions: 84,
+      lines: 85,
     },
   },
   // Support ES modules
