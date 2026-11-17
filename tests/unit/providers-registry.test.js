@@ -34,4 +34,22 @@ describe('Providers Registry Module', () => {
     const vi = YOUSUB_PROVIDERS.languages.find((l) => l.code === 'vi');
     expect(vi.name).toBe('Vietnamese');
   });
+
+  test('should expose live Groq models and migrate deprecated Groq model IDs', () => {
+    const groq = YOUSUB_PROVIDERS.getProvider('groq');
+    expect(groq.defaultModel).toBe('openai/gpt-oss-120b');
+    expect(groq.models.map((m) => m.id)).toEqual([
+      'openai/gpt-oss-120b',
+      'openai/gpt-oss-20b',
+      'qwen/qwen3.8-27b',
+    ]);
+
+    expect(YOUSUB_PROVIDERS.resolveModel('groq', 'auto')).toBe('openai/gpt-oss-120b');
+    expect(YOUSUB_PROVIDERS.resolveModel('groq', 'llama-3.3-70b-versatile')).toBe(
+      'openai/gpt-oss-120b'
+    );
+    expect(YOUSUB_PROVIDERS.resolveModel('groq', 'qwen/qwen3-32b')).toBe('qwen/qwen3.8-27b');
+    expect(YOUSUB_PROVIDERS.resolveModel('groq', 'custom-user-model')).toBe('custom-user-model');
+    expect(YOUSUB_PROVIDERS.resolveModel('unknown-provider', 'x')).toBe('x');
+  });
 });

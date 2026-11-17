@@ -898,3 +898,37 @@ describe('testApiKey()', () => {
     expect(res.message).toContain('Network error');
   });
 });
+
+describe('Groq model migration & token/reasoning safeguards', () => {
+  test('migrates deprecated llama-3.3-70b-versatile to openai/gpt-oss-120b with low reasoning_effort', async () => {
+    globalThis.fetch = jest.fn(async () =>
+      makeResponse({ json: async () => ({ choices: [{ message: { content: 'OK' } }] }) })
+    );
+
+    const res = await Providers.chat('groq', 'llama-3.3-70b-versatile', 'gsk_test123', 'Hello', {
+      maxTokens: 1500,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.model).toBe('openai/gpt-oss-120b');
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body.model).toBe('openai/gpt-oss-120b');
+    expect(body.reasoning_effort).toBe('low');
+    expect(body.max_tokens).toBe(1500);
+  });
+
+  test('caps Groq qwen/qwen3.8-27b max_tokens at 900 to stay within OTPM limit', async () => {
+    globalThis.fetch = jest.fn(async () =>
+      makeResponse({ json: async () => ({ choices: [{ message: { content: 'OK' } }] }) })
+    );
+
+    await Providers.chat('groq', 'qwen/qwen3.8-27b', 'gsk_test123', 'Hello', {
+      maxTokens: 16384,
+    });
+
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body.model).toBe('qwen/qwen3.8-27b');
+    expect(body.max_tokens).toBe(900);
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+});

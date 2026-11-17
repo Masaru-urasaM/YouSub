@@ -67,8 +67,11 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     jest.useFakeTimers();
     await mountOptions();
 
-    expect(document.getElementById('version-badge').textContent).toBe('v0.2.4');
-    expect(document.getElementById('about-version').textContent).toBe('Version 0.2.4');
+    const pkgVer = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8')
+    ).version;
+    expect(document.getElementById('version-badge').textContent).toBe(`v${pkgVer}`);
+    expect(document.getElementById('about-version').textContent).toBe(`Version ${pkgVer}`);
 
     const tabs = [...document.querySelectorAll('.tab-btn')];
     tabs[0].focus();

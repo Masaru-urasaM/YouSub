@@ -192,8 +192,8 @@ export async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, ta
     const settings = await browser.storage.local.get(['yousub_streaming_mode']);
     const isStreaming = settings.yousub_streaming_mode === true && !useJsonMode;
     const estimatedOutputTokens = useJsonMode
-      ? Math.min(segments.length * 130, 16384)
-      : Math.min(segments.length * 100, 8192);
+      ? Math.min(Math.max(1500, segments.length * 130), 16384)
+      : Math.min(Math.max(1024, segments.length * 100), 8192);
 
     const { result, duration } = await callProviderWithRetry({
       key,

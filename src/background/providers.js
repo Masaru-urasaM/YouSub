@@ -143,28 +143,52 @@ export const Providers = {
   },
 
   /**
+   * Resolve provider metadata and migrate 'auto' or deprecated built-in model IDs.
+   */
+  resolveTarget(providerId, modelId, apiKey, { streamMode = false } = {}) {
+    let internalProviderId = providerId;
+    if (providerId === 'auto') {
+      const detectedId = YOUSUB_PROVIDERS.detectProviderFromKey(apiKey);
+      if (!detectedId) {
+        return {
+          error: {
+            success: false,
+            message: streamMode
+              ? 'Provider not supported'
+              : 'Could not auto-detect provider from key prefix.',
+            ...(streamMode ? {} : { model: 'auto' }),
+          },
+        };
+      }
+      internalProviderId = detectedId;
+    }
+
+    const providerObj = YOUSUB_PROVIDERS.getProvider(internalProviderId);
+    if (!providerObj) {
+      return {
+        error: {
+          success: false,
+          message: streamMode
+            ? 'Provider not supported'
+            : `Provider ${internalProviderId} not supported.`,
+          ...(streamMode ? {} : { model: modelId }),
+        },
+      };
+    }
+
+    const internalModelId = YOUSUB_PROVIDERS.resolveModel(internalProviderId, modelId);
+    return { internalProviderId, internalModelId, providerObj };
+  },
+
+  /**
    * Streaming version of chat
    * @param {function(string)} onChunk - Callback for each text chunk
    */
   async chatStream(providerId, modelId, apiKey, prompt, options = {}, onChunk) {
     const safeKey = sanitizeKey(apiKey);
-    let internalProviderId = providerId;
-    let internalModelId = modelId;
-
-    if (providerId === 'auto') {
-      const detectedId = YOUSUB_PROVIDERS.detectProviderFromKey(apiKey);
-      if (detectedId) {
-        internalProviderId = detectedId;
-        const providerInfo = YOUSUB_PROVIDERS.getProvider(detectedId);
-        internalModelId = modelId === 'auto' ? providerInfo?.defaultModel || 'unknown' : modelId;
-      }
-    } else {
-      const providerInfo = YOUSUB_PROVIDERS.getProvider(providerId);
-      if (providerInfo && modelId === 'auto') internalModelId = providerInfo.defaultModel;
-    }
-
-    const providerObj = YOUSUB_PROVIDERS.getProvider(internalProviderId);
-    if (!providerObj) return { success: false, message: 'Provider not supported' };
+    const resolved = this.resolveTarget(providerId, modelId, apiKey, { streamMode: true });
+    if (resolved.error) return resolved.error;
+    const { internalProviderId, internalModelId, providerObj } = resolved;
 
     const style = providerObj.apiStyle;
     const endpoint = providerObj.endpoint;
@@ -182,7 +206,7 @@ export const Providers = {
 
     try {
       let response;
-      const streamOptions = { ...options, stream: true };
+      const streamOptions = { ...options, stream: true, providerId: internalProviderId };
 
       if (style === 'openai') {
         response = await this.callOpenAIStyle(
@@ -295,41 +319,13 @@ export const Providers = {
   async chat(providerId, modelId, apiKey, prompt, options = {}) {
     // Phase 40: Deep sanitization
     const safeKey = sanitizeKey(apiKey);
-    let internalProviderId = providerId;
-    let internalModelId = modelId;
 
     // Masked log for diagnostic (shows only last 4 chars)
     Logger.debug('Providers', `Request using key ending in ...${safeKey.slice(-4)}`);
 
-    // Auto-detect provider if needed
-    if (providerId === 'auto') {
-      const detectedId = YOUSUB_PROVIDERS.detectProviderFromKey(apiKey);
-      if (detectedId) {
-        internalProviderId = detectedId;
-        const providerInfo = YOUSUB_PROVIDERS.getProvider(detectedId);
-        internalModelId = modelId === 'auto' ? providerInfo?.defaultModel || 'unknown' : modelId;
-      } else {
-        return {
-          success: false,
-          message: 'Could not auto-detect provider from key prefix.',
-          model: 'auto',
-        };
-      }
-    } else {
-      const providerInfo = YOUSUB_PROVIDERS.getProvider(providerId);
-      if (providerInfo && modelId === 'auto') {
-        internalModelId = providerInfo.defaultModel;
-      }
-    }
-
-    const providerObj = YOUSUB_PROVIDERS.getProvider(internalProviderId);
-    if (!providerObj) {
-      return {
-        success: false,
-        message: `Provider ${internalProviderId} not supported.`,
-        model: internalModelId,
-      };
-    }
+    const resolved = this.resolveTarget(providerId, modelId, apiKey, { streamMode: false });
+    if (resolved.error) return resolved.error;
+    const { internalProviderId, internalModelId, providerObj } = resolved;
 
     const endpoint = providerObj.endpoint;
     const style = providerObj.apiStyle;
@@ -357,6 +353,7 @@ export const Providers = {
         `[FETCH_START] ${internalProviderId} (${internalModelId}) - Timeout: ${timeoutMs}ms`
       );
 
+      const styleOptions = { ...options, providerId: internalProviderId };
       let response;
       if (style === 'openai') {
         response = await this.callOpenAIStyle(
@@ -364,7 +361,7 @@ export const Providers = {
           safeKey,
           internalModelId,
           prompt,
-          options,
+          styleOptions,
           controller.signal
         );
       } else if (style === 'gemini') {
@@ -373,7 +370,7 @@ export const Providers = {
           safeKey,
           internalModelId,
           prompt,
-          options,
+          styleOptions,
           controller.signal
         );
       } else if (style === 'anthropic') {
@@ -382,7 +379,7 @@ export const Providers = {
           safeKey,
           internalModelId,
           prompt,
-          options,
+          styleOptions,
           controller.signal
         );
       } else {
@@ -406,16 +403,28 @@ export const Providers = {
   },
 
   async callOpenAIStyle(endpoint, apiKey, model, prompt, options, signal) {
+    const isGroq = options.providerId === 'groq' || endpoint.includes('api.groq.com');
+    let maxTokens = options.maxTokens || 32768;
+    if (isGroq && model === 'qwen/qwen3.8-27b') {
+      // Groq enforces a 1000 OTPM ceiling on qwen/qwen3.8-27b; cap max_tokens to avoid 429
+      maxTokens = Math.min(maxTokens, 900);
+    }
+
     const payload = {
       model: model,
       messages: [
         { role: 'system', content: options.systemPrompt || 'You are a helpful assistant.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: options.maxTokens || 32768,
+      max_tokens: maxTokens,
       temperature: options.temperature ?? 0.3,
       stream: !!options.stream, // Enable streaming if requested
     };
+
+    if (isGroq && typeof model === 'string' && model.includes('gpt-oss')) {
+      // Keep reasoning tokens compact so json_object outputs do not truncate
+      payload.reasoning_effort = options.reasoningEffort || 'low';
+    }
 
     if (options.responseFormat) {
       payload.response_format = options.responseFormat;

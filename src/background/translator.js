@@ -502,6 +502,7 @@ Return ONLY the summary.`;
       const result = await Providers.chat(key.provider, key.model, key.apiKey, transcript, {
         systemPrompt: summaryPrompt,
         temperature: 0.3,
+        maxTokens: 800,
       });
 
       if (result.success && result.text) {

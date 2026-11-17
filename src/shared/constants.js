@@ -2,7 +2,7 @@ import '../shared/libs/browser-polyfill.js';
 
 export const Constants = {
   APP_NAME: 'YouSub',
-  VERSION: '0.2.4',
+  VERSION: '0.2.5',
   IS_PRODUCTION: false, // Auto-switched to true during packaging
   BUILD_DATE: null, // Injected during packaging
   BUILD_HASH: null, // Injected during packaging (git short hash)

@@ -538,5 +538,26 @@ describe('Overlay Module', () => {
       expect(document.getElementById('yousub-overlay')).not.toBeNull();
       jest.useRealTimers();
     });
+
+    test('Shorts #shorts-player persists without destroying overlay when [is-active] attribute is absent', () => {
+      window.history.pushState({}, '', '/shorts/ALWp-RMMP5k');
+      document.body.innerHTML = `
+        <ytd-shorts>
+          <ytd-reel-video-renderer></ytd-reel-video-renderer>
+          <div id="shorts-player" class="html5-video-player"></div>
+        </ytd-shorts>
+      `;
+
+      Overlay.show();
+      const firstContainer = document.getElementById('yousub-overlay');
+      expect(firstContainer).not.toBeNull();
+      expect(firstContainer.classList.contains('yousub-shorts')).toBe(true);
+      expect(firstContainer.parentElement.id).toBe('shorts-player');
+
+      // Calling show() again must reuse the same overlay container (not tear down & recreate)
+      Overlay.show();
+      expect(document.getElementById('yousub-overlay')).toBe(firstContainer);
+      window.history.pushState({}, '', '/');
+    });
   });
 });

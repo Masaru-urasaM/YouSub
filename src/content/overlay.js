@@ -309,23 +309,28 @@ function setupPlayerObserver() {
   playerObserver.observe(playerElement);
 }
 
+function findPlayerElement(isShorts) {
+  if (isShorts) {
+    // Phase 50.5 + 2026 Shorts DOM: #shorts-player persists even when [is-active] is absent
+    return (
+      document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
+      document.getElementById('shorts-player') ||
+      document.querySelector('ytd-shorts .html5-video-player') ||
+      document.querySelector('.ytd-reel-video-renderer[is-active] .html5-video-player')
+    );
+  }
+  return (
+    document.getElementById('movie_player') ||
+    document.querySelector('.html5-video-player') ||
+    document.querySelector('#ytd-player .html5-video-player')
+  );
+}
+
 function createOverlay() {
   if (container) return; // Already created
 
   const isShorts = window.location.pathname.startsWith('/shorts/');
-
-  if (isShorts) {
-    // Phase 50.5: Multiple selectors for Shorts active player
-    playerElement =
-      document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
-      document.querySelector('ytd-shorts .html5-video-player') ||
-      document.querySelector('.ytd-reel-video-renderer[is-active] .html5-video-player');
-  } else {
-    playerElement =
-      document.getElementById('movie_player') ||
-      document.querySelector('.html5-video-player') ||
-      document.querySelector('#ytd-player .html5-video-player');
-  }
+  playerElement = findPlayerElement(isShorts);
 
   if (!playerElement) {
     devWarn('[YouSub] Overlay: Player container not found. Retrying in 500ms...');
@@ -385,9 +390,14 @@ export const Overlay = {
     // Phase 52.2: Verify playerElement is still valid before showing
     if (container && playerElement) {
       const isShorts = window.location.pathname.startsWith('/shorts/');
+      const activeReel = isShorts
+        ? document.querySelector('ytd-reel-video-renderer[is-active]')
+        : null;
+      const expectedPlayer = findPlayerElement(isShorts);
       const isStale =
         !playerElement.isConnected ||
-        (isShorts && !playerElement.closest('ytd-reel-video-renderer[is-active]'));
+        (expectedPlayer && expectedPlayer !== playerElement) ||
+        (activeReel && !activeReel.contains(playerElement));
       if (isStale) {
         this.destroy();
       }

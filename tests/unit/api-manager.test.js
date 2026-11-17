@@ -110,4 +110,18 @@ describe('APIManager Module', () => {
     expect(key.status).toBe('failed');
     expect(key.statusMessage).toBe('Quota Exceeded');
   });
+
+  test('migrates deprecated Groq model IDs and avoids duplicate rotation clones', async () => {
+    await chrome.storage.local.set({
+      yousub_api_keys: [{ provider: 'groq', apiKey: 'gsk_1', model: 'llama-3.3-70b-versatile' }],
+      yousub_failover_enabled: true,
+      yousub_model_rotation: true,
+    });
+
+    const keys = await APIManager.getValidKeys();
+    const models = keys.map((k) => k.model);
+    expect(models[0]).toBe('openai/gpt-oss-120b');
+    expect(new Set(models).size).toBe(models.length);
+    expect(models).not.toContain('llama-3.3-70b-versatile');
+  });
 });

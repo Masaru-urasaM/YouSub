@@ -182,8 +182,8 @@
 
 /* YouTube Shorts Adaptation */
 #yousub-overlay.yousub-shorts {
-  max-width: 90vw; /* Take more width relative to the narrow player */
-  width: 90vw;
+  max-width: 90%; /* Fit within #shorts-player width without horizontal clipping */
+  width: max-content;
   min-width: 0;
   bottom: calc(
     var(--yousub-pos-bottom) + var(--yousub-offset) + 120px

@@ -367,4 +367,31 @@ describe('translator.js advanced & streaming paths (T8)', () => {
     expect(callCount).toBeGreaterThanOrEqual(2);
     expect(_internals.MAX_PAYLOAD_BYTES).toBe(95000);
   });
+
+  test('enforces a safe minimum maxTokens floor (>= 1500) for short JSON batches', async () => {
+    seedKeys([{ provider: 'groq', apiKey: 'gsk_short', model: 'openai/gpt-oss-120b' }]);
+
+    const observedMaxTokens = [];
+    chat.mockImplementation(async (_p, _m, _k, userPrompt, opts) => {
+      if (opts?.systemPrompt?.includes('FULL transcript')) {
+        return { success: true, text: 'Context ok' };
+      }
+      observedMaxTokens.push(opts.maxTokens);
+      const parsed = JSON.parse(userPrompt);
+      return {
+        success: true,
+        text: JSON.stringify({
+          lines: parsed.lines.map((l) => ({ n: l.n, t: `VI:${l.t}` })),
+        }),
+      };
+    });
+
+    const result = await translate(
+      [seg('Short one', 0), seg('Short two', 1000), seg('Short three', 2000)],
+      'en',
+      'vi'
+    );
+    expect(result.success).toBe(true);
+    expect(observedMaxTokens[0]).toBeGreaterThanOrEqual(1500);
+  });
 });

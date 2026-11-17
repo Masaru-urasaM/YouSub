@@ -238,5 +238,22 @@ describe('VideoBinder', () => {
       // VIDEO_SELECTORS lists html5-main-video before the generic 'video'.
       expect(onBound).toHaveBeenCalledWith(main);
     });
+
+    test('binds to #shorts-player video when ytd-reel-video-renderer lacks [is-active]', () => {
+      const generic = makeVisibleVideo();
+      generic.id = 'generic-bg';
+      document.body.appendChild(generic);
+
+      const shortsPlayer = document.createElement('div');
+      shortsPlayer.id = 'shorts-player';
+      const shortsVideo = makeVisibleVideo();
+      shortsPlayer.appendChild(shortsVideo);
+      document.body.appendChild(shortsPlayer);
+
+      const onBound = jest.fn();
+      VideoBinder.bind(onBound);
+
+      expect(onBound).toHaveBeenCalledWith(shortsVideo);
+    });
   });
 });

@@ -5,8 +5,8 @@ transcript tracks, translates them with your own LLM API keys (BYOK,
 multi-provider), and renders a synced, customizable subtitle overlay on the
 player — including a dual (original + translated) mode.
 
-> **Status**: Shipped — **v0.2.2** (Chrome Web Store). Manifest V3, vanilla
-> JavaScript ES modules, **no build step**. This repository is private.
+> **Status**: Shipped — **v0.2.2** (Chrome Web Store); local **v0.2.5** built. Manifest V3, vanilla
+> JavaScript ES modules, **no build step**. Open source under GNU AGPL-3.0-only.
 
 ---
 
@@ -56,4 +56,4 @@ isn't one). See the privacy policy for details.
 
 ## License
 
-[GNU AGPL-3.0-only](LICENSE).
+[GNU AGPL-3.0-only](LICENSE) — Strong copyleft: anyone who distributes or hosts modified versions over a network must disclose the corresponding source code under AGPL-3.0.

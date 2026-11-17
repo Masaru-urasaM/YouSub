@@ -4,7 +4,7 @@
 >
 > **Document version**: 2.5
 > **Last updated**: 2026-11-17
-> **Status**: **STABLE** — shipped **v0.2.2** (Chrome Web Store); local **v0.2.4** built and awaiting store upload
+> **Status**: **STABLE** — shipped **v0.2.2** (Chrome Web Store); local **v0.2.5** built and awaiting store upload
 >
 > **Structure**: This file is the navigation hub and architecture reference. For active/pending development phases, see [ROADMAP.md](ROADMAP.md). For completed phases, see [ROADMAP_DONE.md](ROADMAP_DONE.md).
 

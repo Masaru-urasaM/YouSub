@@ -8,7 +8,9 @@ let callbackFired = false; // Phase 53.2: Prevent double invocation
 
 const TIMEOUT_MS = 10000; // 10 seconds max wait
 const VIDEO_SELECTORS = [
-  'ytd-reel-video-renderer[is-active] video', // Shorts: Active reel video
+  'ytd-reel-video-renderer[is-active] video', // Shorts: Legacy active reel video
+  '#shorts-player video', // Shorts: Current active Shorts player video
+  'ytd-shorts video', // Shorts: Fallback inside Shorts container
   'video.html5-main-video', // Regular: Main player video
   '#movie_player video', // Fallback
   'video', // Generic

@@ -207,7 +207,7 @@ export async function retranslateWithVerification(
         const response = await Providers.chat(key.provider, key.model, key.apiKey, userPrompt, {
           systemPrompt,
           temperature: 0.1,
-          maxTokens: chunk.length * 150,
+          maxTokens: Math.max(1500, chunk.length * 150),
           signal,
         });
 

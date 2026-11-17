@@ -71,13 +71,16 @@ export const YOUSUB_PROVIDERS = {
       supportsJsonMode: true,
       models: [
         { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
-        { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
-        { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' },
         { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B' },
-        { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B' },
-        { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
+        { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B' },
       ],
-      defaultModel: 'llama-3.3-70b-versatile',
+      defaultModel: 'openai/gpt-oss-120b',
+      deprecatedModels: {
+        'llama-3.3-70b-versatile': 'openai/gpt-oss-120b',
+        'qwen/qwen3-32b': 'qwen/qwen3.8-27b',
+        'meta-llama/llama-4-scout-17b-16e-instruct': 'openai/gpt-oss-20b',
+        'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
+      },
     },
     {
       id: 'xai',
@@ -138,6 +141,14 @@ export const YOUSUB_PROVIDERS = {
   getModelsForProvider(id) {
     const provider = this.getProvider(id);
     return provider ? provider.models : [];
+  },
+
+  // Resolve 'auto' and migrate deprecated built-in model IDs to live equivalents
+  resolveModel(providerId, modelId) {
+    const provider = this.getProvider(providerId);
+    if (!provider) return modelId;
+    if (!modelId || modelId === 'auto') return provider.defaultModel;
+    return (provider.deprecatedModels && provider.deprecatedModels[modelId]) || modelId;
   },
 
   // Utility to guess the provider from the API key prefix

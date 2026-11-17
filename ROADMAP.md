@@ -2,8 +2,8 @@
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
 > **Version**: 8.1
-> **Last updated**: 2026-07-06
-> **Status**: **No active roadmap phases.** All phases complete — Phases 0-77 (Milestones M1-M7) + the post-M7 DEFERRED backlog (D1–D7) cleared + the [Privacy P0] fix and Phase B on-device-verification restore (2026-06-30 → 2026-07-06). Version **0.2.4** built + committed (2026-07-06), **not yet uploaded to the store**. Full phase history is archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
+> **Last updated**: 2026-11-17
+> **Status**: **No active roadmap phases.** All phases complete — Phases 0-77 (Milestones M1-M7) + the post-M7 DEFERRED backlog cleared + hotfix **v0.2.5** built + verified (Groq live model/reasoning compatibility & 2026 YouTube Shorts extraction), **not yet uploaded to the store**. Full phase history is archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
 
 ---
 
@@ -72,9 +72,9 @@ All planned work is complete. There are **no active or queued roadmap phases**.
 - **Technical Debt Hardening Pass (2026-11-17)**: `npm audit` **0 vulnerabilities**, **583/583 tests** green across 36 suites, global coverage **90.1% lines / 88.8% stmts / 75.1% branches / 88.8% funcs** (threshold ratcheted to `84/72/84/85`, exceeding Milestone-7 exit target ≥ 70%), `translator.js` and `tab-translation.js` modularized, `npm run test:log` + `npm run verify` + `.husky/pre-push` added, both v0.2.4 ZIPs rebuilt (`[VERIFY OK]`, ZIP size reduced via `preview_bg.jpg` optimization & unused `logo_618.png` exclusion).
 
 **Pending — manual, developer only (cannot be automated)**:
-1. **Upload `dist/yousub-v0.2.4-chrome.zip`** (and the Firefox ZIP if/when releasing there) to the store. This is the only step that puts 0.2.4 in users' hands. (The published privacy-policy gist `15f9846972ccb68a120d29e988f42847` was synced to `privacy-policy.md` on 2026-11-17.)
-2. **Recommended browser smoke-test before upload**: one normal video + one Shorts with a live API key, to confirm the real translation path (carried from DEFERRED D6 — the harness stubs the sanitize / foreign-script / untranslated / MergeFixer cascades). For Phase B specifically, open the page main-world console and check `'Translator' in window` + `await Translator.availability({sourceLanguage:'en',targetLanguage:'vi'})`; if it reports `available`, confirm a `YOUSUB_ROUGH_TRANSLATE` round-trip fires (single-track video, concrete src). `unavailable`/`downloadable` is expected and degrades cleanly to the offline heuristic.
-3. **After 0.2.4 is live**, update the "shipped v0.2.2 on the Chrome Web Store" lines in `CLAUDE.md` / `README.md` / `YOUSUB_PROJECT_SPEC.md` (left at 0.2.2 now because 0.2.4 is not yet published).
+1. **Upload `dist/yousub-v0.2.5-chrome.zip`** (and the Firefox ZIP if/when releasing there) to the store. This is the only step that puts 0.2.5 in users' hands. (The published privacy-policy gist `15f9846972ccb68a120d29e988f42847` was synced to `privacy-policy.md` on 2026-11-17.)
+2. **Browser smoke-test (0.2.5)**: verified end-to-end against live `.env` Gemini & Groq keys on regular watch video + YouTube Shorts. For Phase B specifically, Chrome 156 reports `Translator.availability({sourceLanguage:'en',targetLanguage:'vi'}) === 'downloadable'` (degrades cleanly to offline heuristic until resident as `'available'`).
+3. **After 0.2.5 is live**, update the "shipped v0.2.2 on the Chrome Web Store" lines in `CLAUDE.md` / `README.md` / `YOUSUB_PROJECT_SPEC.md` (left at 0.2.2 now because 0.2.5 is not yet published).
 4. **Personal/repo hygiene on disk**: move `assets/icons/グエンバンフアン履歴書.docx` (and optionally `icons.zip`, `icon128-original.png`) outside the workspace.
 
 **Open backlog (deferred, not scheduled)**:

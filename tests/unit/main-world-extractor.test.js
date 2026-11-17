@@ -182,7 +182,7 @@ describe('main-world-extractor IIFE (T11)', () => {
     expect(res[0].parsedEntries).toEqual([{ startMs: 12000, endMs: 17000, text: 'こんにちは' }]);
   });
 
-  test('falls back to Innertube XHR for Shorts without usable tracks and returns track metadata when panel missing', async () => {
+  test('falls back to Innertube XHR for Shorts without usable tracks and returns track metadata when panel and get_panel fail', async () => {
     jest.useFakeTimers();
     window.history.pushState({}, '', '/shorts/sh999');
     window.ytcfg = {
@@ -198,7 +198,7 @@ describe('main-world-extractor IIFE (T11)', () => {
     await import('../../src/content/main-world-extractor.js');
     await flushMicrotasks();
 
-    // Innertube XHR fired because no metadata tracks existed
+    // 1. Innertube /player XHR fired because no metadata tracks existed
     expect(xhrInstances).toHaveLength(1);
     expect(xhrInstances[0].url).toContain('/youtubei/v1/player?key=yt-key');
     xhrInstances[0].status = 200;
@@ -211,7 +211,23 @@ describe('main-world-extractor IIFE (T11)', () => {
     });
     xhrInstances[0].onload();
 
-    await jest.advanceTimersByTimeAsync(2500);
+    await jest.advanceTimersByTimeAsync(2000);
+    await flushMicrotasks();
+
+    // 2. get_panel XHR fires after Shorts UI lacks transcript segments
+    expect(xhrInstances).toHaveLength(2);
+    expect(xhrInstances[1].url).toContain('/youtubei/v1/get_panel');
+    xhrInstances[1].status = 200;
+    xhrInstances[1].responseText = JSON.stringify({});
+    xhrInstances[1].onload();
+    await flushMicrotasks();
+
+    // 3. /next discovery XHR fires when direct get_panel params yielded no segments
+    expect(xhrInstances).toHaveLength(3);
+    expect(xhrInstances[2].url).toContain('/youtubei/v1/next');
+    xhrInstances[2].status = 200;
+    xhrInstances[2].responseText = JSON.stringify({});
+    xhrInstances[2].onload();
     await flushMicrotasks();
 
     const res = results();
@@ -226,5 +242,130 @@ describe('main-world-extractor IIFE (T11)', () => {
     ]);
     expect(res[0].parsedEntries).toBeNull();
     expect(res[0].error).toContain('Transcript button not found');
+  });
+
+  test('extracts Shorts subtitles via Innertube get_panel and #shorts-player metadata without [is-active]', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/shorts/ALWp-RMMP5k');
+    window.ytcfg = {
+      get: (k) => {
+        if (k === 'INNERTUBE_API_KEY') return 'yt-key';
+        if (k === 'INNERTUBE_CONTEXT') return { client: { clientName: 'WEB', hl: 'en' } };
+        return '2.2026';
+      },
+    };
+    // Stale window.ytInitialPlayerResponse from a previous Short should be ignored
+    window.ytInitialPlayerResponse = {
+      videoDetails: { videoId: 'OLD_SHORT_ID' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ languageCode: 'fr', baseUrl: 'https://yt/old' }],
+        },
+      },
+    };
+    const sp = document.createElement('div');
+    sp.id = 'shorts-player';
+    sp.className = 'html5-video-player';
+    sp.getPlayerResponse = () => ({
+      videoDetails: { videoId: 'ALWp-RMMP5k' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ languageCode: 'en', kind: 'asr', baseUrl: 'https://yt/shorts-en' }],
+        },
+      },
+    });
+    document.body.appendChild(sp);
+
+    await import('../../src/content/main-world-extractor.js');
+    await jest.advanceTimersByTimeAsync(600);
+    await flushMicrotasks();
+
+    expect(xhrInstances).toHaveLength(1);
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
+    const reqBody = JSON.parse(xhrInstances[0].sentBody);
+    expect(reqBody.panelId).toBe('PAmodern_transcript_view');
+    expect(reqBody.params).toBe('qgkPCgtBTFdwLVJNTVA1axgB');
+
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      content: {
+        items: [
+          { transcriptSegmentViewModel: { timestamp: '0:00', simpleText: 'Hello\u00a0Shorts' } },
+          { transcriptSegmentViewModel: { timestamp: '0:08', simpleText: 'Second line' } },
+        ],
+      },
+    });
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].error).toBeNull();
+    expect(res[0].tracks[0].languageCode).toBe('en');
+    expect(res[0].parsedEntries).toEqual([
+      { startMs: 0, endMs: 8000, text: 'Hello Shorts' },
+      { startMs: 8000, endMs: 13000, text: 'Second line' },
+    ]);
+  });
+
+  test('discovers PAmodern_transcript_view params via /next when direct get_panel returns empty', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/shorts/shNext12345');
+    window.ytInitialPlayerResponse = {
+      videoDetails: { videoId: 'shNext12345' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ languageCode: 'en', baseUrl: 'https://yt/sh' }],
+        },
+      },
+    };
+
+    await import('../../src/content/main-world-extractor.js');
+    await jest.advanceTimersByTimeAsync(600);
+    await flushMicrotasks();
+
+    // 1. Initial get_panel returns empty
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = '{}';
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    // 2. /next supplies updated PAmodern_transcript_view params
+    expect(xhrInstances[1].url).toContain('/youtubei/v1/next');
+    xhrInstances[1].status = 200;
+    xhrInstances[1].responseText = JSON.stringify({
+      engagementPanels: [
+        {
+          contentSourcePanelIdentifier: { tag: 'PAmodern_transcript_view' },
+          globalConfiguration: { params: 'DISCOVERED_PARAMS' },
+        },
+      ],
+    });
+    xhrInstances[1].onload();
+    await flushMicrotasks();
+
+    // 3. Retry get_panel with discovered params returns classic renderer segment
+    expect(xhrInstances[2].url).toContain('/youtubei/v1/get_panel');
+    expect(JSON.parse(xhrInstances[2].sentBody).params).toBe('DISCOVERED_PARAMS');
+    xhrInstances[2].status = 200;
+    xhrInstances[2].responseText = JSON.stringify({
+      actions: [
+        {
+          transcriptSegmentRenderer: {
+            startMs: '1000',
+            endMs: '4500',
+            snippet: { runs: [{ text: 'Discovered!' }] },
+          },
+        },
+      ],
+    });
+    xhrInstances[2].onload();
+    await flushMicrotasks();
+
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].error).toBeNull();
+    expect(res[0].parsedEntries).toEqual([{ startMs: 1000, endMs: 4500, text: 'Discovered!' }]);
   });
 });

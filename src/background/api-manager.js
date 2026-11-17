@@ -135,34 +135,35 @@ export const APIManager = {
         const expanded = [];
         for (const k of finalKeys) {
           const prov = YOUSUB_PROVIDERS.getProvider(k.provider);
+          const resolvedModel = YOUSUB_PROVIDERS.resolveModel(k.provider, k.model);
+          const entry = resolvedModel !== k.model ? { ...k, model: resolvedModel } : k;
 
-          if (k.provider === 'groq') {
-            const resolvedModel = k.model === 'auto' ? prov?.defaultModel || k.model : k.model;
-            k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
+          if (entry.provider === 'groq') {
+            entry.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
           }
 
-          expanded.push(k);
+          expanded.push(entry);
           if (!prov) continue;
 
           const builtinIds = prov.models.map((m) => m.id);
-          const customIds = customs[k.provider] || [];
-          const hiddenIds = hiddens[k.provider] || [];
+          const customIds = customs[entry.provider] || [];
+          const hiddenIds = hiddens[entry.provider] || [];
 
           const allModels = [...builtinIds, ...customIds].filter((m) => !hiddenIds.includes(m));
-          const currentModel = k.model === 'auto' ? prov.defaultModel : k.model;
+          const currentModel = resolvedModel;
 
           const clones = [];
           for (const m of allModels) {
             if (m !== currentModel) {
-              const clone = { ...k, model: m, isRotationClone: true };
-              if (k.provider === 'groq') {
+              const clone = { ...entry, model: m, isRotationClone: true };
+              if (entry.provider === 'groq') {
                 clone.maxLinesPerBatch = getGroqMaxLines(m, DEFAULT_MAX_LINES);
               }
               clones.push(clone);
             }
           }
 
-          if (k.provider === 'groq') {
+          if (entry.provider === 'groq') {
             clones.sort(
               (a, b) =>
                 (b.maxLinesPerBatch || DEFAULT_MAX_LINES) -
@@ -174,14 +175,15 @@ export const APIManager = {
         finalKeys = expanded;
       }
 
-      // Stamp maxLinesPerBatch on Groq keys even when rotation is off
-      for (const k of finalKeys) {
-        if (k.provider === 'groq' && !k.maxLinesPerBatch) {
-          const prov = YOUSUB_PROVIDERS.getProvider('groq');
-          const resolvedModel = k.model === 'auto' ? prov?.defaultModel || k.model : k.model;
-          k.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
+      // Stamp maxLinesPerBatch on Groq keys and normalize deprecated models even when rotation is off
+      finalKeys = finalKeys.map((k) => {
+        const resolvedModel = YOUSUB_PROVIDERS.resolveModel(k.provider, k.model);
+        const updated = resolvedModel !== k.model ? { ...k, model: resolvedModel } : k;
+        if (updated.provider === 'groq' && !updated.maxLinesPerBatch) {
+          updated.maxLinesPerBatch = getGroqMaxLines(resolvedModel, DEFAULT_MAX_LINES);
         }
-      }
+        return updated;
+      });
 
       Logger.debug('APIManager', `Loaded ${finalKeys.length} keys in priority order.`);
       return finalKeys;

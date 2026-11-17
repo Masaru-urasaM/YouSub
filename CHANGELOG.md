@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-17
+
+### [Hotfix] Live Groq model/JSON-mode compatibility & 2026 YouTube Shorts extraction (2026-11-17)
+
+**Problem**: Live `.env` smoke testing against `v0.2.4` caught two real-world regressions: (1) Groq removed `llama-3.3-70b-versatile` (404), and `openai/gpt-oss-120b`/`20b` failed with `HTTP 400 json_validate_failed` on short batches because `estimatedOutputTokens = segments.length * 130` (390 tokens for 3 lines) was exhausted by reasoning tokens; (2) 2026 desktop web YouTube Shorts dropped `[is-active]` / `#menu` -> `Description` -> `Show transcript` DOM controls and returned empty `timedtext` bodies (`pot=`-gated), causing `Could not find subtitles` across all tested Shorts.
+
+**Changed**
+
+- `src/shared/providers-registry.js` — updated Groq built-in models to live endpoints (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`), set `defaultModel: 'openai/gpt-oss-120b'`, added `deprecatedModels` map + `resolveModel()` helper.
+- `src/background/providers.js` — extracted `resolveTarget()` shared by `chat()`/`chatStream()` to migrate deprecated Groq models; added `reasoning_effort: 'low'` for Groq `gpt-oss-*` models and capped Groq `qwen/qwen3.8-27b` `max_tokens` at `900` (within 1000 OTPM limit).
+- `src/background/api-manager.js`, `src/background/translator-failover.js`, `src/background/translator-quality.js`, `src/background/translator.js` — normalized stored deprecated Groq model IDs without duplicate rotation clones; raised minimum `maxTokens` floors (`>= 1500` JSON / `>= 1024` text, `>= 1500` verification, `800` context summary).
+- `src/content/main-world-extractor.js` — added active `#shorts-player` metadata lookup (ignoring stale `ytInitialPlayerResponse` from prior Shorts), normalized `\u00a0` spaces, and added XHR Innertube `/youtubei/v1/get_panel` (`PAmodern_transcript_view`) transcript extractor with `/youtubei/v1/next` param discovery fallback.
+- `src/content/overlay.js`, `src/content/overlay.css`, `src/content/video-binder.js` — added `#shorts-player` / `ytd-shorts` selectors and non-destructive stale check when `[is-active]` is absent; changed `.yousub-shorts` width from `90vw` to `max-width: 90%; width: max-content;` so vertical Shorts subtitles do not clip horizontally.
+- `package.json`, `package-lock.json`, `manifest.json`, `src/shared/constants.js` — bumped version `0.2.4` -> `0.2.5`.
+
+**Tests**: 583 -> **592** (+9 tests across 36 suites) covering Groq model migration, token/reasoning safeguards, Shorts `#shorts-player` + `get_panel` + `/next` extraction, overlay reuse, and video binding.
+
 ### Technical Debt Hardening Pass (`TODO.md` T1–T17, T19–T21) (2026-11-17)
 
 **Added**

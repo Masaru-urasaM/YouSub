@@ -95,6 +95,18 @@
       return Math.round(seconds * 1000);
     }
 
+    function getActivePlayer(isShorts) {
+      if (isShorts) {
+        return (
+          document.getElementById('shorts-player') ||
+          document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
+          document.querySelector('ytd-shorts .html5-video-player') ||
+          document.getElementById('movie_player')
+        );
+      }
+      return document.getElementById('movie_player');
+    }
+
     // -------------------------------------------------------------------------
     // Step 1: Find the "Show transcript" button
     // -------------------------------------------------------------------------
@@ -127,15 +139,14 @@
         return ariaBtn;
       }
 
-      // Strategy C: Shorts-specific search in Active Reel
+      // Strategy C: Shorts-specific search in Active Reel (with/without [is-active])
       if (isShorts) {
-        // On Shorts, the transcript button is often inside the Description overlay
         var shortsDesc = document.querySelector(
-          'ytd-reel-video-renderer[is-active] ytd-structured-description-content-renderer'
+          'ytd-reel-video-renderer[is-active] ytd-structured-description-content-renderer, ytd-shorts ytd-structured-description-content-renderer, ytd-reel-video-renderer ytd-structured-description-content-renderer'
         );
         if (shortsDesc) {
           var shortsBtn = shortsDesc.querySelector(
-            'ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i]'
+            'ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
           );
           if (shortsBtn) {
             _devLog('[YouSub] MainWorldExtractor: Found transcript button in Shorts description.');
@@ -145,9 +156,15 @@
       }
 
       // Strategy D: Search all buttons/renderers for text content (locale-resilient).
-      // EN + JA YouTube UI labels for "Show transcript" / "transcript"
-      // (toLowerCase() is a no-op for Japanese, so the JA entries match as-is).
-      var transcriptLabels = ['show transcript', 'transcript', '文字起こしを表示', '文字起こし'];
+      // EN + JA + VI YouTube UI labels for "Show transcript" / "transcript"
+      var transcriptLabels = [
+        'show transcript',
+        'transcript',
+        '文字起こしを表示',
+        '文字起こし',
+        'hiển thị bản chép lời',
+        'bản chép lời',
+      ];
       var allButtons = document.querySelectorAll(
         'ytd-button-renderer, tp-yt-paper-button, button, ytd-menu-service-item-renderer'
       );
@@ -171,7 +188,7 @@
       if (isShorts) {
         // Step 1: Find and click "More actions" (...) button on the active short
         var moreBtn = document.querySelector(
-          'ytd-reel-video-renderer[is-active] #menu.ytd-reel-video-renderer button'
+          'ytd-reel-video-renderer[is-active] #menu.ytd-reel-video-renderer button, ytd-shorts #menu.ytd-reel-video-renderer button'
         );
         if (moreBtn) {
           _devLog('[YouSub] MainWorldExtractor: Clicking Shorts "More actions" menu...');
@@ -182,8 +199,8 @@
           var menuItems = document.querySelectorAll('ytd-menu-service-item-renderer');
           for (var i = 0; i < menuItems.length; i++) {
             var text = menuItems[i].textContent.toLowerCase();
-            // Phase 50.6: Support Vietnamese localization
-            if (text.includes('description') || text.includes('mô tả')) {
+            // Phase 50.6 + localization: EN / VI / JA
+            if (text.includes('description') || text.includes('mô tả') || text.includes('説明')) {
               _devLog('[YouSub] MainWorldExtractor: Clicking "Description" in Shorts menu...');
               menuItems[i].click();
               return true;
@@ -380,7 +397,10 @@
             entries.push({
               startMs: startMs,
               endMs: 0,
-              text: textContent.replace(/\n/g, ' ').trim(),
+              text: textContent
+                .replace(/[\r\n\u00a0]+/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim(),
             });
           }
         }
@@ -402,7 +422,28 @@
     // -------------------------------------------------------------------------
     // Fallback: Extract track info and video metadata from page
     // -------------------------------------------------------------------------
+    function findActiveReelPlayerResponse() {
+      try {
+        var activeReel = document.querySelector('ytd-reel-video-renderer[is-active]');
+        if (activeReel && activeReel.data && activeReel.data.playerResponse) {
+          return activeReel.data.playerResponse;
+        }
+        var reels = document.querySelectorAll('ytd-reel-video-renderer');
+        for (var i = 0; i < reels.length; i++) {
+          var pr = reels[i] && reels[i].data && reels[i].data.playerResponse;
+          if (pr && pr.videoDetails && pr.videoDetails.videoId === videoId) {
+            return pr;
+          }
+        }
+        if (reels.length > 0 && reels[0].data && reels[0].data.playerResponse) {
+          return reels[0].data.playerResponse;
+        }
+      } catch {}
+      return null;
+    }
+
     function extractVideoMetadata() {
+      var isShorts = window.location.pathname.startsWith('/shorts/');
       var data = {
         tracks: null,
         isLive: false,
@@ -410,26 +451,29 @@
       };
 
       var sources = [];
-      // 1. Try movie_player.getPlayerResponse()
-      var player = document.getElementById('movie_player');
+      // 1. Try active player (#shorts-player on Shorts, #movie_player on Watch)
+      var player = getActivePlayer(isShorts);
       if (player && typeof player.getPlayerResponse === 'function') {
         try {
           sources.push(player.getPlayerResponse());
         } catch {}
       }
-      // 2. Try window.ytInitialPlayerResponse
+      // 2. Try Shorts reel renderer data BEFORE window.ytInitialPlayerResponse (which can be stale on Shorts swipe)
+      var reelResp = findActiveReelPlayerResponse();
+      if (reelResp) sources.push(reelResp);
+      // 3. Try window.ytInitialPlayerResponse (only if it matches current videoId or lacks videoDetails)
       if (window.ytInitialPlayerResponse) sources.push(window.ytInitialPlayerResponse);
-      // 3. Try searching active reel data (Shorts specific)
-      try {
-        var reel = document.querySelector('ytd-reel-video-renderer[is-active]');
-        if (reel && reel.data && reel.data.playerResponse) {
-          sources.push(reel.data.playerResponse);
-        }
-      } catch {}
 
       for (var s = 0; s < sources.length; s++) {
         var resp = sources[s];
         if (!resp) continue;
+        if (
+          resp.videoDetails &&
+          resp.videoDetails.videoId &&
+          resp.videoDetails.videoId !== videoId
+        ) {
+          continue;
+        }
 
         // Detect Live status
         if (resp.videoDetails && resp.videoDetails.isLive) {
@@ -458,94 +502,88 @@
     }
 
     // -------------------------------------------------------------------------
-    // Fallback: Fetch caption tracks via YouTube Innertube API
-    // Only called when all 3 metadata sources fail to provide tracks.
+    // Shared Innertube XHR helper + Fallbacks (Player Tracks + get_panel)
     // -------------------------------------------------------------------------
-    function fetchTracksViaInnertube(vid) {
+    function buildInnertubeContext() {
+      var existing =
+        window.ytcfg && typeof window.ytcfg.get === 'function'
+          ? window.ytcfg.get('INNERTUBE_CONTEXT')
+          : null;
+      if (existing && typeof existing === 'object') {
+        return existing;
+      }
+      var clientVersion = '2.20261116.00.00';
+      if (window.ytcfg && typeof window.ytcfg.get === 'function') {
+        clientVersion = window.ytcfg.get('INNERTUBE_CONTEXT_CLIENT_VERSION') || clientVersion;
+      }
+      return {
+        client: {
+          clientName: 'WEB',
+          clientVersion: clientVersion,
+          hl: (navigator.language || 'en').split('-')[0],
+        },
+      };
+    }
+
+    function postInnertubeJson(endpointPath, payload, queryParams) {
       return new Promise(function (resolve) {
         try {
           var apiKey = '';
-          var clientVersion = '2.20240321.01.00';
-
+          var clientName = '';
+          var clientVersion = '';
           if (window.ytcfg && typeof window.ytcfg.get === 'function') {
             apiKey = window.ytcfg.get('INNERTUBE_API_KEY') || '';
-            clientVersion = window.ytcfg.get('INNERTUBE_CONTEXT_CLIENT_VERSION') || clientVersion;
+            clientName = window.ytcfg.get('INNERTUBE_CONTEXT_CLIENT_NAME') || '';
+            clientVersion = window.ytcfg.get('INNERTUBE_CONTEXT_CLIENT_VERSION') || '';
           }
 
-          var url = 'https://www.youtube.com/youtubei/v1/player';
-          if (apiKey) url += '?key=' + encodeURIComponent(apiKey);
+          var queryParts = [];
+          if (queryParams) queryParts.push(queryParams);
+          if (apiKey) queryParts.push('key=' + encodeURIComponent(apiKey));
+          var url =
+            'https://www.youtube.com' +
+            endpointPath +
+            (queryParts.length > 0 ? '?' + queryParts.join('&') : '');
 
-          var body = JSON.stringify({
-            videoId: vid,
-            context: {
-              client: {
-                clientName: 'WEB',
-                clientVersion: clientVersion,
-                hl: (navigator.language || 'en').split('-')[0],
-              },
-            },
-          });
-
+          var body = JSON.stringify(payload);
           var xhr = new XMLHttpRequest();
           xhr.open('POST', url, true);
           xhr.setRequestHeader('Content-Type', 'application/json');
+          if (clientName) xhr.setRequestHeader('X-YouTube-Client-Name', String(clientName));
+          if (clientVersion)
+            xhr.setRequestHeader('X-YouTube-Client-Version', String(clientVersion));
           xhr.withCredentials = true;
           xhr.timeout = 8000;
 
           var responded = false;
-
           xhr.onload = function () {
             if (responded) return;
             responded = true;
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
-                var resp = JSON.parse(xhr.responseText);
-                var result = { tracks: null, isLive: false };
-
-                if (resp.videoDetails && resp.videoDetails.isLive) {
-                  result.isLive = true;
-                }
-
-                if (
-                  resp.captions &&
-                  resp.captions.playerCaptionsTracklistRenderer &&
-                  resp.captions.playerCaptionsTracklistRenderer.captionTracks
-                ) {
-                  result.tracks = resp.captions.playerCaptionsTracklistRenderer.captionTracks.map(
-                    function (t) {
-                      return {
-                        languageCode: t.languageCode || '',
-                        languageName: (t.name && t.name.simpleText) || t.languageCode || 'Unknown',
-                        isAutoGenerated: t.kind === 'asr' || !!t.isTranslatable,
-                        baseUrl: t.baseUrl || '',
-                      };
-                    }
-                  );
-                }
-
-                resolve(result);
+                resolve({ ok: true, status: xhr.status, data: JSON.parse(xhr.responseText) });
               } catch (parseErr) {
-                _devWarn('[YouSub] Innertube: JSON parse error:', parseErr.message);
-                resolve({ tracks: null, isLive: false });
+                _devWarn('[YouSub] Innertube JSON parse error:', parseErr.message);
+                resolve({ ok: false, status: xhr.status, data: null });
               }
             } else {
-              _devWarn('[YouSub] Innertube: HTTP', xhr.status);
-              resolve({ tracks: null, isLive: false });
+              _devWarn('[YouSub] Innertube HTTP', xhr.status, endpointPath);
+              resolve({ ok: false, status: xhr.status, data: null });
             }
           };
 
           xhr.onerror = function () {
             if (responded) return;
             responded = true;
-            _devWarn('[YouSub] Innertube: Network error');
-            resolve({ tracks: null, isLive: false });
+            _devWarn('[YouSub] Innertube network error:', endpointPath);
+            resolve({ ok: false, status: 0, data: null });
           };
 
           xhr.ontimeout = function () {
             if (responded) return;
             responded = true;
-            _devWarn('[YouSub] Innertube: Timeout');
-            resolve({ tracks: null, isLive: false });
+            _devWarn('[YouSub] Innertube timeout:', endpointPath);
+            resolve({ ok: false, status: 0, data: null });
           };
 
           xhr.send(body);
@@ -553,17 +591,234 @@
           setTimeout(function () {
             if (responded) return;
             responded = true;
-            _devWarn('[YouSub] Innertube: Safety timeout (12s)');
+            _devWarn('[YouSub] Innertube safety timeout (12s):', endpointPath);
             try {
               xhr.abort();
             } catch {}
-            resolve({ tracks: null, isLive: false });
+            resolve({ ok: false, status: 0, data: null });
           }, 12000);
         } catch (e) {
-          _devWarn('[YouSub] Innertube: Exception:', e.message);
-          resolve({ tracks: null, isLive: false });
+          _devWarn('[YouSub] Innertube exception:', e.message);
+          resolve({ ok: false, status: 0, data: null });
         }
       });
+    }
+
+    async function fetchTracksViaInnertube(vid) {
+      var res = await postInnertubeJson('/youtubei/v1/player', {
+        videoId: vid,
+        context: buildInnertubeContext(),
+      });
+      var result = { tracks: null, isLive: false };
+      var resp = res && res.data;
+      if (!resp) return result;
+
+      if (resp.videoDetails && resp.videoDetails.isLive) {
+        result.isLive = true;
+      }
+      if (
+        resp.captions &&
+        resp.captions.playerCaptionsTracklistRenderer &&
+        resp.captions.playerCaptionsTracklistRenderer.captionTracks
+      ) {
+        result.tracks = resp.captions.playerCaptionsTracklistRenderer.captionTracks.map(
+          function (t) {
+            return {
+              languageCode: t.languageCode || '',
+              languageName: (t.name && t.name.simpleText) || t.languageCode || 'Unknown',
+              isAutoGenerated: t.kind === 'asr' || !!t.isTranslatable,
+              baseUrl: t.baseUrl || '',
+            };
+          }
+        );
+      }
+      return result;
+    }
+
+    function encodeVarint(n, out) {
+      var val = n >>> 0;
+      while (val >= 0x80) {
+        out.push((val & 0x7f) | 0x80);
+        val = val >>> 7;
+      }
+      out.push(val);
+    }
+
+    function encodeUtf8Bytes(str) {
+      if (typeof TextEncoder !== 'undefined') {
+        return Array.from(new TextEncoder().encode(str));
+      }
+      var bytes = [];
+      for (var i = 0; i < str.length; i++) {
+        var code = str.charCodeAt(i);
+        if (code < 0x80) {
+          bytes.push(code);
+        } else if (code < 0x800) {
+          bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+        } else {
+          bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+        }
+      }
+      return bytes;
+    }
+
+    function buildTranscriptPanelParams(vid) {
+      // Encodes protobuf: field 153 (tag bytes 0xaa, 0x09) -> { 1: vid, 3: 1 }
+      var vidBytes = encodeUtf8Bytes(vid);
+      var inner = [];
+      inner.push(0x0a);
+      encodeVarint(vidBytes.length, inner);
+      for (var i = 0; i < vidBytes.length; i++) inner.push(vidBytes[i]);
+      inner.push(0x18, 0x01);
+
+      var outer = [0xaa, 0x09];
+      encodeVarint(inner.length, outer);
+      for (var j = 0; j < inner.length; j++) outer.push(inner[j]);
+
+      var bin = '';
+      for (var k = 0; k < outer.length; k++) bin += String.fromCharCode(outer[k]);
+      return btoa(bin);
+    }
+
+    function extractRunsText(node) {
+      if (!node || typeof node !== 'object') return '';
+      if (typeof node.simpleText === 'string') return node.simpleText;
+      if (typeof node.content === 'string') return node.content;
+      if (
+        node.elementsAttributedString &&
+        typeof node.elementsAttributedString.content === 'string'
+      ) {
+        return node.elementsAttributedString.content;
+      }
+      if (Array.isArray(node.runs)) {
+        return node.runs
+          .map(function (r) {
+            return (r && r.text) || '';
+          })
+          .join('');
+      }
+      return '';
+    }
+
+    function normalizeSegmentText(str) {
+      return String(str || '')
+        .replace(/[\r\n\u00a0]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    function parseGetPanelResponse(data) {
+      if (!data || typeof data !== 'object') return [];
+      var rawEntries = [];
+
+      function walk(node) {
+        if (!node || typeof node !== 'object') return;
+        if (node.transcriptSegmentViewModel) {
+          var vm = node.transcriptSegmentViewModel;
+          var vmText = normalizeSegmentText(
+            vm.simpleText || extractRunsText(vm.snippet) || vm.text || ''
+          );
+          var vmStart = vm.timestamp ? parseTimestamp(String(vm.timestamp)) : NaN;
+          if (!isNaN(vmStart) && vmText) {
+            rawEntries.push({ startMs: vmStart, endMs: 0, text: vmText });
+          }
+          return;
+        }
+        if (node.transcriptSegmentRenderer) {
+          var r = node.transcriptSegmentRenderer;
+          var rStart = Number(r.startMs);
+          var rEnd = Number(r.endMs) || 0;
+          var rText = normalizeSegmentText(extractRunsText(r.snippet));
+          if (!isNaN(rStart) && rText) {
+            rawEntries.push({ startMs: rStart, endMs: rEnd, text: rText });
+          }
+          return;
+        }
+        if (Array.isArray(node)) {
+          for (var i = 0; i < node.length; i++) walk(node[i]);
+        } else {
+          var keys = Object.keys(node);
+          for (var k = 0; k < keys.length; k++) walk(node[keys[k]]);
+        }
+      }
+
+      walk(data);
+
+      for (var j = 0; j < rawEntries.length; j++) {
+        if (!rawEntries[j].endMs || rawEntries[j].endMs <= rawEntries[j].startMs) {
+          if (j + 1 < rawEntries.length) {
+            rawEntries[j].endMs = Math.max(rawEntries[j].startMs, rawEntries[j + 1].startMs);
+          } else {
+            rawEntries[j].endMs = rawEntries[j].startMs + 5000;
+          }
+        }
+      }
+
+      return rawEntries;
+    }
+
+    function findPanelParamsInTree(node) {
+      if (!node || typeof node !== 'object') return null;
+      if (
+        node.contentSourcePanelIdentifier &&
+        node.contentSourcePanelIdentifier.tag === 'PAmodern_transcript_view' &&
+        node.globalConfiguration &&
+        typeof node.globalConfiguration.params === 'string'
+      ) {
+        return node.globalConfiguration.params;
+      }
+      if (Array.isArray(node)) {
+        for (var i = 0; i < node.length; i++) {
+          var found = findPanelParamsInTree(node[i]);
+          if (found) return found;
+        }
+      } else {
+        var keys = Object.keys(node);
+        for (var k = 0; k < keys.length; k++) {
+          var foundChild = findPanelParamsInTree(node[keys[k]]);
+          if (foundChild) return foundChild;
+        }
+      }
+      return null;
+    }
+
+    async function fetchTranscriptViaGetPanel(vid) {
+      var initialParams = buildTranscriptPanelParams(vid);
+      var context = buildInnertubeContext();
+
+      var panelRes = await postInnertubeJson(
+        '/youtubei/v1/get_panel',
+        {
+          context: context,
+          panelId: 'PAmodern_transcript_view',
+          params: initialParams,
+        },
+        'prettyPrint=false'
+      );
+
+      var entries = parseGetPanelResponse(panelRes && panelRes.data);
+      if (entries.length > 0) return entries;
+
+      // Fallback if YouTube rotated panel params encoding: discover via /youtubei/v1/next
+      var nextRes = await postInnertubeJson('/youtubei/v1/next', {
+        context: context,
+        videoId: vid,
+      });
+      var discoveredParams = nextRes && nextRes.data ? findPanelParamsInTree(nextRes.data) : null;
+      if (discoveredParams && discoveredParams !== initialParams) {
+        var retryRes = await postInnertubeJson(
+          '/youtubei/v1/get_panel',
+          {
+            context: context,
+            panelId: 'PAmodern_transcript_view',
+            params: discoveredParams,
+          },
+          'prettyPrint=false'
+        );
+        entries = parseGetPanelResponse(retryRes && retryRes.data);
+      }
+
+      return entries.length > 0 ? entries : null;
     }
 
     // -------------------------------------------------------------------------
@@ -611,10 +866,12 @@
           var btn = findTranscriptButton();
 
           if (!btn) {
-            // Expand description to reveal button
-            expandDescription();
-            await wait(800);
-            btn = findTranscriptButton();
+            // Expand description to reveal button (only wait if an element was actually expanded)
+            var expanded = await expandDescription();
+            if (expanded) {
+              await wait(800);
+              btn = findTranscriptButton();
+            }
           }
 
           if (btn) {
@@ -650,6 +907,20 @@
           _devLog(
             '[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:',
             entries.length
+          );
+          return;
+        }
+
+        // ================================================================
+        // Step 4 (2026 Shorts & UI-less Watch fallback): Innertube get_panel
+        // ================================================================
+        _devLog('[YouSub] MainWorldExtractor: Trying Innertube get_panel fallback...');
+        var panelEntries = await fetchTranscriptViaGetPanel(videoId);
+        if (panelEntries && panelEntries.length > 0) {
+          sendResult(metadata.tracks, panelEntries, null);
+          _devLog(
+            '[YouSub] MainWorldExtractor: SUCCESS via Innertube get_panel. Entries:',
+            panelEntries.length
           );
           return;
         }
