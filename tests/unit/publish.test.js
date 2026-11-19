@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { jest, describe, test, expect } from '@jest/globals';
+import { jest, describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import {
   parseDotEnv,
   createAmoJwt,
@@ -28,6 +29,24 @@ function makeJsonResponse(status, bodyObj) {
 }
 
 describe('scripts/publish.js store automation', () => {
+  let tempDir;
+
+  beforeAll(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yousub-publish-test-'));
+    const distDir = path.join(tempDir, 'dist');
+    fs.mkdirSync(distDir, { recursive: true });
+    const slug = String(MANIFEST.name || 'yousub')
+      .toLowerCase()
+      .replace(/\s+/g, '-');
+    fs.writeFileSync(path.join(distDir, `${slug}-v${MANIFEST.version}-chrome.zip`), 'PK\x05\x06');
+    fs.writeFileSync(path.join(distDir, `${slug}-v${MANIFEST.version}-firefox.zip`), 'PK\x05\x06');
+  });
+
+  afterAll(() => {
+    if (tempDir) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
   test('parseDotEnv parses assignments, interpolates variables, and skips raw non-assignment lines', () => {
     const raw = `
 # Comment
@@ -102,6 +121,7 @@ CWS_PUBLISHER_ID='pub-123'
           CWS_SERVICE_ACCOUNT_JSON: saJson,
         },
         manifest: MANIFEST,
+        cwd: tempDir,
       },
       { fetchImpl: fetchMock, log: jest.fn() }
     );
@@ -137,7 +157,8 @@ CWS_PUBLISHER_ID='pub-123'
     const chromeMissing = resolveTargetConfig(
       'chrome',
       { CHROME_EXTENSION_ID: 'ghkhpekngpdkbkpnookplgdhladbijnf' },
-      MANIFEST
+      MANIFEST,
+      tempDir
     );
     expect(chromeMissing.zipExists).toBe(true);
     expect(chromeMissing.hasAuth).toBe(false);
@@ -146,7 +167,8 @@ CWS_PUBLISHER_ID='pub-123'
     const firefoxReady = resolveTargetConfig(
       'firefox',
       { AMO_JWT_ISSUER: 'user:1:2', AMO_JWT_SECRET: 'sec' },
-      MANIFEST
+      MANIFEST,
+      tempDir
     );
     expect(firefoxReady.geckoId).toBe('yousub@xinh.tools');
     expect(firefoxReady.zipExists).toBe(true);
@@ -159,6 +181,7 @@ CWS_PUBLISHER_ID='pub-123'
         env: { CHROME_EXTENSION_ID: 'ghkhpekngpdkbkpnookplgdhladbijnf' },
         manifest: MANIFEST,
         dryRun: true,
+        cwd: tempDir,
       },
       { log: jest.fn() }
     );
@@ -182,6 +205,7 @@ CWS_PUBLISHER_ID='pub-123'
         },
         manifest: MANIFEST,
         staged: true,
+        cwd: tempDir,
       },
       { fetchImpl: fetchMock, log: jest.fn() }
     );
@@ -201,7 +225,7 @@ CWS_PUBLISHER_ID='pub-123'
 
   test('publishFirefox handles initial creation (404 lookup) and existing updates (200 lookup) with validation poll', async () => {
     const dry = await publishFirefox(
-      { env: {}, manifest: MANIFEST, metadata: AMO_META, dryRun: true },
+      { env: {}, manifest: MANIFEST, metadata: AMO_META, dryRun: true, cwd: tempDir },
       { log: jest.fn() }
     );
     expect(dry).toMatchObject({ ok: true, dryRun: true, ready: false });
@@ -221,6 +245,7 @@ CWS_PUBLISHER_ID='pub-123'
         metadata: AMO_META,
         privacyPolicyText: '# Privacy Policy',
         pollIntervalMs: 1,
+        cwd: tempDir,
       },
       { fetchImpl: fetchInitial, sleepImpl: async () => {}, log: jest.fn() }
     );
@@ -242,6 +267,7 @@ CWS_PUBLISHER_ID='pub-123'
         manifest: MANIFEST,
         metadata: AMO_META,
         pollIntervalMs: 1,
+        cwd: tempDir,
       },
       { fetchImpl: fetchUpdate, sleepImpl: async () => {}, log: jest.fn() }
     );
