@@ -3,11 +3,19 @@ import { PageDetector } from './page-detector.js';
 import { VideoBinder } from './video-binder.js';
 import { SubtitleExtractor } from './subtitle-extractor.js';
 import { SubtitleParser } from './subtitle-parser.js';
+import { SubtitleCoalescer } from './subtitle-coalescer.js';
 import { RoughTranslateBridge } from './rough-translate-bridge.js';
 import { Overlay } from './overlay.js';
 import { SyncEngine } from './sync-engine.js';
+import {
+  createGeminiFallbackScheduler,
+  createGeminiPortFetcher,
+  DEFAULT_GEMINI_WINDOW_SEC,
+} from './gemini-fallback-scheduler.js';
 import { TrustedTypes } from '../shared/trusted-types.js';
 import { escapeHtml as esc } from '../shared/utils.js';
+import { PipelineTelemetry, PIPELINE_KEY_PREFIX } from '../shared/pipeline-telemetry.js';
+import { PlaybackResume } from './playback-resume.js';
 
 // Init Security Policy
 TrustedTypes.init();
@@ -18,6 +26,114 @@ if (typeof window !== 'undefined') {
 }
 
 devLog('[YouSub] Main: Module loaded and executing...');
+
+let activeGeminiFallback = null;
+let geminiSessionGen = 0;
+let pipelineSessionGen = 0;
+let activeStreamPort = null;
+let isPipelineActive = false;
+let pipelineStorageListener = null;
+let pipelineRunCounter = 0;
+
+function stopActiveStreamPort() {
+  if (!activeStreamPort) return;
+  const p = activeStreamPort;
+  activeStreamPort = null;
+  try {
+    p.disconnect();
+  } catch {
+    /* already disconnected */
+  }
+}
+
+function createPipelineRunId(videoId) {
+  pipelineRunCounter++;
+  return `${videoId || 'novideo'}:${Date.now().toString(36)}:${pipelineRunCounter}`;
+}
+
+function stopPipelineTelemetryListener() {
+  if (pipelineStorageListener && chrome.storage && chrome.storage.onChanged) {
+    try {
+      chrome.storage.onChanged.removeListener(pipelineStorageListener);
+    } catch {
+      /* ignore */
+    }
+  }
+  pipelineStorageListener = null;
+  if (typeof Overlay.clearStagePill === 'function') {
+    Overlay.clearStagePill();
+  }
+}
+
+function subscribePipelineTelemetry(videoId) {
+  stopPipelineTelemetryListener();
+  if (!videoId || !chrome.storage || !chrome.storage.onChanged) return;
+  const targetKey = `${PIPELINE_KEY_PREFIX}${videoId}`;
+
+  pipelineStorageListener = (changes, area) => {
+    if ((area === 'local' || area === 'session') && changes[targetKey]?.newValue) {
+      if (typeof Overlay.updateStagePill === 'function') {
+        Overlay.updateStagePill(changes[targetKey].newValue);
+      }
+    }
+  };
+  try {
+    chrome.storage.onChanged.addListener(pipelineStorageListener);
+  } catch {
+    pipelineStorageListener = null;
+  }
+}
+
+function stopActiveGeminiFallback() {
+  geminiSessionGen++;
+  if (!activeGeminiFallback) return;
+  try {
+    activeGeminiFallback.scheduler.stop();
+  } catch {
+    /* already stopped */
+  }
+  try {
+    activeGeminiFallback.fetcher.dispose();
+  } catch {
+    /* already disposed */
+  }
+  activeGeminiFallback = null;
+}
+
+function sendRuntimeMessage(payload, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, timeoutMs);
+
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(val);
+    };
+
+    try {
+      if (!chrome.runtime || !chrome.runtime.id) {
+        finish(null);
+        return;
+      }
+      chrome.runtime.sendMessage(payload, (response) => {
+        if (chrome.runtime.lastError) {
+          finish(null);
+          return;
+        }
+        finish(response || null);
+      });
+    } catch {
+      finish(null);
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Translation helper
@@ -31,28 +147,55 @@ function requestTranslationStreaming(
   videoId,
   sourceLang,
   providedTargetLang,
-  onUpdate
+  onUpdate,
+  streamOptions = {}
 ) {
   return new Promise(function (resolve) {
     let hasResolved = false;
     let keepaliveInterval = null;
     let port = null;
+    let attachedVideo = null;
+    let lastSentSeekMs = -1;
 
-    // Phase 64 (a): Idle watchdog — replaces the old fixed 60s deadline.
-    // Re-armed on every CHUNK and on every PROGRESS heartbeat (one per batch
-    // boundary, success OR failure), so it measures *silence* (the background
-    // making no progress through the work list), not total job time. The window
-    // sits above the per-batch cap (90s) + a sweep cooldown wait (15s) + margin,
-    // so a slow-but-advancing job (even one with consecutive failing batches)
-    // never trips it — only a genuinely stalled background does. We deliberately
-    // do NOT reset on PONG: that would reduce the watchdog to an "is the SW
-    // alive" check, and SW death already surfaces as PORT_DISCONNECTED.
     const STREAM_IDLE_TIMEOUT_MS = 150000;
     let watchdog = null;
+
+    const handleVideoSeek = () => {
+      if (hasResolved || !port || !attachedVideo) return;
+      const ms = Math.max(0, Math.round((attachedVideo.currentTime || 0) * 1000));
+      if (lastSentSeekMs >= 0 && Math.abs(ms - lastSentSeekMs) < 1000) return;
+      lastSentSeekMs = ms;
+      try {
+        port.postMessage({ type: 'SEEK_PRIORITY', playheadMs: ms });
+      } catch {
+        /* port already disconnected */
+      }
+    };
+
+    const detachSeekListeners = () => {
+      if (!attachedVideo || typeof attachedVideo.removeEventListener !== 'function') return;
+      attachedVideo.removeEventListener('seeking', handleVideoSeek);
+      attachedVideo.removeEventListener('seeked', handleVideoSeek);
+      attachedVideo = null;
+    };
+
+    const attachSeekListeners = (videoEl) => {
+      if (!videoEl || typeof videoEl.addEventListener !== 'function' || attachedVideo === videoEl) {
+        return;
+      }
+      detachSeekListeners();
+      attachedVideo = videoEl;
+      attachedVideo.addEventListener('seeking', handleVideoSeek);
+      attachedVideo.addEventListener('seeked', handleVideoSeek);
+    };
 
     function finish(result) {
       if (hasResolved) return;
       hasResolved = true;
+      if (activeStreamPort === port) {
+        activeStreamPort = null;
+      }
+      detachSeekListeners();
       if (watchdog) {
         clearTimeout(watchdog);
         watchdog = null;
@@ -73,8 +216,6 @@ function requestTranslationStreaming(
             STREAM_IDLE_TIMEOUT_MS / 1000 +
             's'
         );
-        // Phase 64 (c): disconnect so the background aborts in-flight work
-        // (portAbort.abort) instead of running orphaned to its own cap.
         try {
           if (port) port.disconnect();
         } catch {
@@ -90,8 +231,17 @@ function requestTranslationStreaming(
         return;
       }
 
+      stopActiveStreamPort();
       port = chrome.runtime.connect({ name: 'yousub-stream' });
+      activeStreamPort = port;
       armWatchdog();
+
+      if (streamOptions.videoElement) {
+        attachSeekListeners(streamOptions.videoElement);
+      }
+      if (typeof streamOptions.registerVideoBinder === 'function') {
+        streamOptions.registerVideoBinder(attachSeekListeners);
+      }
 
       // Phase 52.1: Keepalive — ping every 25s to keep the SW/event page alive.
       keepaliveInterval = setInterval(() => {
@@ -105,7 +255,15 @@ function requestTranslationStreaming(
       const targetLang =
         providedTargetLang ||
         (typeof Constants !== 'undefined' ? Constants.DEFAULT_TARGET_LANG : 'vi');
-      const segments = parsedEntries.map((e) => ({ text: e.text, startMs: e.startMs }));
+      const segments = parsedEntries.map((e) => ({
+        text: e.text,
+        startMs: e.startMs,
+      }));
+      const initialPlayheadMs =
+        streamOptions.videoElement && typeof streamOptions.videoElement.currentTime === 'number'
+          ? Math.max(0, Math.round(streamOptions.videoElement.currentTime * 1000))
+          : 0;
+      lastSentSeekMs = initialPlayheadMs;
 
       port.postMessage({
         type: 'YOUSUB_TRANSLATE_STREAM',
@@ -113,6 +271,10 @@ function requestTranslationStreaming(
         segments: segments,
         sourceLang: sourceLang || 'auto',
         targetLang: targetLang,
+        playheadMs: initialPlayheadMs,
+        coalesceStats: streamOptions.coalesceStats || null,
+        extractionSource: streamOptions.extractionSource || 'dom-transcript',
+        mode: streamOptions.mode || 'transcript',
       });
 
       port.onMessage.addListener((response) => {
@@ -189,17 +351,68 @@ function requestTranslationStreaming(
 // Main flow
 // ---------------------------------------------------------------------------
 
-async function processEntries(entries, videoId, targetLang, sourceLang = 'auto') {
+async function processEntries(entries, videoId, targetLang, sourceLang = 'auto', options = {}) {
   try {
     devLog('[YouSub] Main: processEntries started. Count:', entries.length);
     if (!entries || entries.length === 0) return;
+    isPipelineActive = true;
+
+    const { entries: coalescedEntries, stats: coalesceStats } = options.skipCoalesce
+      ? {
+          entries,
+          stats: { rawCount: entries.length, coalescedCount: entries.length, mergedCues: 0 },
+        }
+      : SubtitleCoalescer.coalesce(entries, { bridgedDom: !!options.bridgedDom });
+    const effectiveEntries = coalescedEntries.length > 0 ? coalescedEntries : entries;
+
+    if (typeof Overlay.clearStatus === 'function') {
+      Overlay.clearStatus('no-subtitles');
+      Overlay.clearStatus('gemini-fallback');
+    }
 
     SyncEngine.stop();
     Overlay.destroy();
     Overlay.setLoading(true);
     Overlay.show();
 
-    const subtitles = entries.map(function (e) {
+    if (videoId) {
+      subscribePipelineTelemetry(videoId);
+      // Await so this content-script write is persisted BEFORE the streaming port opens;
+      // otherwise a fast service-worker COMPLETE (e.g. cache hit) can land first and get
+      // overwritten by this COALESCE snapshot, leaving the stage pill stuck forever.
+      try {
+        await PipelineTelemetry.reset(videoId, {
+          runId: options.runId || createPipelineRunId(videoId),
+          mode: options.mode || 'transcript',
+          stage: 'COALESCE',
+          extraction: {
+            source: options.extractionSource || 'dom-transcript',
+            sourceLang: sourceLang || 'auto',
+            targetLang: targetLang || 'vi',
+            steps: [
+              {
+                id: 'extract',
+                label: options.extractionSource || 'dom-transcript',
+                status: 'done',
+                detail: `${coalesceStats.rawCount} raw`,
+              },
+              {
+                id: 'coalesce',
+                label: 'Coalesce',
+                status: 'done',
+                detail: `${coalesceStats.rawCount}→${coalesceStats.coalescedCount}`,
+              },
+            ],
+          },
+          coalescer: coalesceStats,
+          sink: { totalCues: effectiveEntries.length },
+        });
+      } catch {
+        /* telemetry is best-effort; never block translation */
+      }
+    }
+
+    const subtitles = effectiveEntries.map(function (e) {
       return {
         startMs: e.startMs,
         endMs: e.endMs,
@@ -208,26 +421,44 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto')
       };
     });
 
+    let boundVideo = null;
+    let deferredVideoAttach = null;
     devLog('[YouSub] Main: Starting SyncEngine with original text...');
     VideoBinder.bind(function (video) {
       devLog('[YouSub] Main: Video element available to SyncEngine');
+      boundVideo = video;
+      if (deferredVideoAttach) deferredVideoAttach(video);
       SyncEngine.start(subtitles, video);
     });
 
     devLog('[YouSub] Main: Requesting translation from worker...');
 
+    const runGen = options.pipelineGen !== undefined ? options.pipelineGen : pipelineSessionGen;
     let response;
     response = await requestTranslationStreaming(
-      entries,
+      effectiveEntries,
       videoId,
       sourceLang,
       targetLang,
       (partialBatch, startIndex) => {
+        if (runGen !== pipelineSessionGen) return;
         SyncEngine.updatePartial(partialBatch, startIndex);
+      },
+      {
+        videoElement: boundVideo,
+        registerVideoBinder: (attachFn) => {
+          deferredVideoAttach = attachFn;
+        },
+        coalesceStats,
+        extractionSource: options.extractionSource || 'dom-transcript',
+        mode: options.mode || 'transcript',
       }
     );
 
+    if (runGen !== pipelineSessionGen) return;
+
     if (response.success === false) {
+      isPipelineActive = false;
       devWarn('[YouSub] Main: Halting pipeline due to error');
 
       // Phase 64 (b): Preserve already-rendered partial translations on failure.
@@ -238,7 +469,7 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto')
         devWarn('[YouSub] Main: Preserving', partialCount, 'partial translations despite error');
         Overlay.setLoading(false);
         const reason = response.failureReason || 'Error';
-        const notice = `<strong>Translation incomplete:</strong> ${partialCount}/${entries.length} lines translated. (${reason})`;
+        const notice = `<strong>Translation incomplete:</strong> ${partialCount}/${effectiveEntries.length} lines translated. (${reason})`;
         Overlay.showStatus(TrustedTypes.toSafeHTML(notice), 'warning', 8000);
         return;
       }
@@ -302,21 +533,255 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto')
       }
 
       SyncEngine.updateSubtitles(response.translated);
+
+      if (options.saveGeneratedCache && videoId) {
+        sendRuntimeMessage({
+          type: 'YOUSUB_SAVE_GENERATED_CACHE',
+          videoId,
+          targetLang,
+          payload: {
+            entries: response.translated,
+            completedBatches: ['all'],
+          },
+        });
+      }
     }
     Overlay.setLoading(false);
+    isPipelineActive = false;
   } catch (err) {
+    isPipelineActive = false;
+    if (typeof Overlay.clearStagePill === 'function') {
+      Overlay.clearStagePill();
+    }
     console.error('[YouSub] Main: processEntries CRITICAL ERROR:', err);
     Overlay.setLoading(false);
   }
 }
 
+async function handleImportedSubtitleFile(text, fileName, videoId, targetLang, removeToast) {
+  const entries = SubtitleParser.parseSubtitleFile(text, fileName);
+  if (!entries || entries.length === 0) {
+    Overlay.showStatus('No valid subtitle entries found in file', 'warning', 4000);
+    return;
+  }
+
+  stopActiveGeminiFallback();
+  if (typeof removeToast === 'function') removeToast();
+  if (typeof Overlay.clearStatus === 'function') {
+    Overlay.clearStatus('gemini-fallback');
+    Overlay.clearStatus('no-subtitles');
+  }
+  Overlay.showStatus(`Loaded ${entries.length} lines from ${esc(fileName)}`, 'info', 2500);
+  await processEntries(entries, videoId, targetLang, 'auto', {
+    saveGeneratedCache: true,
+    bridgedDom: false,
+    extractionSource: 'srt-import',
+    mode: 'srt-import',
+  });
+}
+
+function showNoSubtitlesPrompt({
+  videoId,
+  targetLang,
+  detailMessage = '',
+  showSettingsLink = false,
+  retryAction = null,
+  failureReason = 'NO_SUBTITLES',
+}) {
+  isPipelineActive = false;
+  if (videoId) {
+    PipelineTelemetry.update(videoId, {
+      stage: 'ERROR',
+      error: {
+        failureReason,
+        message: detailMessage || 'Could not find subtitles',
+      },
+    });
+  }
+
+  let msg = 'Could not find subtitles';
+  if (detailMessage) {
+    msg += `<br><small>${esc(detailMessage)}</small>`;
+  }
+  if (showSettingsLink) {
+    msg +=
+      '<br><small><a data-action="open-settings">Configure a Gemini key in Settings</a> for automatic AI fallback</small>';
+  }
+
+  const actions = retryAction ? [retryAction] : undefined;
+  Overlay.showStatus(TrustedTypes.toSafeHTML(msg), 'warning', 0, {
+    id: 'no-subtitles',
+    dismissible: true,
+    importLabel: 'Import .srt / .vtt',
+    onImportSubtitleFile: (text, fileName, removeToast) => {
+      handleImportedSubtitleFile(text, fileName, videoId, targetLang, removeToast);
+    },
+    ...(actions ? { actions } : {}),
+  });
+}
+
+function startGeminiVideoFallback(videoId, targetLang, cachedPartial = null, runId = null) {
+  stopActiveGeminiFallback();
+  isPipelineActive = true;
+  subscribePipelineTelemetry(videoId);
+  if (videoId) {
+    PipelineTelemetry.reset(videoId, {
+      runId: runId || createPipelineRunId(videoId),
+      mode: 'gemini-video',
+      stage: 'EXTRACT',
+      extraction: {
+        source: 'gemini-url',
+        sourceLang: 'auto',
+        targetLang: targetLang || 'vi',
+        steps: [
+          { id: 'dom', label: 'DOM Transcript', status: 'skipped', detail: 'none' },
+          { id: 'gemini', label: 'Gemini Video URL', status: 'active', detail: '240s windows' },
+        ],
+      },
+    });
+  }
+  const myGen = geminiSessionGen;
+
+  VideoBinder.bind((videoElement) => {
+    if (myGen !== geminiSessionGen || !videoElement) return;
+
+    const seedEntries = Array.isArray(cachedPartial?.entries) ? cachedPartial.entries : [];
+    SyncEngine.start(seedEntries, videoElement, { allowEmpty: true });
+
+    const fetcher = createGeminiPortFetcher();
+    const scheduler = createGeminiFallbackScheduler({
+      videoId,
+      videoElement,
+      targetLang,
+      windowSec: cachedPartial?.windowSec || DEFAULT_GEMINI_WINDOW_SEC,
+      initialCompletedBatches: Array.isArray(cachedPartial?.completedBatches)
+        ? cachedPartial.completedBatches
+        : [],
+      fetchBatch: fetcher.fetchBatch,
+      onEntries: (entries) => {
+        SyncEngine.mergeBatchEntries(entries);
+      },
+      onBatchStart: ({ batchIndex, isPrefetch, totalBatches }) => {
+        if (isPrefetch) return;
+        Overlay.setLoading(true);
+        const totalLabel = totalBatches ? `/${totalBatches}` : '';
+        const statusMsg = `No captions — transcribing segment ${batchIndex + 1}${totalLabel} via Gemini AI...`;
+        Overlay.showStatus(TrustedTypes.toSafeHTML(statusMsg), 'info', 0, {
+          id: 'gemini-fallback',
+          dismissible: true,
+          importLabel: 'Import .srt / .vtt',
+          onImportSubtitleFile: (text, fileName, removeToast) => {
+            handleImportedSubtitleFile(text, fileName, videoId, targetLang, removeToast);
+          },
+        });
+      },
+      onBatchComplete: ({ isPrefetch, entryCount }) => {
+        if (isPrefetch) return;
+        Overlay.setLoading(false);
+        if (typeof Overlay.clearStatus === 'function') {
+          Overlay.clearStatus('gemini-fallback');
+        }
+        if (entryCount === 0 && SyncEngine.getTranslatedCount() === 0) {
+          Overlay.showStatus('No spoken dialogue detected in this segment', 'info', 3000);
+        }
+      },
+      onFatalError: ({ failureReason, error }) => {
+        Overlay.setLoading(false);
+        if (typeof Overlay.clearStatus === 'function') {
+          Overlay.clearStatus('gemini-fallback');
+        }
+        stopActiveGeminiFallback();
+        if (SyncEngine.getTranslatedCount() === 0) {
+          SyncEngine.stop();
+        }
+
+        let detailMessage = error || failureReason;
+        let showSettingsLink = false;
+        if (failureReason === 'VIDEO_UNAVAILABLE_OR_PRIVATE') {
+          detailMessage = 'Gemini cannot access private, unlisted, or restricted videos.';
+        } else if (failureReason === 'NO_GEMINI_KEY' || failureReason === 'INVALID_API_KEY') {
+          detailMessage = 'Invalid or missing Google Gemini API key.';
+          showSettingsLink = true;
+        }
+        showNoSubtitlesPrompt({
+          videoId,
+          targetLang,
+          detailMessage,
+          showSettingsLink,
+          failureReason: failureReason || 'GEMINI_ERROR',
+        });
+      },
+      onBatchError: ({ failureReason, batchIndex, isPrefetch }) => {
+        if (isPrefetch) return;
+        Overlay.setLoading(false);
+        if (typeof Overlay.clearStatus === 'function') {
+          Overlay.clearStatus('gemini-fallback');
+        }
+        const detailMessage =
+          failureReason === 'GEMINI_RATE_LIMITED'
+            ? `Gemini rate limit reached (429) on segment ${batchIndex + 1}.`
+            : `Gemini request failed on segment ${batchIndex + 1}.`;
+        showNoSubtitlesPrompt({
+          videoId,
+          targetLang,
+          detailMessage,
+          failureReason: failureReason || 'GEMINI_ERROR',
+          retryAction: {
+            label: 'Retry AI',
+            onClick: (closeToast) => {
+              if (closeToast) closeToast();
+              isPipelineActive = true;
+              scheduler.retry();
+            },
+          },
+        });
+      },
+    });
+
+    activeGeminiFallback = { scheduler, fetcher };
+    scheduler.start();
+  });
+}
+
 async function startSubtitlePipeline(videoId, targetLang) {
+  const myPipelineGen = ++pipelineSessionGen;
+  const runId = createPipelineRunId(videoId);
   try {
     devLog('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
+    isPipelineActive = true;
+    stopActiveGeminiFallback();
     Overlay.setLoading(true);
     Overlay.show();
+    if (videoId) {
+      subscribePipelineTelemetry(videoId);
+      PipelineTelemetry.reset(videoId, {
+        runId,
+        mode: 'transcript',
+        stage: 'EXTRACT',
+        extraction: {
+          source: 'probing',
+          sourceLang: 'auto',
+          targetLang: targetLang || 'vi',
+          steps: [
+            {
+              id: 'extract',
+              label: 'Scan Captions',
+              status: 'active',
+              detail: 'DOM & Innertube',
+            },
+          ],
+        },
+      });
+    }
+    if (typeof Overlay.showStatus === 'function') {
+      Overlay.showStatus('Checking video subtitles...', 'info', 0, { id: 'extracting-status' });
+    }
 
     SubtitleExtractor.extract(async function (tracks, parsedEntries, error, sourceLang) {
+      if (myPipelineGen !== pipelineSessionGen) return;
+      if (typeof Overlay.clearStatus === 'function') {
+        Overlay.clearStatus('extracting-status');
+      }
       try {
         devLog(
           '[YouSub] Main: Extractor results received. Entries:',
@@ -330,7 +795,12 @@ async function startSubtitlePipeline(videoId, targetLang) {
         );
 
         if (parsedEntries && parsedEntries.length > 0) {
-          await processEntries(parsedEntries, videoId, targetLang, sourceLang);
+          await processEntries(parsedEntries, videoId, targetLang, sourceLang, {
+            bridgedDom: true,
+            extractionSource: 'dom-transcript',
+            runId,
+            pipelineGen: myPipelineGen,
+          });
           return;
         }
 
@@ -351,7 +821,12 @@ async function startSubtitlePipeline(videoId, targetLang) {
                 devLog('[YouSub] Main: Fallback fetch SUCCESS. Entries:', entries.length);
                 // The fallback path fetched a specific track, so its languageCode is
                 // the authoritative source language (main.js:114 coerces '' → 'auto').
-                await processEntries(entries, videoId, targetLang, selectedTrack.languageCode);
+                await processEntries(entries, videoId, targetLang, selectedTrack.languageCode, {
+                  bridgedDom: false,
+                  extractionSource: 'timedtext',
+                  runId,
+                  pipelineGen: myPipelineGen,
+                });
                 return;
               }
             } catch (fetchErr) {
@@ -361,15 +836,96 @@ async function startSubtitlePipeline(videoId, targetLang) {
         }
 
         if (!parsedEntries) {
-          Overlay.showStatus('Could not find subtitles', 'warning', 4000);
+          const genCacheRes = await sendRuntimeMessage({
+            type: 'YOUSUB_GET_GENERATED_CACHE',
+            videoId,
+            targetLang,
+          });
+          const cachedGen = genCacheRes && genCacheRes.cached;
+
+          if (
+            cachedGen &&
+            Array.isArray(cachedGen.entries) &&
+            cachedGen.entries.length > 0 &&
+            Array.isArray(cachedGen.completedBatches) &&
+            cachedGen.completedBatches.includes('all')
+          ) {
+            isPipelineActive = false;
+            if (videoId) {
+              PipelineTelemetry.update(videoId, {
+                mode: 'cache',
+                stage: 'COMPLETE',
+                sink: {
+                  syncedCues: cachedGen.entries.length,
+                  totalCues: cachedGen.entries.length,
+                  cached: true,
+                  cacheType: 'generated',
+                },
+              });
+            }
+            VideoBinder.bind((videoElement) => {
+              SyncEngine.start(cachedGen.entries, videoElement);
+              Overlay.showStatus('Loaded from cache', 'info', 2000);
+              Overlay.setLoading(false);
+            });
+            return;
+          }
+
+          if (error === 'LIVE_STREAM_DETECTED') {
+            Overlay.setLoading(false);
+            showNoSubtitlesPrompt({
+              videoId,
+              targetLang,
+              detailMessage: 'Live streams do not support transcript fallback.',
+              failureReason: 'LIVE_STREAM_DETECTED',
+            });
+            return;
+          }
+
+          const geminiCheck = await sendRuntimeMessage({
+            type: 'YOUSUB_CHECK_GEMINI_AVAILABLE',
+          });
+          if (geminiCheck && geminiCheck.available) {
+            startGeminiVideoFallback(videoId, targetLang, cachedGen || null, runId);
+            return;
+          }
+
+          if (cachedGen && Array.isArray(cachedGen.entries) && cachedGen.entries.length > 0) {
+            isPipelineActive = false;
+            VideoBinder.bind((videoElement) => {
+              SyncEngine.start(cachedGen.entries, videoElement);
+              Overlay.showStatus('Loaded partial subtitles from cache', 'info', 2500);
+              Overlay.setLoading(false);
+            });
+            return;
+          }
+
           Overlay.setLoading(false);
+          const disabledInSettings = geminiCheck && geminiCheck.enabled === false;
+          const detailMessage = disabledInSettings
+            ? 'Gemini video fallback is disabled in Settings.'
+            : '';
+          showNoSubtitlesPrompt({
+            videoId,
+            targetLang,
+            detailMessage,
+            showSettingsLink: !disabledInSettings,
+          });
         }
       } catch (innerErr) {
+        isPipelineActive = false;
+        if (typeof Overlay.clearStatus === 'function') {
+          Overlay.clearStatus('extracting-status');
+        }
         console.error('[YouSub] Main: startSubtitlePipeline callback error:', innerErr);
         Overlay.setLoading(false);
       }
     });
   } catch (outerErr) {
+    isPipelineActive = false;
+    if (typeof Overlay.clearStatus === 'function') {
+      Overlay.clearStatus('extracting-status');
+    }
     console.error('[YouSub] Main: startSubtitlePipeline critical error:', outerErr);
     Overlay.setLoading(false);
   }
@@ -381,74 +937,93 @@ PageDetector.init(
   function onEnter(videoId) {
     devLog('[YouSub] Main: ON_ENTER fired for video:', videoId);
 
+    stopActiveGeminiFallback();
     Overlay.destroy();
+    PlaybackResume.onEnter(videoId);
 
     VideoBinder.bind(function (_videoEl) {
       devLog('[YouSub] Main: Video element bound properly. Checking storage...');
 
-      chrome.storage.local.get(['yousub_translation_enabled', 'targetLang'], function (res) {
-        if (chrome.runtime.lastError) {
-          console.error('[YouSub] Main: Storage error:', chrome.runtime.lastError);
-          return;
-        }
+      chrome.storage.local.get(
+        ['yousub_translation_enabled', 'targetLang', 'yousub_autostart_video'],
+        function (res) {
+          if (chrome.runtime.lastError) {
+            console.error('[YouSub] Main: Storage error:', chrome.runtime.lastError);
+            return;
+          }
 
-        const enabled = res.yousub_translation_enabled;
-        const targetLang = res.targetLang || 'vi';
-        devLog('[YouSub] Main: Settings result:', { enabled, targetLang });
+          const enabled = res.yousub_translation_enabled;
+          const targetLang = res.targetLang || 'vi';
+          const autostartVideo = res.yousub_autostart_video;
+          devLog('[YouSub] Main: Settings result:', { enabled, targetLang, autostartVideo });
 
-        if (enabled) {
-          devLog('[YouSub] Main: Auto-translation is ENABLED. Checking cache...');
-          // Phase 52.1: Guard cache check with timeout
-          let cacheCheckDone = false;
-          const cacheTimeout = setTimeout(() => {
-            if (!cacheCheckDone) {
-              cacheCheckDone = true;
-              devWarn('[YouSub] Main: Cache check timed out after 10s. Skipping auto-start.');
-            }
-          }, 10000);
+          if (autostartVideo && autostartVideo === videoId) {
+            devLog('[YouSub] Main: Consuming autostart flag and starting pipeline:', videoId);
+            chrome.storage.local.remove(['yousub_autostart_video']);
+            startSubtitlePipeline(videoId, targetLang);
+            return;
+          }
 
-          try {
-            chrome.runtime.sendMessage(
-              {
-                type: 'YOUSUB_CHECK_CACHE',
-                videoId: videoId,
-                targetLang: targetLang,
-              },
-              function (checkRes) {
-                if (cacheCheckDone) return;
+          if (enabled) {
+            devLog('[YouSub] Main: Auto-translation is ENABLED. Checking cache...');
+            // Phase 52.1: Guard cache check with timeout
+            let cacheCheckDone = false;
+            const cacheTimeout = setTimeout(() => {
+              if (!cacheCheckDone) {
+                cacheCheckDone = true;
+                devWarn('[YouSub] Main: Cache check timed out after 10s. Skipping auto-start.');
+              }
+            }, 10000);
+
+            try {
+              chrome.runtime.sendMessage(
+                {
+                  type: 'YOUSUB_CHECK_CACHE',
+                  videoId: videoId,
+                  targetLang: targetLang,
+                },
+                function (checkRes) {
+                  if (cacheCheckDone) return;
+                  cacheCheckDone = true;
+                  clearTimeout(cacheTimeout);
+
+                  if (chrome.runtime.lastError) {
+                    console.error(
+                      '[YouSub] Main: Cache check message error:',
+                      chrome.runtime.lastError
+                    );
+                    return;
+                  }
+                  if (checkRes && checkRes.exists) {
+                    devLog('[YouSub] Main: Cache hit. Auto-starting pipeline.');
+                    startSubtitlePipeline(videoId, targetLang);
+                  } else {
+                    devLog('[YouSub] Main: Cache miss or no cache found.');
+                  }
+                }
+              );
+            } catch (e) {
+              if (!cacheCheckDone) {
                 cacheCheckDone = true;
                 clearTimeout(cacheTimeout);
-
-                if (chrome.runtime.lastError) {
-                  console.error(
-                    '[YouSub] Main: Cache check message error:',
-                    chrome.runtime.lastError
-                  );
-                  return;
-                }
-                if (checkRes && checkRes.exists) {
-                  devLog('[YouSub] Main: Cache hit. Auto-starting pipeline.');
-                  startSubtitlePipeline(videoId, targetLang);
-                } else {
-                  devLog('[YouSub] Main: Cache miss or no cache found.');
-                }
+                console.error('[YouSub] Main: Cache check sendMessage threw:', e);
               }
-            );
-          } catch (e) {
-            if (!cacheCheckDone) {
-              cacheCheckDone = true;
-              clearTimeout(cacheTimeout);
-              console.error('[YouSub] Main: Cache check sendMessage threw:', e);
             }
+          } else {
+            devLog('[YouSub] Main: Auto-translation is DISABLED.');
           }
-        } else {
-          devLog('[YouSub] Main: Auto-translation is DISABLED.');
         }
-      });
+      );
     });
   },
   function onLeave() {
     devLog('[YouSub] Main: ON_LEAVE fired.');
+    pipelineSessionGen++;
+    isPipelineActive = false;
+    stopActiveStreamPort();
+    stopPipelineTelemetryListener();
+    stopActiveGeminiFallback();
+    PlaybackResume.onLeave();
     SyncEngine.stop();
     Overlay.destroy();
   }
@@ -479,6 +1054,11 @@ if (!_messageListenerRegistered) {
 
       if (request.enabled === false) {
         devLog('[YouSub] Main: Disabling translation.');
+        pipelineSessionGen++;
+        isPipelineActive = false;
+        stopActiveStreamPort();
+        stopPipelineTelemetryListener();
+        stopActiveGeminiFallback();
         SyncEngine.stop();
         Overlay.destroy();
       } else {
@@ -499,18 +1079,47 @@ if (!_messageListenerRegistered) {
 
     if (request.type === 'YOUSUB_CACHE_CLEARED' || request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
       devLog('[YouSub] Main: Cache cleared message received.');
+      pipelineSessionGen++;
+      isPipelineActive = false;
+      stopActiveStreamPort();
+      stopPipelineTelemetryListener();
+      stopActiveGeminiFallback();
       SyncEngine.stop();
       Overlay.destroy();
     }
 
     if (request.type === 'YOUSUB_GET_STATE') {
       const state = {
-        isTranslationActive: SyncEngine.isActive(),
+        isTranslationActive:
+          isPipelineActive || SyncEngine.isActive() || Boolean(activeGeminiFallback),
         isDualMode: SyncEngine.isDualModeActive(),
       };
       devLog('[YouSub] Main: Reporting state to popup:', state);
       sendResponse(state);
       return false; // Sync response
+    }
+
+    if (request.type === 'YOUSUB_RESUME_GET_STATE') {
+      PlaybackResume.getCurrentState()
+        .then((res) => sendResponse(res))
+        .catch(() => sendResponse(null));
+      return true;
+    }
+
+    if (request.type === 'YOUSUB_RESUME_SEEK_TO') {
+      PlaybackResume.seekTo(request.timeSec, {
+        allowResetToZero: !!request.allowResetToZero,
+      })
+        .then((ok) => sendResponse({ ok }))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
+
+    if (request.type === 'YOUSUB_RESUME_ADD_BOOKMARK') {
+      PlaybackResume.addCurrentBookmark(request.label)
+        .then((record) => sendResponse({ ok: !!record, record }))
+        .catch(() => sendResponse({ ok: false, record: null }));
+      return true;
     }
 
     // Return true if we want to send a response asynchronously (though not needed here)

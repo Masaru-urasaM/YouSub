@@ -124,7 +124,7 @@ describe('SubtitleParser Module', () => {
       jest.useRealTimers();
     });
 
-    test('injects main-world-fetcher once and resolves via main-world JSON3', async () => {
+    test('resolves via main-world JSON3 postMessage without injecting DOM <script> tags', async () => {
       postSpy = jest.spyOn(window, 'postMessage').mockImplementation((data) => {
         if (data && data.type === 'YOUSUB_FETCH_REQUEST') {
           window.dispatchEvent(
@@ -143,15 +143,43 @@ describe('SubtitleParser Module', () => {
         }
       });
 
-      const promise = SubtitleParser.fetch('https://youtube.com/api/timedtext?v=1');
-      const script = document.querySelector('script[src*="main-world-fetcher.js"]');
-      expect(script).not.toBeNull();
-      script.onload();
+      const entries = await SubtitleParser.fetch('https://youtube.com/api/timedtext?v=1');
       expect(document.querySelector('script[src*="main-world-fetcher.js"]')).toBeNull();
-
-      const entries = await promise;
+      expect(chrome.runtime.getURL).not.toHaveBeenCalled();
       expect(entries).toEqual([{ startMs: 0, endMs: 1000, text: 'Hi' }]);
       expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test('registers message listener only once across multiple fetch calls', async () => {
+      jest.resetModules();
+      const addSpy = jest.spyOn(window, 'addEventListener');
+      const { SubtitleParser: FreshParser } = await import('../../src/content/subtitle-parser.js');
+      postSpy = jest.spyOn(window, 'postMessage').mockImplementation((data) => {
+        if (data && data.type === 'YOUSUB_FETCH_REQUEST') {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: window,
+              data: {
+                type: 'YOUSUB_FETCH_RESPONSE',
+                requestId: data.requestId,
+                success: true,
+                text: JSON.stringify({
+                  events: [{ tStartMs: 0, dDurationMs: 500, segs: [{ utf8: 'Ok' }] }],
+                }),
+              },
+            })
+          );
+        }
+      });
+
+      expect(await FreshParser.fetch('https://youtube.com/api/timedtext?v=a')).toEqual([
+        { startMs: 0, endMs: 500, text: 'Ok' },
+      ]);
+      expect(await FreshParser.fetch('https://youtube.com/api/timedtext?v=b')).toEqual([
+        { startMs: 0, endMs: 500, text: 'Ok' },
+      ]);
+      expect(addSpy.mock.calls.filter((c) => c[0] === 'message')).toHaveLength(1);
+      addSpy.mockRestore();
     });
 
     test('falls back from JSON3 failure to main-world XML', async () => {
@@ -231,6 +259,64 @@ describe('SubtitleParser Module', () => {
       const p2 = SubtitleParser.fetch('https://youtube.com/api/timedtext?v=5');
       await jest.advanceTimersByTimeAsync(21000);
       expect(await p2).toEqual([]);
+    });
+  });
+
+  describe('SRT and WebVTT parsing (Phase 78)', () => {
+    test('parseTimestampMs handles SRT comma, VTT short MM:SS, and rejects invalid times', () => {
+      expect(SubtitleParser.parseTimestampMs('00:01:02,5')).toBe(62500);
+      expect(SubtitleParser.parseTimestampMs('01:23.456')).toBe(83456);
+      expect(SubtitleParser.parseTimestampMs('01:00:00.000')).toBe(3600000);
+      expect(SubtitleParser.parseTimestampMs('00:65:00,000')).toBeNaN();
+      expect(SubtitleParser.parseTimestampMs('invalid')).toBeNaN();
+    });
+
+    test('parseSrt parses BOM, CRLF, multi-line cues, tags, while preserving math expressions', () => {
+      const srt =
+        '\uFEFF1\r\n' +
+        '00:00:01,000 --> 00:00:03,500\r\n' +
+        '<i>Hello</i> &amp; welcome\r\n' +
+        '{\\an8}Next line\r\n\r\n' +
+        '2\r\n' +
+        '00:00:04,000 --> 00:00:06,000 align:start\r\n' +
+        '2 < 5 and 9 > 3\r\n';
+
+      const entries = SubtitleParser.parseSrt(srt);
+      expect(entries).toEqual([
+        { startMs: 1000, endMs: 3500, text: 'Hello & welcome Next line' },
+        { startMs: 4000, endMs: 6000, text: '2 < 5 and 9 > 3' },
+      ]);
+    });
+
+    test('parseVtt ignores headers, NOTE/STYLE blocks, voice tags, and parses cues', () => {
+      const vtt =
+        'WEBVTT - Demo\n\n' +
+        'NOTE This is a comment\n\n' +
+        'STYLE\n::cue { color: white; }\n\n' +
+        'intro\n' +
+        '00:02.000 --> 00:05.500 position:50%\n' +
+        '<v Alice><00:02.500>Hi there!</v>\n\n' +
+        '00:06.000 --> 00:08.000\n' +
+        'Second cue\n';
+
+      const entries = SubtitleParser.parseVtt(vtt);
+      expect(entries).toEqual([
+        { startMs: 2000, endMs: 5500, text: 'Hi there!' },
+        { startMs: 6000, endMs: 8000, text: 'Second cue' },
+      ]);
+    });
+
+    test('parseSubtitleFile auto-detects .vtt and .srt formats cleanly', () => {
+      const srtSample = '1\n00:00:00,500 --> 00:00:02,000\nFrom SRT\n';
+      const vttSample = 'WEBVTT\n\n00:01.000 --> 00:03.000\nFrom VTT\n';
+
+      expect(SubtitleParser.parseSubtitleFile(srtSample, 'movie.srt')).toEqual([
+        { startMs: 500, endMs: 2000, text: 'From SRT' },
+      ]);
+      expect(SubtitleParser.parseSubtitleFile(vttSample, 'unknown.txt')).toEqual([
+        { startMs: 1000, endMs: 3000, text: 'From VTT' },
+      ]);
+      expect(SubtitleParser.parseSubtitleFile('', 'empty.srt')).toEqual([]);
     });
   });
 });

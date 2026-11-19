@@ -931,4 +931,53 @@ describe('Groq model migration & token/reasoning safeguards', () => {
     expect(body.max_tokens).toBe(900);
     expect(body.reasoning_effort).toBeUndefined();
   });
+
+  test('callGemini supports multimodal parts, mediaResolution, thinkingBudget, and skips thought parts', async () => {
+    globalThis.fetch = jest.fn(async () =>
+      makeResponse({
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'internal reasoning', thought: true }, { text: '{"lines":[]}' }],
+              },
+            },
+          ],
+          usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 5, totalTokenCount: 105 },
+        }),
+      })
+    );
+
+    const res = await Providers.chat('google', 'gemini-2.5-flash', 'AIzaKey', 'ignored', {
+      mediaResolution: 'MEDIA_RESOLUTION_LOW',
+      thinkingBudget: 0,
+      parts: [
+        { fileData: { fileUri: 'https://www.youtube.com/watch?v=abc12345' } },
+        { text: 'Transcribe' },
+      ],
+    });
+
+    const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body.contents[0].parts).toHaveLength(2);
+    expect(body.generationConfig.mediaResolution).toBe('MEDIA_RESOLUTION_LOW');
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    expect(res.success).toBe(true);
+    expect(res.text).toBe('{"lines":[]}');
+  });
+
+  test('Fix A4: defaults thinkingBudget to 0 on gemini-2.5-* models when not explicitly specified', async () => {
+    globalThis.fetch = jest.fn(async () =>
+      makeResponse({
+        json: async () => ({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }),
+      })
+    );
+
+    await Providers.chat('google', 'gemini-2.5-flash', 'AIzaKey', 'Translate');
+    const body25 = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+    expect(body25.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+
+    await Providers.chat('google', 'gemini-2.0-flash', 'AIzaKey', 'Translate');
+    const body20 = JSON.parse(globalThis.fetch.mock.calls[1][1].body);
+    expect(body20.generationConfig.thinkingConfig).toBeUndefined();
+  });
 });

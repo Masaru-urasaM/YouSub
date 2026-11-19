@@ -19,6 +19,7 @@ const {
   computeLengthOutlierScore,
   computeMedianRatio,
   detectCascadeShifts,
+  _computeLineCascadeScore,
 } = _internals;
 
 let originalTranslateBatch;
@@ -1332,5 +1333,105 @@ describe('detectCascadeShifts', () => {
 
     const result = await MergeFixer.fix(segments, outputs, 'en', 'vi');
     expect(result.pendingIndices.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('Fix A1: buildRealignment never pushes out-of-bounds index >= N when merge is at last index', () => {
+    const outputLines = Array.from({ length: 50 }, (_, i) => `line_${i}`);
+    const merges = new Map([[49, 1]]);
+    const result = buildRealignment(outputLines, merges, 50);
+
+    expect(result.lines).toHaveLength(50);
+    expect(result.pendingIndices).toEqual([49]);
+    expect(result.pendingIndices.every((idx) => idx >= 0 && idx < 50)).toBe(true);
+  });
+
+  test('Fix A1: cascade fix clears flagged positions in-place without shifting later valid lines', async () => {
+    const segments = [
+      { text: 'The NASA mission launched in 2024.' },
+      { text: 'The crew celebrated safely.' },
+      { text: 'This third line is completely unaffected here.' },
+      { text: 'This fourth line is completely unaffected too.' },
+      { text: 'This fifth line is also completely valid.' },
+    ];
+    const outputs = [
+      'Nhiem vu da bat dau',
+      'Nhiem vu NASA 2024 da thanh cong',
+      'Dong thu ba hoan toan khong bi anh huong.',
+      'Dong thu tu hoan toan khong bi lech.',
+      'Dong thu nam hoan toan dung vi tri.',
+    ];
+
+    const result = await MergeFixer.fix(segments, outputs, 'en', 'vi');
+    expect(result.pendingIndices).toEqual([0, 1]);
+    expect(result.lines[0]).toBe('');
+    expect(result.lines[1]).toBe('');
+    expect(result.lines[2]).toBe('Dong thu ba hoan toan khong bi anh huong.');
+    expect(result.lines[3]).toBe('Dong thu tu hoan toan khong bi lech.');
+    expect(result.lines[4]).toBe('Dong thu nam hoan toan dung vi tri.');
+  });
+
+  test('Fix A2: _computeLineCascadeScore ignores punctuation/length variance when tokenScore is null', () => {
+    const segments = [
+      { text: 'So I decided to go outside today.' },
+      { text: 'The weather was warm and bright.' },
+      { text: 'Everyone walked around the park.' },
+      { text: 'We bought coffee at the corner shop.' },
+      { text: 'Later we returned home happily.' },
+    ];
+    const outputs = [
+      'Vay nen toi quyet dinh ra ngoai di dao mot chut trong ngay dep troi hom nay nha ban',
+      'Thoi tiet rat am ap va tuoi sang.',
+      'Moi nguoi di dao quanh cong vien.',
+      'Chung toi mua ca phe o quan goc pho.',
+      'Sau do chung toi vui ve ve nha.',
+    ];
+
+    const score = _computeLineCascadeScore(0, segments, outputs, 1.0);
+    expect(score).toEqual({ score: 0, signalCount: 0 });
+    expect(detectCascadeShifts(segments, outputs)).toEqual([]);
+  });
+
+  test('isIndexedJson skips buildRealignment on short tail + high EN->VI ratio and blocks blind fallback split', async () => {
+    const segments = [
+      { text: 'You can do that now' },
+      { text: 'I am not quite sure what you mean here' },
+      { text: 'This third cue must stay in its exact position' },
+      { text: 'Thank you.' },
+    ];
+    const outputs = [
+      'Ban hoan toan co the lam dieu nay ngay bay gio luon nhe ban',
+      'Chiu thoi.',
+      'Cau thu ba phai dung nguyen vi tri chinh xac nay.',
+      'Cam on.',
+    ];
+
+    // Mock unavailable on-device RoughTranslator (common with auto src or uncached models)
+    RoughTranslator.translateBatch = jest.fn(async (texts) => texts.map(() => null));
+
+    const jsonRes = await MergeFixer.fix(segments, outputs, 'auto', 'vi', undefined, {
+      isIndexedJson: true,
+    });
+    expect(jsonRes.pendingIndices).toEqual([]);
+    expect(jsonRes.lines).toEqual(outputs);
+
+    // Legacy mode also avoids treating matched short final cues ("Thank you." -> "Cam on.") as tail garbage
+    const legacyRes = await MergeFixer.fix(segments, outputs, 'auto', 'vi');
+    expect(legacyRes.pendingIndices).toEqual([]);
+    expect(legacyRes.lines[2]).toBe(outputs[2]);
+  });
+
+  test('does not revert identical repeated consecutive cues in duplicate-tail check', async () => {
+    const segments = [
+      { text: 'Long input sentence with enough words here' },
+      { text: 'Wait?' },
+      { text: 'Wait?' },
+    ];
+    const outputs = ['Cau dai dich dung', 'Giong nhau ha?', 'Giong nhau ha?'];
+
+    const res = await MergeFixer.fix(segments, outputs, 'en', 'vi', undefined, {
+      isIndexedJson: true,
+    });
+    expect(res.lines).toEqual(outputs);
+    expect(res.pendingIndices).toEqual([]);
   });
 });

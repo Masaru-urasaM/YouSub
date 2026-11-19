@@ -13,6 +13,7 @@ export const Logger = {
   _errorBuffer: [],
   _flushTimer: null,
   _flushInProgress: false,
+  _swRelayCursor: 0,
 
   log(level, tag, msg, data = {}) {
     const entry = {
@@ -61,6 +62,7 @@ export const Logger = {
     this._buffer.push(jsonStr);
     if (this._buffer.length > MAX_SESSION_LOGS) {
       this._buffer.shift();
+      if (this._swRelayCursor > 0) this._swRelayCursor--;
     }
 
     if (level === 'ERROR') {
@@ -93,8 +95,30 @@ export const Logger = {
 
     try {
       const sessionCopy = this._buffer.slice(-MAX_SESSION_LOGS);
+      let sessionPersisted = false;
       if (api.session) {
-        await api.session.set({ [STORAGE_KEY_SESSION]: sessionCopy });
+        try {
+          await api.session.set({ [STORAGE_KEY_SESSION]: sessionCopy });
+          sessionPersisted = true;
+        } catch {
+          sessionPersisted = false;
+        }
+      }
+
+      // Chrome MV3 content scripts cannot write chrome.storage.session directly;
+      // relay unsent JSONL lines to the background service worker's session buffer.
+      if (!sessionPersisted && this._swRelayCursor < this._buffer.length) {
+        const pending = this._buffer.slice(this._swRelayCursor);
+        const root =
+          typeof browser !== 'undefined' ? browser : typeof chrome !== 'undefined' ? chrome : null;
+        if (root && root.runtime && typeof root.runtime.sendMessage === 'function') {
+          this._swRelayCursor = this._buffer.length;
+          try {
+            await Promise.resolve(
+              root.runtime.sendMessage({ type: 'YOUSUB_LOG_BATCH', entries: pending })
+            );
+          } catch {}
+        }
       }
 
       if (this._errorBuffer.length > 0 && api.local) {
@@ -112,6 +136,18 @@ export const Logger = {
     }
 
     this._flushInProgress = false;
+  },
+
+  appendExternalEntries(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    for (const item of entries) {
+      if (typeof item !== 'string' || !item.trim()) continue;
+      this._buffer.push(item);
+      if (this._buffer.length > MAX_SESSION_LOGS) {
+        this._buffer.shift();
+      }
+    }
+    this._scheduleFlush();
   },
 
   _getStorageApi() {

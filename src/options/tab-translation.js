@@ -31,6 +31,7 @@ let container,
   failoverCheckbox,
   rotationCheckbox,
   streamingModeCheckbox,
+  geminiFallbackCheckbox,
   noKeysAlert,
   targetLangSelect,
   clearCacheBtn;
@@ -49,6 +50,7 @@ export function initTranslationTab(saveIndicatorCallback) {
   failoverCheckbox = document.getElementById('enable-failover');
   rotationCheckbox = document.getElementById('enable-rotation');
   streamingModeCheckbox = document.getElementById('streaming-mode');
+  geminiFallbackCheckbox = document.getElementById('gemini-video-fallback');
   noKeysAlert = document.getElementById('no-keys-alert');
   clearCacheBtn = document.getElementById('clear-cache-btn');
 
@@ -80,6 +82,7 @@ function loadSettings() {
       'yousub_failover_enabled',
       'yousub_model_rotation',
       'yousub_streaming_mode',
+      'yousub_gemini_fallback_enabled',
       'yousub_custom_models',
       'yousub_hidden_models',
       'yousub_health_stats',
@@ -102,9 +105,13 @@ function loadSettings() {
       if (streamingModeCheckbox) {
         streamingModeCheckbox.checked = items.yousub_streaming_mode || false;
       }
+      if (geminiFallbackCheckbox) {
+        geminiFallbackCheckbox.checked = items.yousub_gemini_fallback_enabled !== false;
+      }
 
       renderKeysUI(items.yousub_health_stats || {});
-    });
+    })
+    .catch(() => {});
 }
 
 function createEmptyKey() {
@@ -154,39 +161,42 @@ function renderKeysUI(healthStats = {}) {
  * Preserves user focus and unsaved input in the fields.
  */
 function updateRealtimeStatuses() {
-  browser.storage.local.get(['yousub_api_keys', 'yousub_health_stats']).then((items) => {
-    const keys = items.yousub_api_keys || [];
-    const healthStats = items.yousub_health_stats || {};
+  browser.storage.local
+    .get(['yousub_api_keys', 'yousub_health_stats'])
+    .then((items) => {
+      const keys = items.yousub_api_keys || [];
+      const healthStats = items.yousub_health_stats || {};
 
-    keys.forEach((keyData, index) => {
-      const row = container.querySelector(`.api-key-row[data-index="${index}"]`);
-      if (!row) return;
+      keys.forEach((keyData, index) => {
+        const row = container.querySelector(`.api-key-row[data-index="${index}"]`);
+        if (!row) return;
 
-      const statusText = row.querySelector('.status-text');
-      const healthIndicator = row.querySelector('.health-indicator');
-      const healthStatsText = row.querySelector('.health-stats');
-      const cleanKey = sanitizeKey(keyData.apiKey);
-      const keyHash = `${keyData.provider}_${cleanKey.slice(-6)}`;
-      const stats = healthStats[keyHash];
+        const statusText = row.querySelector('.status-text');
+        const healthIndicator = row.querySelector('.health-indicator');
+        const healthStatsText = row.querySelector('.health-stats');
+        const cleanKey = sanitizeKey(keyData.apiKey);
+        const keyHash = `${keyData.provider}_${cleanKey.slice(-6)}`;
+        const stats = healthStats[keyHash];
 
-      if (stats && stats.successCount > 0 && Date.now() > (stats.circuitBreakerUntil || 0)) {
-        if (keyData.status === 'failed') {
-          keyData.status = 'ok';
-          keyData.statusMessage = 'Recovered';
+        if (stats && stats.successCount > 0 && Date.now() > (stats.circuitBreakerUntil || 0)) {
+          if (keyData.status === 'failed') {
+            keyData.status = 'ok';
+            keyData.statusMessage = 'Recovered';
+          }
         }
+
+        applyRowStatusText(statusText, keyData, i18n, true);
+        applyRowHealthBadge(healthIndicator, healthStatsText, stats, true);
+      });
+
+      if (!(
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')
+      )) {
+        apiKeys = keys;
       }
-
-      applyRowStatusText(statusText, keyData, i18n, true);
-      applyRowHealthBadge(healthIndicator, healthStatsText, stats, true);
-    });
-
-    if (!(
-      document.activeElement &&
-      (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')
-    )) {
-      apiKeys = keys;
-    }
-  });
+    })
+    .catch(() => {});
 }
 
 function attachEventListeners() {
@@ -220,19 +230,27 @@ function attachEventListeners() {
   if (streamingModeCheckbox) {
     streamingModeCheckbox.addEventListener('change', debouncedSave);
   }
+  if (geminiFallbackCheckbox) {
+    geminiFallbackCheckbox.addEventListener('change', debouncedSave);
+  }
   if (clearCacheBtn) {
     clearCacheBtn.addEventListener('click', () => {
       showModal(
         'Clear Translation Cache',
         'Clear all cached translations? This will remove all saved video signatures and require re-translating videos the next time you watch them.',
         () => {
-          browser.runtime.sendMessage({ type: 'YOUSUB_CLEAR_CACHE' }).then((response) => {
-            if (response && response.success) {
-              alert(`Cache cleared successfully! Removed ${response.count || 0} entries.`);
-            } else {
-              alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
-            }
-          });
+          browser.runtime
+            .sendMessage({ type: 'YOUSUB_CLEAR_CACHE' })
+            .then((response) => {
+              if (response && response.success) {
+                alert(`Cache cleared successfully! Removed ${response.count || 0} entries.`);
+              } else {
+                alert('Error clearing cache: ' + (response ? response.error : 'Unknown error'));
+              }
+            })
+            .catch((err) => {
+              alert('Error clearing cache: ' + (err?.message || 'Unknown error'));
+            });
         }
       );
     });
@@ -251,6 +269,7 @@ function performSave() {
     yousub_failover_enabled: failoverEnabled,
     yousub_model_rotation: modelRotation,
     yousub_streaming_mode: streamingModeCheckbox ? streamingModeCheckbox.checked : false,
+    yousub_gemini_fallback_enabled: geminiFallbackCheckbox ? geminiFallbackCheckbox.checked : true,
     yousub_custom_models: customModelsRegistry,
     yousub_hidden_models: hiddenModelsRegistry,
   };

@@ -1,4 +1,6 @@
-# YouSub — Open Issues
+# YouSub — Issue Tracker
+
+> **Status**: All tracked issues are resolved (`DONE`). New post-release fixes are recorded under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 

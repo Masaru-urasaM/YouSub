@@ -122,6 +122,40 @@ global.chrome = {
         removeListener: jest.fn(),
       },
     },
+    sync: {
+      get: jest.fn((keys, callback) => {
+        const result = {};
+        if (typeof keys === 'string') {
+          result[keys] = global.chrome.storage.sync.store[keys];
+        } else if (Array.isArray(keys)) {
+          keys.forEach((k) => (result[k] = global.chrome.storage.sync.store[k]));
+        } else if (keys === null) {
+          Object.assign(result, global.chrome.storage.sync.store);
+        }
+        if (callback) callback(result);
+        return Promise.resolve(result);
+      }),
+      set: jest.fn((items, callback) => {
+        Object.assign(global.chrome.storage.sync.store, items);
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      remove: jest.fn((keys, callback) => {
+        if (typeof keys === 'string') {
+          delete global.chrome.storage.sync.store[keys];
+        } else if (Array.isArray(keys)) {
+          keys.forEach((k) => delete global.chrome.storage.sync.store[k]);
+        }
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      clear: jest.fn((callback) => {
+        global.chrome.storage.sync.store = {};
+        if (callback) callback();
+        return Promise.resolve();
+      }),
+      store: {},
+    },
     // WebExtensions also exposes change events at the storage level
     // (chrome.storage.onChanged) — src/content/overlay.js subscribes here.
     onChanged: {
@@ -183,6 +217,7 @@ global.chrome = {
     query: jest.fn(() => Promise.resolve([{ id: 1, url: 'https://youtube.com/watch?v=123' }])),
     create: jest.fn(() => Promise.resolve({ id: 2 })),
     sendMessage: jest.fn(() => Promise.resolve()),
+    reload: jest.fn(() => Promise.resolve()),
   },
 };
 

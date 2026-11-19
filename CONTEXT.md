@@ -3,24 +3,32 @@
 > **Purpose**: This document provides the high-level reasons, goals, and desired outcomes of the YouSub project. It captures *why* the project exists so the developer and AI can remain aligned on the core mission.
 
 ## 1. Background
-The creator of YouSub is a solo developer looking to build a browser extension to significantly improve the YouTube viewing experience. The developer is focusing on building a practical, feasible project using standard web technologies (HTML, CSS, JS) built upon the modern WebExtensions API (Manifest V3).
+The creator of YouSub is a solo developer building a cross-browser WebExtension (Chrome Desktop, Firefox Desktop, and Firefox for Android Mobile) to solve two major pain points on YouTube:
+1. **Real-Time AI Subtitle Translation**: Translating YouTube transcripts (or generating subtitles for uncaptioned videos) using the user's own LLM API keys (BYOK) with a customizable dual-subtitle overlay.
+2. **Bulletproof Long-Form Audio/Video Playback Auto-Resume & Cross-Device Sync**: Automatically saving and restoring exact playback positions across Desktop (`www.youtube.com`) and Mobile (`m.youtube.com`) — specifically engineered for multi-hour audiobooks, podcasts, and lectures (10–50+ hours) where YouTube's native resume feature frequently fails or resets progress to `0:00`.
 
-## 2. The Core Goal
-To create a Browser Extension (focusing on Chrome, scalable to Firefox) that acts as a real-time subtitle translator for YouTube. 
-**Mechanism**:
-- Access YouTube's native transcripts/subtitles (including auto-generated ones) while the video is playing.
-- Extract the precise timestamps and original language text blocks.
-- Process and translate this text into the user's desired language.
-- Project the translated subtitles onto the screen using a custom UI overlay, perfectly synchronized with the video's current time.
+## 2. The Core Goals
+1. **Real-Time Subtitle Translator**:
+   - Access YouTube's native transcripts/subtitles (via silent Innertube APIs, DOM scraping fallback, `.srt`/`.vtt` import, or Gemini video URL fallback) while the video is playing.
+   - Coalesce fragmented cues, translate them via multi-provider LLM batching with seek-aware priority, and render a synced, customizable overlay.
+2. **Cross-Platform Playback Auto-Resume & Audio Bookmarking Suite (PC + Firefox Mobile)**:
+   - Run seamlessly on both Desktop (`www.youtube.com`) and Firefox for Android (`m.youtube.com`), completely independent of whether subtitle translation is active.
+   - Continuously persist playback progress locally (`storage.local`), across same-browser profiles (`storage.sync`), and across Chrome ↔ Firefox via the user's logged-in YouTube account (`startSeconds` + hardened `/api/stats/watchtime` sync).
+   - Protect multi-hour audio listeners against accidental seek jumps, `0:00` page-reload overwrites, and falling asleep while playback runs to 100%.
 
 ## 3. Reasons (The "Why")
-- **Limitations of Native Features**: YouTube's native auto-translate capabilities can sometimes be rigid, poorly formatted, or lack customization options for the viewer.
-- **Personal Need & Control**: The developer needs a reliable, beautifully rendered subtitle system over which they hold complete design and functional control (e.g., dual subtitles, better fonts, customizable background boxes).
-- **Ideal Solo Project**: It provides a highly defined scope for a solo developer to combine DOM manipulation, browser background scripts, network interception, and third-party APIs into one cohesive product.
+- **Limitations of Native Subtitle Features**: YouTube's native auto-translate is rigid, poorly formatted, and lacks dual-language display or LLM contextual quality.
+- **Unreliability of YouTube's Native Playback Resume on Long Audio/Videos**:
+  - **The `0:00` Overwrite Bug**: When reopening a 20–50 hour audiobook on mobile or desktop, network lag, ad insertion, or mobile tab eviction often initializes the player at `0:00`. Within 1–2 seconds, YouTube's player fires a `/api/stats/watchtime` ping at `0:01`, permanently overwriting the user's 15-hour progress on YouTube's servers.
+  - **The >95% Completion Reset (Sleep Hazard)**: Audiobook listeners frequently fall asleep while the video plays to the end. Once playback crosses ~95% duration, YouTube marks the video as "Watched" and resets future playback to `0:00`, leaving the user with no idea where they were before falling asleep.
+  - **Mobile OS Suspension & Adblockers**: On Firefox Mobile, locking the screen or switching apps suspends network requests before YouTube's periodic `watchtime` heartbeat fires; furthermore, privacy filters (uBlock Origin / Firefox Enhanced Tracking Protection) frequently block `s.youtube.com/api/stats/watchtime`.
+- **Personal Need & Total Control**: By embedding a multi-tier resume engine directly into YouSub, the developer guarantees zero lost progress across PC and Firefox Mobile while keeping a strict zero-third-party-server privacy posture.
 
 ## 4. Desired Outcomes
-- **A Working Manifest V3 Extension**: Built, functional, and installable initially as a local unpacked extension.
-- **Efficient Data Interception**: The extension successfully captures YouTube's subtitle payloads (XML/JSON data) natively without causing performance degradation.
-- **Accurate & Reliable Translation**: A robust LLM-based "Bring Your Own Key" (BYOK) system is established with failover intelligence. Translation batches are optimized to preserve line-count and context, drastically outperforming free proxies.
-- **Premium Syncing & Feedback**: The translated text appears with millisecond accuracy. The UI includes real-time status feedback (Toasts) and live-customizable appearance settings, providing a truly professional extension experience.
-- **Low Maintenance & Resilient**: Use of DOM Scraping (Transcript panel) ensures a resilient approach to YouTube's internal API changes, minimizing the risk of breakage from bot-detection mechanisms.
+- **A Working Cross-Browser Manifest V3 Extension**: Live on [Firefox Add-ons (AMO)](https://addons.mozilla.org/addon/yousub/) at **v0.2.5** (`yousub@xinh.tools`, Desktop + Firefox for Android `gecko_android >= 128.0`) and shipped on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (`v0.2.0` live; `v0.2.5` resubmitted & `Pending review`).
+- **Efficient Data Interception & Silent Extraction**: Captures YouTube's subtitle payloads and player metadata on both `www.youtube.com` and `m.youtube.com` without CORS errors or visible UI flashes.
+- **Accurate & Reliable Translation**: Robust BYOK LLM translation engine with failover intelligence, semantic sentence coalescing, and seek-aware batch prioritization.
+- **Bulletproof Playback Auto-Resume & Sync**:
+  - **4-Timestamp Safety Net per Video**: Tracks `lastTimeSec` (latest playhead), `furthestTimeSec` (high-water mark immune to accidental backward seeks), `lastInteractionTimeSec` (playhead at last real user interaction to recover from falling asleep), and rolling 30-minute `checkpoints` + manual 1-tap `bookmarks`.
+  - **3-Tier Cross-Device Sync**: Instant 3-second local persistence (`storage.local`) + debounced browser profile sync (`storage.sync`) + hardened YouTube Account Watchtime sync (`window.location.origin + '/api/stats/watchtime'` with `0:00` overwrite blocking and `>95%` completion clamping) so switching between Chrome PC and Firefox Mobile under the same YouTube account resumes seamlessly.
+  - **Non-Intrusive On-Video & Popup UX**: Smart rewind (`-3s` on resume), compact on-video status toast with quick-jump pills (`[0:00]`, `[Furthest]`, `[Last Active]`), and a dedicated Popup/Options manager for recent audiobooks and bookmarks.

@@ -3,6 +3,7 @@ import { Constants } from '../shared/constants.js';
 import { applyI18n } from '../shared/i18n.js';
 import { initTranslationTab } from './tab-translation.js';
 import { initAppearanceTab } from './tab-appearance.js';
+import { initResumeTab } from './tab-resume.js';
 
 // Localized message helper with graceful fallback to the provided default.
 function i18n(key, fallback) {
@@ -34,6 +35,7 @@ function init() {
   // Initialize Tabs
   initTranslationTab(showSaveIndicator);
   initAppearanceTab(showSaveIndicator);
+  initResumeTab(showSaveIndicator, i18n);
 
   attachGlobalEventListeners();
 }

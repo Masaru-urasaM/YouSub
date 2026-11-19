@@ -111,9 +111,11 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     const fontColor = document.getElementById('font-color');
     const bgOpacity = document.getElementById('bg-opacity');
     const posBottom = document.getElementById('pos-bottom');
+    const showStagePill = document.getElementById('show-stage-pill');
     const preview = document.getElementById('subtitle-preview');
 
     expect(fontSize.value).toBe('1.5');
+    expect(showStagePill.checked).toBe(true);
 
     fontSize.value = '2.2';
     fontSize.dispatchEvent(new Event('input', { bubbles: true }));
@@ -123,6 +125,8 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     bgOpacity.dispatchEvent(new Event('input', { bubbles: true }));
     posBottom.value = '100';
     posBottom.dispatchEvent(new Event('input', { bubbles: true }));
+    showStagePill.checked = false;
+    showStagePill.dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(document.getElementById('font-size-val').textContent).toBe('2.2');
     expect(document.getElementById('font-color-hex').textContent).toBe('#00FF00');
@@ -137,6 +141,7 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
       fontColor: '#00ff00',
       bgOpacity: 0.8,
       posBottom: 100,
+      showStagePill: false,
     });
   });
 
@@ -289,5 +294,31 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     document.getElementById('delete-all-keys-btn').click();
     document.getElementById('modal-confirm-btn').click();
     expect(document.querySelectorAll('.api-key-row')).toHaveLength(1);
+  });
+
+  test('tab-translation.js persists Gemini video fallback checkbox setting', async () => {
+    jest.useFakeTimers();
+    await mountOptions({ yousub_gemini_fallback_enabled: false });
+
+    const cb = document.getElementById('gemini-video-fallback');
+    expect(cb.checked).toBe(false);
+
+    cb.checked = true;
+    cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+    jest.advanceTimersByTime(600);
+    await flushAsync();
+
+    expect(chrome.storage.local.store.yousub_gemini_fallback_enabled).toBe(true);
+  });
+
+  test('tab-translation.js catches YOUSUB_CLEAR_CACHE rejection gracefully', async () => {
+    await mountOptions();
+    chrome.runtime.sendMessage.mockRejectedValueOnce(new Error('Channel closed'));
+
+    document.getElementById('clear-cache-btn').click();
+    document.getElementById('modal-confirm-btn').click();
+    await flushAsync();
+
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Channel closed'));
   });
 });

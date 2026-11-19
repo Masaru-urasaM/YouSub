@@ -12,6 +12,7 @@ const CACHE_PREFIX = 'yousub_vcache_';
 const META_KEY = 'yousub_vcache_metadata';
 const MAX_ENTRIES = 100;
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const CACHE_SCHEMA_VERSION = 2;
 
 export const Cache = {
   /**
@@ -36,6 +37,16 @@ export const Cache = {
       const now = Date.now();
       if (now - data.timestamp > TTL_MS) {
         Logger.info('Cache', `Cache EXPIRED for ${videoId} (${sl}->${tl})`);
+        await this.remove(videoId, sl, tl);
+        return null;
+      }
+
+      // Invalidate legacy pre-v2 cache entries written before alignment fixes
+      if ((data.version || 1) < CACHE_SCHEMA_VERSION) {
+        Logger.info(
+          'Cache',
+          `Cache STALE schema (v${data.version || 1} < v${CACHE_SCHEMA_VERSION}) for ${videoId} (${sl}->${tl})`
+        );
         await this.remove(videoId, sl, tl);
         return null;
       }
@@ -102,6 +113,7 @@ export const Cache = {
       videoId,
       sl,
       tl,
+      version: CACHE_SCHEMA_VERSION,
       timestamp: now,
       translated,
     };
@@ -214,5 +226,152 @@ export const Cache = {
     await browser.storage.local.set({ [META_KEY]: meta });
 
     Logger.info('Cache', `LRU Eviction: Removed ${keysToRemove.length} oldest entries.`);
+  },
+
+  /**
+   * Retrieve cached AI-generated or user-imported full subtitle entries.
+   * Stored under sl='gen' so hasAnyForVideoTarget, removeByVideoId, clearAll,
+   * and LRU eviction work automatically.
+   */
+  async getGenerated(videoId, tl) {
+    if (!videoId) return null;
+    const key = `${CACHE_PREFIX}${videoId}_gen_${tl}`;
+
+    try {
+      const res = await browser.storage.local.get([key, META_KEY]);
+      const data = res[key];
+      const meta = res[META_KEY] || { keys: [] };
+
+      if (!data) return null;
+
+      if (Date.now() - data.timestamp > TTL_MS) {
+        Logger.info('Cache', `Generated cache EXPIRED for ${videoId} (${tl})`);
+        await this.remove(videoId, 'gen', tl);
+        return null;
+      }
+
+      await this._updateMetadata(videoId, 'gen', tl, meta, key);
+      return {
+        entries: Array.isArray(data.entries) ? data.entries : [],
+        completedBatches: Array.isArray(data.completedBatches) ? data.completedBatches : [],
+        windowSec: data.windowSec ?? null,
+        durationSec: data.durationSec ?? null,
+      };
+    } catch (e) {
+      Logger.error('Cache', `Error reading generated cache: ${e.message}`);
+      return null;
+    }
+  },
+
+  /**
+   * Save full generated or imported subtitle entries (with startMs/endMs/original/text).
+   */
+  async setGenerated(videoId, tl, payload = {}) {
+    if (!videoId || !Array.isArray(payload.entries) || payload.entries.length === 0) return;
+
+    const key = `${CACHE_PREFIX}${videoId}_gen_${tl}`;
+    const now = Date.now();
+    const record = {
+      videoId,
+      sl: 'gen',
+      tl,
+      timestamp: now,
+      windowSec: payload.windowSec ?? null,
+      durationSec: payload.durationSec ?? null,
+      completedBatches: Array.isArray(payload.completedBatches)
+        ? payload.completedBatches
+        : ['all'],
+      entries: payload.entries,
+    };
+
+    try {
+      const res = await browser.storage.local.get([META_KEY]);
+      const meta = res[META_KEY] || { keys: [] };
+      meta.keys = meta.keys.filter((k) => k.key !== key);
+      meta.keys.unshift({ key, videoId, sl: 'gen', tl, lastUsed: now });
+
+      await browser.storage.local.set({ [key]: record, [META_KEY]: meta });
+      await this._evictIfNeeded(meta);
+
+      Logger.info(
+        'Cache',
+        `Generated cache SET for ${videoId} (${tl}) - ${record.entries.length} entries`
+      );
+    } catch (e) {
+      Logger.error('Cache', `Error writing generated cache: ${e.message}`);
+    }
+  },
+
+  /**
+   * Incrementally merge a completed Gemini video window batch into the cache.
+   */
+  async mergeGeneratedBatch(videoId, tl, { windowSec, durationSec, batchIndex, entries }) {
+    if (!videoId || typeof batchIndex !== 'number') return;
+
+    const key = `${CACHE_PREFIX}${videoId}_gen_${tl}`;
+    const now = Date.now();
+
+    try {
+      const res = await browser.storage.local.get([key, META_KEY]);
+      const existing = res[key];
+      const meta = res[META_KEY] || { keys: [] };
+
+      const canReuse =
+        existing &&
+        now - existing.timestamp <= TTL_MS &&
+        (existing.windowSec === windowSec || existing.windowSec == null);
+
+      const byRange = new Map();
+      if (canReuse && Array.isArray(existing.entries)) {
+        for (const item of existing.entries) {
+          if (item && typeof item.startMs === 'number' && typeof item.endMs === 'number') {
+            byRange.set(`${item.startMs}_${item.endMs}`, item);
+          }
+        }
+      }
+      if (Array.isArray(entries)) {
+        for (const item of entries) {
+          if (item && typeof item.startMs === 'number' && typeof item.endMs === 'number') {
+            byRange.set(`${item.startMs}_${item.endMs}`, item);
+          }
+        }
+      }
+
+      const mergedEntries = Array.from(byRange.values()).sort(
+        (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+      );
+
+      const batchSet = new Set(
+        canReuse && Array.isArray(existing.completedBatches)
+          ? existing.completedBatches.filter((b) => typeof b === 'number')
+          : []
+      );
+      batchSet.add(batchIndex);
+      const completedBatches = Array.from(batchSet).sort((a, b) => a - b);
+
+      const record = {
+        videoId,
+        sl: 'gen',
+        tl,
+        timestamp: now,
+        windowSec,
+        durationSec: durationSec ?? (canReuse ? existing.durationSec : null),
+        completedBatches,
+        entries: mergedEntries,
+      };
+
+      meta.keys = meta.keys.filter((k) => k.key !== key);
+      meta.keys.unshift({ key, videoId, sl: 'gen', tl, lastUsed: now });
+
+      await browser.storage.local.set({ [key]: record, [META_KEY]: meta });
+      await this._evictIfNeeded(meta);
+
+      Logger.info(
+        'Cache',
+        `Merged generated batch #${batchIndex} for ${videoId} (${tl}) - ${mergedEntries.length} total entries`
+      );
+    } catch (e) {
+      Logger.error('Cache', `Error merging generated batch cache: ${e.message}`);
+    }
   },
 };

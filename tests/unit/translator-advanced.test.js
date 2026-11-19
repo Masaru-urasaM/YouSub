@@ -394,4 +394,70 @@ describe('translator.js advanced & streaming paths (T8)', () => {
     expect(result.success).toBe(true);
     expect(observedMaxTokens[0]).toBeGreaterThanOrEqual(1500);
   });
+
+  test('Fix A3 & A4: guards out-of-bounds pendingIndices without crashing and sets 35s batch timeout', async () => {
+    seedKeys([{ provider: 'google', apiKey: 'AIza-a34', model: 'gemini-2.5-flash' }]);
+
+    // Force MergeFixer to return out-of-bounds index 50 and -1 alongside valid index 1
+    fixFn.mockResolvedValueOnce({
+      lines: ['Xin chao', ''],
+      pendingIndices: [1, 50, -1],
+    });
+
+    const observedTimeouts = [];
+    let batchCall = 0;
+    chat.mockImplementation(async (_p, _m, _k, userPrompt, opts) => {
+      if (isJsonBatchPrompt(userPrompt)) {
+        observedTimeouts.push(opts.timeoutMs);
+        batchCall++;
+        const { lines } = JSON.parse(userPrompt);
+        if (batchCall === 1) {
+          return {
+            success: true,
+            text: JSON.stringify({ lines: lines.map((l) => ({ n: l.n, t: 'Dich ' + l.t })) }),
+          };
+        }
+        return {
+          success: true,
+          text: JSON.stringify({ lines: [{ n: 0, t: 'The gioi da sua' }] }),
+        };
+      }
+      return { success: true, text: 'Summary' };
+    });
+
+    const result = await translate([seg('Hello', 0), seg('World', 1000)], 'en', 'vi');
+    expect(result.success).toBe(true);
+    expect(result.translated).toEqual(['Xin chao', 'The gioi da sua']);
+    expect(observedTimeouts[0]).toBe(35000);
+  });
+
+  test('resolves provider "auto" keys for JSON mode, threads isIndexedJson to MergeFixer, and isolates dedup by videoId', async () => {
+    seedKeys([{ provider: 'auto', apiKey: 'AIzaAutoJsonKey', model: 'auto' }]);
+
+    let sawJsonPrompt = false;
+    chat.mockImplementation(async (_p, _m, _k, userPrompt) => {
+      if (isJsonBatchPrompt(userPrompt)) {
+        sawJsonPrompt = true;
+        const { lines } = JSON.parse(userPrompt);
+        return {
+          success: true,
+          text: JSON.stringify({ lines: lines.map((l) => ({ n: l.n, t: 'VI:' + l.t })) }),
+        };
+      }
+      return { success: true, text: 'Summary' };
+    });
+
+    const p1 = translate([seg('First video', 0)], 'en', 'vi', 77, null, null, null, {
+      videoId: 'vid-one',
+    });
+    const p2 = translate([seg('Second video', 0)], 'en', 'vi', 77, null, null, null, {
+      videoId: 'vid-two',
+    });
+    const [r1, r2] = await Promise.all([p1, p2]);
+
+    expect(sawJsonPrompt).toBe(true);
+    expect(r1.translated).toEqual(['VI:First video']);
+    expect(r2.translated).toEqual(['VI:Second video']);
+    expect(fixFn.mock.calls[0][5]).toEqual({ isIndexedJson: true });
+  });
 });

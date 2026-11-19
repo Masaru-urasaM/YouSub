@@ -1,5 +1,6 @@
 import '../shared/libs/browser-polyfill.js';
 import { Logger } from '../shared/logger.js';
+import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { sanitizeKey } from '../shared/utils.js';
 
 /**
@@ -149,15 +150,20 @@ export const HealthManager = {
     const stats = res.yousub_health_stats || {};
 
     return keys.map((k) => {
-      const hash = this.getHash(k.provider, k.apiKey);
-      const entry = stats[hash];
+      const resolvedProvider =
+        k.provider === 'auto'
+          ? YOUSUB_PROVIDERS.detectProviderFromKey(k.apiKey) || k.provider
+          : k.provider;
+      const resolvedModel = YOUSUB_PROVIDERS.resolveModel(resolvedProvider, k.model);
+      const hash = this.getHash(resolvedProvider, k.apiKey);
+      const entry = stats[hash] || stats[this.getHash(k.provider, k.apiKey)];
       const isOpen = entry ? Date.now() < entry.circuitBreakerUntil : false;
       const total = entry ? entry.successCount + entry.failCount : 0;
       const rate = total > 0 ? entry.successCount / total : 1;
 
       return {
-        provider: k.provider,
-        model: k.model,
+        provider: resolvedProvider,
+        model: resolvedModel,
         isOpen: isOpen,
         successRate: rate,
         consecutiveFails: entry ? entry.consecutiveFails : 0,

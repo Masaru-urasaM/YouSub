@@ -308,7 +308,7 @@ describe('Overlay Module', () => {
       });
     });
 
-    test('loadLayout applies a stored custom-mode layout (regular key)', async () => {
+    test('loadLayout migrates a legacy stored custom-mode layout to bottom-anchored fit-content', async () => {
       chrome.storage.local.store = {
         yousub_overlay_layout: {
           regular: { customMode: true, leftPct: 10, topPct: 20, widthPct: 30, minHeightPx: null },
@@ -318,10 +318,11 @@ describe('Overlay Module', () => {
       await flushMicrotasks();
       const container = document.getElementById('yousub-overlay');
       expect(container.classList.contains('yousub-custom-position')).toBe(true);
-      expect(container.style.left).toBe('10%');
-      expect(container.style.top).toBe('20%');
-      expect(container.style.width).toBe('30%');
-      expect(container.style.bottom).toBe('auto');
+      expect(container.style.left).toBe('25%'); // centerX = 10 + 30/2
+      expect(container.style.top).toBe('auto');
+      expect(container.style.width).toBe(''); // auto-fit width via CSS fit-content
+      expect(container.style.maxWidth).toBe('30%');
+      expect(container.style.getPropertyValue('--yousub-custom-bottom')).toBe('68%');
     });
 
     test('loadLayout with no stored layout leaves the overlay in default position', async () => {
@@ -430,7 +431,7 @@ describe('Overlay Module', () => {
       el.dispatchEvent(evt);
     }
 
-    test('move handle drags overlay, clamps within player bounds, and saves layout on pointerup', async () => {
+    test('move handle drags overlay, anchors bottom edge, clamps bounds, and preserves auto-fit maxWidth', async () => {
       const player = document.getElementById('movie_player');
       setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
       Overlay.show();
@@ -445,23 +446,28 @@ describe('Overlay Module', () => {
       firePointer(moveHandle, 'pointerdown', { clientX: 250, clientY: 320, pointerId: 7 });
       expect(container.classList.contains('yousub-dragging')).toBe(true);
       expect(container.classList.contains('yousub-custom-position')).toBe(true);
+      // Moving short cue preserves 80% max-width ceiling instead of locking to current cue width
+      expect(container.style.width).toBe('');
+      expect(container.style.maxWidth).toBe('80%');
 
       firePointer(moveHandle, 'pointermove', { clientX: 1500, clientY: 900, pointerId: 7 });
-      // Clamped max left = 1000 - 400 = 600 (60%), max top = 500 - 60 = 440 (88%)
-      expect(container.style.left).toBe('60%');
-      expect(container.style.top).toBe('88%');
+      // Clamped max left = 1000 - 400 = 600 -> centerX = 800 (80%), bottom = 0%
+      expect(container.style.left).toBe('80%');
+      expect(container.style.top).toBe('auto');
+      expect(container.style.getPropertyValue('--yousub-custom-bottom')).toBe('0%');
 
       firePointer(moveHandle, 'pointerup', { clientX: 1500, clientY: 900, pointerId: 7 });
       expect(container.classList.contains('yousub-dragging')).toBe(false);
       await flushMicrotasks();
       expect(chrome.storage.local.store.yousub_overlay_layout.regular).toMatchObject({
         customMode: true,
-        leftPct: 60,
-        topPct: 88,
+        centerXPct: 80,
+        bottomPct: 0,
+        maxWidthPct: 80,
       });
     });
 
-    test('nw and se resize handles enforce minimum dimensions and clamp to player', async () => {
+    test('nw and se resize handles adjust maxWidth ceiling + bottom anchor and toggle resizing preview', async () => {
       const player = document.getElementById('movie_player');
       setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
       Overlay.show();
@@ -474,11 +480,14 @@ describe('Overlay Module', () => {
       const nw = container.querySelector('.yousub-handle-nw');
       attachPointerCaptureStubs(nw);
       firePointer(nw, 'pointerdown', { clientX: 200, clientY: 200, pointerId: 1 });
+      expect(container.classList.contains('yousub-resizing')).toBe(true);
       firePointer(nw, 'pointermove', { clientX: 450, clientY: 270, pointerId: 1 });
-      expect(container.style.width).toBe('20%'); // min 200 / 1000 = 20%
+      expect(container.style.maxWidth).toBe('20%'); // min 200 / 1000 = 20%
       expect(container.style.minHeight).toBe('40px'); // min height 40px
-      expect(container.style.left).toBe('30%'); // 200 + 300 - 200 = 300 (30%)
+      expect(container.style.left).toBe('40%'); // box [300..500] -> center = 400 (40%)
+      expect(container.style.getPropertyValue('--yousub-custom-bottom')).toBe('44%'); // (500 - 280) / 500 = 44%
       firePointer(nw, 'pointerup', { clientX: 450, clientY: 270, pointerId: 1 });
+      expect(container.classList.contains('yousub-resizing')).toBe(false);
 
       // SE handle expand
       setupContainerMetrics(container, { left: 200, top: 200, width: 300, height: 80 });
@@ -486,16 +495,24 @@ describe('Overlay Module', () => {
       attachPointerCaptureStubs(se);
       firePointer(se, 'pointerdown', { clientX: 500, clientY: 280, pointerId: 2 });
       firePointer(se, 'pointermove', { clientX: 700, clientY: 380, pointerId: 2 });
-      expect(container.style.width).toBe('50%'); // 500 / 1000 = 50%
+      expect(container.style.maxWidth).toBe('50%'); // 500 / 1000 = 50%
       expect(container.style.minHeight).toBe('180px');
+      expect(container.style.getPropertyValue('--yousub-custom-bottom')).toBe('24%'); // (500 - 380) / 500
       firePointer(se, 'pointercancel', { clientX: 700, clientY: 380, pointerId: 2 });
       expect(container.classList.contains('yousub-dragging')).toBe(false);
+      expect(container.classList.contains('yousub-resizing')).toBe(false);
     });
 
     test('ResizeObserver reclamps stored custom layout and storage onChanged updates styles', async () => {
       chrome.storage.local.store = {
         yousub_overlay_layout: {
-          regular: { customMode: true, leftPct: 90, topPct: 90, widthPct: 40, minHeightPx: 60 },
+          regular: {
+            customMode: true,
+            centerXPct: 95,
+            bottomPct: 92,
+            maxWidthPct: 40,
+            minHeightPx: 60,
+          },
         },
       };
       const player = document.getElementById('movie_player');
@@ -507,11 +524,12 @@ describe('Overlay Module', () => {
       await flushMicrotasks();
 
       // reclampToPlayer ran on loadLayout + runs again when ResizeObserver fires
-      expect(container.style.left).toBe('60%'); // clamped so 60% + 40% <= 100%
-      expect(container.style.top).toBe('80%'); // 500 - 100 = 400 -> 80%
+      expect(container.style.left).toBe('80%'); // clamped so halfW (20%) keeps right <= 100%
+      expect(container.style.getPropertyValue('--yousub-custom-bottom')).toBe('80%'); // (500 - 100) / 500
+      expect(container.style.getPropertyValue('--yousub-max-bottom')).toBe('400px');
 
       lastResizeObserver.cb();
-      expect(container.style.left).toBe('60%');
+      expect(container.style.left).toBe('80%');
 
       // Storage onChanged live style update
       const onChangedFn = chrome.storage.onChanged._listeners.at(-1);
@@ -558,6 +576,284 @@ describe('Overlay Module', () => {
       Overlay.show();
       expect(document.getElementById('yousub-overlay')).toBe(firstContainer);
       window.history.pushState({}, '', '/');
+    });
+
+    test('showStatus interactive SRT/VTT import button, drag-drop, sticky close, and hide() guard', async () => {
+      const onImport = jest.fn();
+      const onRetry = jest.fn();
+
+      Overlay.showStatus('Could not find subtitles', 'warning', 0, {
+        id: 'no-subtitles',
+        dismissible: true,
+        importLabel: 'Import .srt / .vtt',
+        onImportSubtitleFile: onImport,
+        actions: [{ label: 'Retry AI', onClick: onRetry }],
+      });
+
+      const container = document.getElementById('yousub-overlay');
+      const msg = document.querySelector('[data-status-id="no-subtitles"]');
+      expect(msg).not.toBeNull();
+      expect(msg.querySelector('.yousub-status-close')).not.toBeNull();
+
+      // Overlay.hide() must NOT hide container while a sticky/status toast is visible
+      Overlay.hide();
+      expect(container.classList.contains('yousub-visible')).toBe(true);
+
+      // File input change delivers file contents to callback
+      const input = msg.querySelector('input[type="file"]');
+      const file = {
+        name: 'demo.srt',
+        size: 32,
+        text: async () => '1\n00:00:01,000 --> 00:00:02,000\nHi\n',
+      };
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      input.dispatchEvent(new window.Event('change', { bubbles: true }));
+      await flushMicrotasks();
+      expect(onImport).toHaveBeenCalledWith(
+        '1\n00:00:01,000 --> 00:00:02,000\nHi\n',
+        'demo.srt',
+        expect.any(Function)
+      );
+
+      // Drag & drop also triggers import
+      onImport.mockClear();
+      const dropEvt = new window.Event('drop', { bubbles: true, cancelable: true });
+      dropEvt.dataTransfer = {
+        files: [{ name: 'drop.vtt', size: 20, text: async () => 'WEBVTT\n' }],
+      };
+      msg.dispatchEvent(dropEvt);
+      await flushMicrotasks();
+      expect(onImport).toHaveBeenCalledWith('WEBVTT\n', 'drop.vtt', expect.any(Function));
+
+      // Extra action button + close button
+      const retryBtn = [...msg.querySelectorAll('.yousub-status-btn')].find(
+        (b) => b.textContent === 'Retry AI'
+      );
+      retryBtn.click();
+      expect(onRetry).toHaveBeenCalled();
+
+      msg.querySelector('.yousub-status-close').click();
+      expect(document.querySelector('[data-status-id="no-subtitles"]')).toBeNull();
+      expect(container.classList.contains('yousub-visible')).toBe(false);
+    });
+
+    test('updateStagePill renders Past/Present/Future chips and auto-hides after COMPLETE', () => {
+      jest.useFakeTimers();
+
+      Overlay.updateStagePill({
+        mode: 'transcript',
+        stage: 'ROUTE',
+        coalescer: { rawCount: 310, coalescedCount: 142 },
+        router: { activeProvider: 'google', activeModel: 'gemini-2.5-flash' },
+        batches: [
+          { batchIndex: 0, status: 'IN_FLIGHT', isSeekTarget: true },
+          { batchIndex: 1, status: 'PREFETCH' },
+        ],
+      });
+
+      const pill = document.getElementById('yousub-stage-pill');
+      expect(pill.classList.contains('hidden')).toBe(false);
+      expect(pill.textContent).toContain('310→142');
+      expect(pill.textContent).toContain('gemini-2.5-flash');
+      expect(pill.textContent).toContain('⚡Seek');
+      expect(pill.textContent).toContain('Next #2');
+
+      Overlay.updateStagePill({
+        mode: 'transcript',
+        stage: 'COMPLETE',
+        coalescer: { rawCount: 310, coalescedCount: 142 },
+        sink: { syncedCues: 142, totalCues: 142, cached: true },
+        batches: [{ batchIndex: 0, status: 'DONE' }],
+      });
+      expect(pill.textContent).toContain('Synced 142');
+      expect(pill.textContent).toContain('Cached ✓');
+
+      jest.advanceTimersByTime(2500);
+      expect(pill.classList.contains('hidden')).toBe(true);
+      jest.useRealTimers();
+    });
+
+    test('updateStagePill uses friendly cues/stage labels, omits empty Next chip, and respects showStagePill setting', () => {
+      Overlay.updateStagePill({
+        mode: 'transcript',
+        stage: 'COALESCE',
+        coalescer: { rawCount: 229, coalescedCount: 229 },
+        batches: [],
+      });
+
+      const pill = document.getElementById('yousub-stage-pill');
+      expect(pill.classList.contains('hidden')).toBe(false);
+      expect(pill.textContent).toContain('Extract ✓ 229 cues');
+      expect(pill.textContent).toContain('Merging cues...');
+      expect(pill.textContent).not.toContain('COALESCE');
+      expect(pill.textContent).not.toContain('229c');
+      expect(pill.textContent).not.toContain('Next');
+      expect(pill.querySelectorAll('.yousub-pill-chip')).toHaveLength(2);
+      expect(pill.querySelectorAll('.yousub-pill-arrow')).toHaveLength(1);
+
+      // Disabling showStagePill hides active pill immediately and suppresses future updates
+      Overlay.applyStyles({ showStagePill: false });
+      expect(pill.classList.contains('hidden')).toBe(true);
+
+      Overlay.updateStagePill({
+        mode: 'transcript',
+        stage: 'ROUTE',
+        coalescer: { rawCount: 229, coalescedCount: 229 },
+        batches: [{ batchIndex: 0, status: 'IN_FLIGHT' }],
+      });
+      expect(pill.classList.contains('hidden')).toBe(true);
+
+      // Re-enabling restores pill rendering
+      Overlay.applyStyles({ showStagePill: true });
+      Overlay.updateStagePill({
+        mode: 'transcript',
+        stage: 'ROUTE',
+        router: { activeProvider: 'google', activeModel: 'gemini-2.5-flash' },
+        batches: [{ batchIndex: 0, status: 'IN_FLIGHT' }],
+      });
+      expect(pill.classList.contains('hidden')).toBe(false);
+    });
+
+    test('tracks live .ytp-chrome-bottom control bar height and suspends dodge during drag', async () => {
+      const player = document.getElementById('movie_player');
+      setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
+
+      const chromeBottom = document.createElement('div');
+      chromeBottom.className = 'ytp-chrome-bottom';
+      let barTop = 448;
+      let barHeight = 52;
+      chromeBottom.getBoundingClientRect = () => ({
+        left: 12,
+        top: barTop,
+        width: 976,
+        height: barHeight,
+        right: 988,
+        bottom: barTop + barHeight,
+      });
+      player.appendChild(chromeBottom);
+
+      Overlay.show();
+      await flushMicrotasks();
+
+      const container = document.getElementById('yousub-overlay');
+      setupContainerMetrics(container, { left: 300, top: 380, width: 400, height: 50 });
+
+      // Controls visible initially (no ytp-autohide): 500 - 448 + 10 = 62px
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('62px');
+
+      // Player enters ytp-autohide -> MutationObserver sets clearance to 0px
+      player.classList.add('ytp-autohide');
+      await flushMicrotasks();
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('0px');
+
+      // Player shows fullscreen taller bar (Delhi/big mode 76px) -> clearance tracks 86px
+      barTop = 424;
+      barHeight = 76;
+      player.classList.remove('ytp-autohide');
+      await flushMicrotasks();
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('86px');
+
+      // Dragging suspends bar dodge so user can drop overlay down near bottom, then restores on pointerup
+      const moveHandle = container.querySelector('.yousub-handle-move');
+      attachPointerCaptureStubs(moveHandle);
+      firePointer(moveHandle, 'pointerdown', { clientX: 350, clientY: 400, pointerId: 3 });
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('0px');
+      firePointer(moveHandle, 'pointerup', { clientX: 350, clientY: 460, pointerId: 3 });
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('86px');
+    });
+
+    test('clamps edge horizontal center dynamically as cues expand and shrink around centerXPct', async () => {
+      chrome.storage.local.store = {
+        yousub_overlay_layout: {
+          regular: {
+            customMode: true,
+            centerXPct: 12,
+            bottomPct: 10,
+            maxWidthPct: 60,
+            minHeightPx: null,
+          },
+        },
+      };
+      const player = document.getElementById('movie_player');
+      setupPlayerMetrics(player, { left: 0, top: 0, width: 1000, height: 500 });
+
+      Overlay.show();
+      const container = document.getElementById('yousub-overlay');
+      setupContainerMetrics(container, { width: 100, height: 40 });
+      await flushMicrotasks();
+
+      // Short cue (halfW = 50px <= 120px) stays at user's preferred 12%
+      expect(container.style.left).toBe('12%');
+      expect(container.style.getPropertyValue('--yousub-max-bottom')).toBe('460px');
+
+      // Long cue widens box to 500px (halfW = 250px > 120px) -> clamped to 25% so left >= 0
+      setupContainerMetrics(container, { width: 500, height: 110 });
+      Overlay.renderSubtitles('Longer translated line', 'Original', true);
+      expect(container.style.left).toBe('25%');
+      expect(container.style.getPropertyValue('--yousub-max-bottom')).toBe('390px');
+
+      // Subsequent short cue returns smoothly to user's preferred 12%
+      setupContainerMetrics(container, { width: 80, height: 40 });
+      Overlay.renderSubtitles('OK', '', false);
+      expect(container.style.left).toBe('12%');
+    });
+
+    test('finds m.youtube.com #player-container-id and measures visible .player-controls-bottom clearance (Phase 81)', async () => {
+      Overlay.destroy();
+      document.body.innerHTML = '';
+
+      const mobileContainer = document.createElement('div');
+      mobileContainer.id = 'player-container-id';
+      setupPlayerMetrics(mobileContainer, { left: 0, top: 0, width: 390, height: 220 });
+
+      const mobileControlOverlay = document.createElement('div');
+      mobileControlOverlay.id = 'player-control-overlay';
+      const bottomBar = document.createElement('div');
+      bottomBar.className = 'player-controls-bottom';
+      bottomBar.getBoundingClientRect = () => ({
+        left: 0,
+        top: 176,
+        width: 390,
+        height: 44,
+        right: 390,
+        bottom: 220,
+      });
+      mobileControlOverlay.appendChild(bottomBar);
+      mobileContainer.appendChild(mobileControlOverlay);
+      document.body.appendChild(mobileContainer);
+
+      Overlay.show();
+      await flushMicrotasks();
+
+      const container = document.getElementById('yousub-overlay');
+      expect(container).not.toBeNull();
+      expect(container.parentElement).toBe(mobileContainer);
+      // 220 - 176 + 10 = 54px
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('54px');
+
+      // When #player-control-overlay hides controls (aria-hidden="true"), clearance drops to 0px
+      mobileControlOverlay.setAttribute('aria-hidden', 'true');
+      mobileContainer.classList.add('ytm-trigger-observer');
+      await flushMicrotasks();
+      expect(container.style.getPropertyValue('--yousub-bar-clearance')).toBe('0px');
+    });
+
+    test('showStatus queues pending toast when player container is not mounted yet and replays once mounted (Phase 84)', () => {
+      jest.useFakeTimers();
+      Overlay.destroy();
+      document.body.innerHTML = '';
+
+      // Calling showStatus before #movie_player exists queues cleanly without throwing
+      Overlay.showStatus('⏱ Resumed at 10:00', 'info', 4000, { id: 'playback-resume' });
+      expect(document.getElementById('yousub-overlay')).toBeNull();
+
+      // Mount player and advance 500ms retry timer -> queued toast renders automatically
+      createPlayer();
+      jest.advanceTimersByTime(500);
+      const status = document.querySelector('[data-status-id="playback-resume"]');
+      expect(status).not.toBeNull();
+      expect(status.textContent).toContain('Resumed at 10:00');
+      jest.useRealTimers();
     });
   });
 });

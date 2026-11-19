@@ -48,6 +48,7 @@ describe('main-world-fetcher IIFE (T11)', () => {
 
   beforeEach(() => {
     lastXhr = null;
+    delete window.__yousubMainFetcherReady;
     global.XMLHttpRequest = MockXHR;
     postSpy = jest.spyOn(window, 'postMessage').mockImplementation(() => {});
   });
@@ -55,6 +56,7 @@ describe('main-world-fetcher IIFE (T11)', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+    delete window.__yousubMainFetcherReady;
     global.XMLHttpRequest = origXHR;
   });
 
@@ -163,5 +165,14 @@ describe('main-world-fetcher IIFE (T11)', () => {
         error: 'Safety timeout (20s)',
       },
     ]);
+  });
+
+  test('guards against duplicate listener registration on repeated execution', async () => {
+    await loadFetcher();
+    expect(window.__yousubMainFetcherReady).toBe(true);
+    const spy = jest.spyOn(window, 'addEventListener');
+    jest.resetModules();
+    await import('../../src/content/main-world-fetcher.js');
+    expect(spy).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,17 @@
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
+      "js": [
+        "src/content/main-world-extractor.js",
+        "src/content/main-world-fetcher.js",
+        "src/content/main-world-translator.js",
+        "src/content/main-world-resume.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
       "js": ["src/content/loader.js"],
       "css": ["src/content/overlay.css"],
       "run_at": "document_idle"
@@ -57,18 +68,20 @@
         "src/shared/logger.js",
         "src/shared/trusted-types.js",
         "src/shared/providers-registry.js",
+        "src/shared/pipeline-telemetry.js",
+        "src/shared/playback-resume-store.js",
         "src/shared/utils.js",
         "src/content/page-detector.js",
         "src/content/video-binder.js",
         "src/content/subtitle-extractor.js",
         "src/content/subtitle-parser.js",
+        "src/content/subtitle-coalescer.js",
         "src/content/overlay.js",
         "src/content/sync-engine.js",
+        "src/content/gemini-fallback-scheduler.js",
         "src/content/main.js",
-        "src/content/rough-translate-bridge.js",
-        "src/content/main-world-extractor.js",
-        "src/content/main-world-fetcher.js",
-        "src/content/main-world-translator.js"
+        "src/content/playback-resume.js",
+        "src/content/rough-translate-bridge.js"
       ],
       "matches": ["*://*.youtube.com/*"]
     }
@@ -80,6 +93,9 @@
       "data_collection_permissions": {
         "required": ["websiteContent"]
       }
+    },
+    "gecko_android": {
+      "strict_min_version": "128.0"
     }
   }
 }

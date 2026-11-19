@@ -3,6 +3,20 @@ import { devLog } from '../shared/constants.js';
 let currentVideoId = null;
 let onEnterCallback = null;
 let onLeaveCallback = null;
+let isInitialized = false;
+let urlPollInterval = null;
+let lastCheckedHref = '';
+
+function parseVideoIdFromLocation() {
+  const pathname = window.location.pathname;
+  if (pathname === '/watch') {
+    return new URLSearchParams(window.location.search).get('v') || null;
+  }
+  if (pathname.startsWith('/shorts/')) {
+    return pathname.split('/')[2] || null;
+  }
+  return null;
+}
 
 /**
  * Check the current page state and fire appropriate callbacks.
@@ -12,14 +26,7 @@ function checkPage() {
   const pathname = window.location.pathname;
   const isWatchPage = pathname === '/watch';
   const isShortsPage = pathname.startsWith('/shorts/');
-
-  let videoId = null;
-  if (isWatchPage) {
-    videoId = new URLSearchParams(window.location.search).get('v');
-  } else if (isShortsPage) {
-    const parts = pathname.split('/');
-    videoId = parts[2];
-  }
+  const videoId = parseVideoIdFromLocation();
 
   if ((isWatchPage || isShortsPage) && videoId && videoId !== currentVideoId) {
     if (currentVideoId) {
@@ -38,6 +45,11 @@ function checkPage() {
   }
 }
 
+function handlePotentialNavigation() {
+  lastCheckedHref = window.location.href;
+  checkPage();
+}
+
 export const PageDetector = {
   /**
    * Initialize the page detector.
@@ -45,13 +57,26 @@ export const PageDetector = {
    * @param {function()} onLeave - Called when a watch page is left.
    */
   init: function (onEnter, onLeave) {
+    this.destroy();
+    isInitialized = true;
     onEnterCallback = onEnter;
     onLeaveCallback = onLeave;
+    lastCheckedHref = window.location.href;
 
     devLog('[YouSub] PageDetector: Initializing and checking current page...');
 
-    // Add listener for future navigations
-    document.addEventListener('yt-navigate-finish', checkPage);
+    // Desktop Polymer & Mobile Web (m.youtube.com) SPA navigation hooks
+    document.addEventListener('yt-navigate-finish', handlePotentialNavigation);
+    document.addEventListener('yt-page-data-updated', handlePotentialNavigation);
+    window.addEventListener('popstate', handlePotentialNavigation);
+    window.addEventListener('state-navigateend', handlePotentialNavigation);
+
+    // Lightweight URL poller as reliable backstop for History pushState on m.youtube.com
+    urlPollInterval = setInterval(function () {
+      if (window.location.href !== lastCheckedHref) {
+        handlePotentialNavigation();
+      }
+    }, 1000);
 
     // Run immediate check for the current page
     checkPage();
@@ -63,7 +88,16 @@ export const PageDetector = {
    * Clean up event listeners and reset state.
    */
   destroy: function () {
-    document.removeEventListener('yt-navigate-finish', checkPage);
+    document.removeEventListener('yt-navigate-finish', handlePotentialNavigation);
+    document.removeEventListener('yt-page-data-updated', handlePotentialNavigation);
+    window.removeEventListener('popstate', handlePotentialNavigation);
+    window.removeEventListener('state-navigateend', handlePotentialNavigation);
+    if (urlPollInterval) {
+      clearInterval(urlPollInterval);
+      urlPollInterval = null;
+    }
+    lastCheckedHref = '';
+    isInitialized = false;
     currentVideoId = null;
     onEnterCallback = null;
     onLeaveCallback = null;
@@ -71,11 +105,12 @@ export const PageDetector = {
   },
 
   /**
-   * Get the currently tracked video ID.
+   * Get the currently tracked video ID, falling back to the current URL when active.
    * @returns {string|null}
    */
   getCurrentVideoId: function () {
-    return currentVideoId;
+    if (currentVideoId) return currentVideoId;
+    return isInitialized ? parseVideoIdFromLocation() : null;
   },
 };
 

@@ -13,14 +13,12 @@
       // but the loader only needs chrome.runtime.getURL.
     }
 
-    const mainModuleUrl = chrome.runtime.getURL('src/content/main.js') + '?v=' + Date.now();
-    if (typeof YouSub === 'undefined' || !YouSub.Constants || !YouSub.Constants.IS_PRODUCTION)
-      console.log('[YouSub] Loader: Loading main module (cache-busted)...', mainModuleUrl);
-
+    const mainModuleUrl = chrome.runtime.getURL('src/content/main.js');
     await import(mainModuleUrl);
 
-    if (typeof YouSub === 'undefined' || !YouSub.Constants || !YouSub.Constants.IS_PRODUCTION)
+    if (typeof YouSub === 'undefined' || !YouSub.Constants || !YouSub.Constants.IS_PRODUCTION) {
       console.log('[YouSub] Loader: Main module loaded successfully.');
+    }
   } catch (err) {
     console.error('[YouSub] Loader: Failed to load modules.', err);
   }

@@ -115,4 +115,50 @@ describe('SyncEngine Module', () => {
     SyncEngine.stop();
     expect(mockVideo.removeEventListener).toHaveBeenCalled();
   });
+
+  test('startDynamic and mergeBatchEntries handle out-of-order dynamic batches and render at playhead', async () => {
+    mockVideo.currentTime = 1252; // 1,252,000 ms (Batch 6)
+    SyncEngine.startDynamic(mockVideo);
+    await flushMicrotasks();
+
+    expect(SyncEngine.isActive()).toBe(true);
+    expect(mockOverlay.renderSubtitles).not.toHaveBeenCalled();
+
+    // Out-of-order insertion: Batch 6 arrives first, then Batch 1
+    SyncEngine.mergeBatchEntries([
+      {
+        startMs: 1250000,
+        endMs: 1255000,
+        original: 'Six',
+        text: 'Sau',
+        isAiGenerated: true,
+      },
+    ]);
+    expect(SyncEngine.getTranslatedCount()).toBe(1);
+    expect(mockOverlay.renderSubtitles).toHaveBeenCalledWith('Sau', 'Six', false, true);
+
+    // Earlier batch arrives with overlapping endMs -> sorted & overlap resolved cleanly
+    SyncEngine.mergeBatchEntries([
+      {
+        startMs: 1000,
+        endMs: 4000,
+        original: 'One',
+        text: 'Mot',
+        isAiGenerated: true,
+      },
+      {
+        startMs: 3500,
+        endMs: 6000,
+        original: 'Two',
+        text: 'Hai',
+        isAiGenerated: true,
+      },
+    ]);
+    expect(SyncEngine.getTranslatedCount()).toBe(3);
+
+    const onTimeUpdate = mockVideo.addEventListener.mock.calls[0][1];
+    mockVideo.currentTime = 2.0;
+    onTimeUpdate();
+    expect(mockOverlay.renderSubtitles).toHaveBeenLastCalledWith('Mot', 'One', false, true);
+  });
 });

@@ -1,6 +1,6 @@
 import { devLog, devWarn } from '../shared/constants.js';
 
-let fetcherInjected = false;
+let fetchListenerRegistered = false;
 const pendingFetches = {}; // requestId → { resolve, reject }
 let fetchIdCounter = 0;
 
@@ -29,19 +29,12 @@ function decodeHtml(html) {
 }
 
 /**
- * Inject the main-world-fetcher.js script into the page if not already done.
- * This script runs in the YouTube page context (same-origin, with cookies).
+ * Register the postMessage listener for responses from the declarative MAIN-world
+ * fetcher script (main-world-fetcher.js registered via manifest world:"MAIN").
  */
-function ensureFetcherInjected() {
-  if (fetcherInjected) return;
-  fetcherInjected = true;
-
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('src/content/main-world-fetcher.js');
-  script.onload = function () {
-    this.remove();
-  };
-  (document.head || document.documentElement).appendChild(script);
+function ensureFetchListener() {
+  if (fetchListenerRegistered) return;
+  fetchListenerRegistered = true;
 
   // Listen for fetch responses from main world
   window.addEventListener('message', function (event) {
@@ -61,7 +54,7 @@ function ensureFetcherInjected() {
     }
   });
 
-  devLog('[YouSub] SubtitleParser: Main-world fetcher injected.');
+  devLog('[YouSub] SubtitleParser: Main-world fetch bridge ready.');
 }
 
 /**
@@ -69,7 +62,7 @@ function ensureFetcherInjected() {
  * Falls back to background service worker if main world fetch fails.
  */
 function fetchText(url) {
-  ensureFetcherInjected();
+  ensureFetchListener();
 
   return new Promise(function (resolve, reject) {
     const requestId = 'yousub_fetch_' + ++fetchIdCounter;
@@ -91,16 +84,14 @@ function fetchText(url) {
       },
     };
 
-    setTimeout(function () {
-      window.postMessage(
-        {
-          type: 'YOUSUB_FETCH_REQUEST',
-          requestId: requestId,
-          url: url,
-        },
-        '*'
-      );
-    }, 50);
+    window.postMessage(
+      {
+        type: 'YOUSUB_FETCH_REQUEST',
+        requestId: requestId,
+        url: url,
+      },
+      '*'
+    );
   });
 }
 
@@ -196,7 +187,7 @@ export const SubtitleParser = {
         devWarn('[YouSub] SubtitleParser: Background fallback failed:', e.message);
       }
 
-      console.error('[YouSub] SubtitleParser: All fetch attempts failed.');
+      devWarn('[YouSub] SubtitleParser: All fetch attempts failed.');
       return [];
     } catch (error) {
       console.error('[YouSub] SubtitleParser Error:', error);
@@ -262,6 +253,128 @@ export const SubtitleParser = {
       console.error('[YouSub] SubtitleParser: Failed to parse XML', e);
     }
     return sortTracks(output);
+  },
+
+  /**
+   * Parse an SRT or WebVTT timestamp ("HH:MM:SS,mmm", "HH:MM:SS.mmm", or "MM:SS.mmm")
+   * into integer milliseconds. Returns NaN when malformed.
+   */
+  parseTimestampMs: function (tsString) {
+    if (!tsString || typeof tsString !== 'string') return NaN;
+    const clean = tsString.trim();
+    const match = clean.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?$/);
+    if (!match) return NaN;
+
+    const hours = match[1] ? parseInt(match[1], 10) : 0;
+    const minutes = parseInt(match[2], 10);
+    const seconds = parseInt(match[3], 10);
+    const ms = match[4] ? parseInt(match[4].padEnd(3, '0'), 10) : 0;
+
+    if (minutes >= 60 || seconds >= 60) return NaN;
+    return (hours * 3600 + minutes * 60 + seconds) * 1000 + ms;
+  },
+
+  /**
+   * Strip VTT/SRT/ASS inline styling tags and decode entities into clean cue text.
+   */
+  cleanCueText: function (rawLines) {
+    const joined = rawLines.join(' ').replace(/\{\\[^}]*\}/g, '');
+    const stripped = joined
+      .replace(/<\/?(?:i|b|u|s|font|c|v|ruby|rt|lang)(?:[.\s][^>]*)?>/gi, '')
+      .replace(/<\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d{1,3})?>/g, '');
+    return decodeHtml(stripped)
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  /**
+   * Parse SubRip (.srt) subtitle text into [{ startMs, endMs, text }].
+   */
+  parseSrt: function (srtText) {
+    if (!srtText || typeof srtText !== 'string') return [];
+    const normalized = srtText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    const blocks = normalized.split(/\n\s*\n/);
+    const output = [];
+
+    for (const block of blocks) {
+      const lines = block
+        .split('\n')
+        .map((l) => l.trimEnd())
+        .filter((l) => l.trim().length > 0);
+      if (lines.length < 2) continue;
+
+      let timingIdx = 0;
+      if (/^\d+$/.test(lines[0].trim())) {
+        timingIdx = 1;
+      }
+      if (timingIdx >= lines.length) continue;
+
+      const timingMatch = lines[timingIdx].trim().match(/^([^\s]+)\s+-->\s+([^\s]+)(?:\s+.*)?$/);
+      if (!timingMatch) continue;
+
+      const startMs = this.parseTimestampMs(timingMatch[1]);
+      const endMs = this.parseTimestampMs(timingMatch[2]);
+      const text = this.cleanCueText(lines.slice(timingIdx + 1));
+
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs && text.length > 0) {
+        output.push({ startMs, endMs, text });
+      }
+    }
+
+    return sortTracks(output);
+  },
+
+  /**
+   * Parse WebVTT (.vtt) subtitle text into [{ startMs, endMs, text }].
+   */
+  parseVtt: function (vttText) {
+    if (!vttText || typeof vttText !== 'string') return [];
+    const normalized = vttText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    const blocks = normalized.split(/\n\s*\n/);
+    const output = [];
+
+    for (let b = 0; b < blocks.length; b++) {
+      const rawBlock = blocks[b].trim();
+      if (!rawBlock) continue;
+      if (b === 0 && /^WEBVTT(?:\s|$|-)/i.test(rawBlock)) continue;
+      if (/^(?:NOTE|STYLE|REGION)(?:\s|$)/i.test(rawBlock)) continue;
+
+      const lines = rawBlock.split('\n').filter((l) => l.trim().length > 0);
+      if (lines.length < 2) continue;
+
+      const arrowIdx = lines.findIndex((l) => l.includes('-->'));
+      if (arrowIdx === -1 || arrowIdx + 1 >= lines.length) continue;
+
+      const timingMatch = lines[arrowIdx].trim().match(/^([^\s]+)\s+-->\s+([^\s]+)(?:\s+.*)?$/);
+      if (!timingMatch) continue;
+
+      const startMs = this.parseTimestampMs(timingMatch[1]);
+      const endMs = this.parseTimestampMs(timingMatch[2]);
+      const text = this.cleanCueText(lines.slice(arrowIdx + 1));
+
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs && text.length > 0) {
+        output.push({ startMs, endMs, text });
+      }
+    }
+
+    return sortTracks(output);
+  },
+
+  /**
+   * Auto-detect .vtt vs .srt subtitle content and parse into [{ startMs, endMs, text }].
+   */
+  parseSubtitleFile: function (content, fileName = '') {
+    if (!content || typeof content !== 'string') return [];
+    const trimmed = content.replace(/^\uFEFF/, '').trimStart();
+    const isVtt = /^WEBVTT(?:\s|$|-)/i.test(trimmed) || /\.vtt$/i.test(fileName);
+
+    if (isVtt) {
+      const vttEntries = this.parseVtt(content);
+      return vttEntries.length > 0 ? vttEntries : this.parseSrt(content);
+    }
+    const srtEntries = this.parseSrt(content);
+    return srtEntries.length > 0 ? srtEntries : this.parseVtt(content);
   },
 };
 

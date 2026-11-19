@@ -12,6 +12,9 @@
   'use strict';
 
   try {
+    if (window.__yousubMainFetcherReady) return;
+    window.__yousubMainFetcherReady = true;
+
     // Phase 50.6: Trusted Types Bypass
     if (window.trustedTypes && window.trustedTypes.createPolicy) {
       try {

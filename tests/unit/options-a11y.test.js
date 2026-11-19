@@ -22,7 +22,7 @@ describe('options.html accessibility wiring', () => {
 
   test('each tab button has role="tab" + aria-controls pointing at its panel', () => {
     const tabs = doc.querySelectorAll('.tab-btn');
-    expect(tabs.length).toBe(3);
+    expect(tabs.length).toBe(4);
     tabs.forEach((tab) => {
       expect(tab.getAttribute('role')).toBe('tab');
       const target = tab.getAttribute('data-target');
@@ -42,7 +42,7 @@ describe('options.html accessibility wiring', () => {
 
   test('each tab panel has role="tabpanel" + aria-labelledby pointing at its tab', () => {
     const panels = doc.querySelectorAll('.tab-pane');
-    expect(panels.length).toBe(3);
+    expect(panels.length).toBe(4);
     panels.forEach((panel) => {
       const id = panel.getAttribute('id');
       expect(panel.getAttribute('role')).toBe('tabpanel');

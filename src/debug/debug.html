@@ -8,13 +8,15 @@
   <body>
     <div class="container">
       <header>
-        <h1>Batch Debugger</h1>
+        <h1>YouSub Pipeline &amp; Batch Inspector</h1>
         <div class="header-actions">
           <button id="copy-all-btn" class="copy-all-btn">Copy All</button>
           <button id="clear-debug-btn" class="danger-btn">Clear Logs</button>
           <button id="refresh-debug-btn">Refresh</button>
         </div>
       </header>
+
+      <section id="pipeline-inspector" class="pipeline-inspector" aria-live="polite"></section>
 
       <div id="debug-list" class="debug-list">
         <div class="empty-state">
@@ -24,6 +26,6 @@
     </div>
 
     <script src="../shared/libs/browser-polyfill.js"></script>
-    <script src="debug.js"></script>
+    <script src="debug.js" type="module"></script>
   </body>
 </html>

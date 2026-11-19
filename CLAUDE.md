@@ -6,9 +6,9 @@
 
 ## Project Overview
 
-**YouSub** — a shipped Manifest V3 browser extension (v0.2.2, Chrome Web Store) that intercepts YouTube's native transcripts, translates them with the user's own LLM API keys (BYOK, multi-provider), and renders a synced, customizable subtitle overlay (including a dual original + translated mode).
+**YouSub** — a shipped Manifest V3 browser extension (**live `v0.2.5`** on Firefox Add-ons `addons.mozilla.org/addon/yousub/` for Desktop + Android; live `v0.2.0` / **`v0.2.5` Pending review** on Chrome Web Store `jlpgmjpekhnlncfdkmddoienleiljehk`) that intercepts YouTube's native transcripts, translates them with the user's own LLM API keys (BYOK, multi-provider), renders a synced customizable dual subtitle overlay, and provides cross-platform Audio & Long-Video Auto-Resume for Desktop and Firefox Mobile (`m.youtube.com`).
 
-**Tech Stack**: Manifest V3, vanilla JavaScript (ES2020+ ESM), **no build step**; background service worker (`type: module`); Jest + jsdom tests (`npm run test:log` writes machine-readable `logs/jest-latest.json` + `logs/jest-latest.log`); ESLint 9 + Prettier + husky/lint-staged. See `YOUSUB_PROJECT_SPEC.md` for the full architecture and `README.md` for a quickstart. **Status**: Post-M7 Maintenance & Tech-Debt Hardening (local v0.2.4 built; awaiting Chrome Web Store upload).
+**Tech Stack**: Manifest V3, vanilla JavaScript (ES2020+ ESM), **no build step**; background service worker (`type: module`); Jest + jsdom tests (`npm run test:log` writes machine-readable `logs/jest-latest.json` + `logs/jest-latest.log`); ESLint 9 + Prettier + husky/lint-staged; automated Store publishing (`scripts/publish.js`). See `YOUSUB_PROJECT_SPEC.md` for the full architecture and `README.md` for a quickstart. **Status**: Milestone 8 COMPLETE, Firefox AMO `v0.2.5` LIVE, Chrome Web Store `v0.2.5` Pending Review (2026-11-19; **743/743** tests across **48 suites**, ESLint 0, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`).
 
 ## MANDATORY WORKFLOW — User-Driven Development
 
@@ -191,7 +191,7 @@ This check is mandatory for you to understand the project context, grasp what ha
 
 ## Rule 13: Single Canonical AI-Rules File + Maintenance Mode
 
-`CLAUDE.md` is the **single canonical** source of AI working rules (the former `GEMINI.md` mirror was retired in Phase 72). Post-v0.2.2 the project is in **maintenance mode**: the strict "ONE PROMPT = ONE PHASE" model still applies to roadmap phases, but small one-off hotfixes outside the roadmap may be handled directly and logged as `[Hotfix] <issue>: <description>` in `CHANGELOG.md`.
+`CLAUDE.md` is the **single canonical** source of AI working rules (the former `GEMINI.md` mirror was retired in Phase 72). Post-Milestone-8 the project is in **maintenance mode**: the strict "ONE PROMPT = ONE PHASE" model still applies to roadmap phases, but small one-off hotfixes outside the roadmap may be handled directly and logged as `[Hotfix] <issue>: <description>` in `CHANGELOG.md`.
 
 ---
 

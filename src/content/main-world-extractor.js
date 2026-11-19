@@ -1,21 +1,19 @@
 /**
- * main-world-extractor.js — Runs in the MAIN world (YouTube page context)
+ * main-world-extractor.js — Runs in the MAIN world (YouTube page context via
+ * manifest content_scripts world: "MAIN").
  *
- * PRIMARY STRATEGY: Open the Transcript panel, scrape subtitle data from DOM.
- * This bypasses all pot/token/auth issues because YouTube handles auth internally.
- *
- * Flow:
- *  1. Find "Show transcript" button
- *  2. Click it to open the transcript panel
- *  3. Wait for transcript segments to render
- *  4. Parse timestamp + text from each segment
- *  5. Close the panel
- *  6. Send parsed entries to content script
+ * Strategy order:
+ *  1. Reuse already-open transcript segments if the user opened the panel manually
+ *  2. Silent Innertube XHR (/youtubei/v1/get_panel, /next, /get_transcript) — zero UI panel flash
+ *  3. Fallback: click "Show transcript" in Watch DOM, parse segments, and auto-close the panel
  */
 (function () {
   'use strict';
 
   try {
+    if (window.__yousubMainExtractorReady) return;
+    window.__yousubMainExtractorReady = true;
+
     // -------------------------------------------------------------------------
     // Phase 50.6: Trusted Types Bypass & Safety
     // -------------------------------------------------------------------------
@@ -43,31 +41,26 @@
       if (!_isProd) console.warn.apply(console, arguments);
     }
 
-    var videoId = new URLSearchParams(window.location.search).get('v');
-    if (!videoId && window.location.pathname.startsWith('/shorts/')) {
-      videoId = window.location.pathname.split('/')[2];
+    function parseCurrentVideoId() {
+      var id = new URLSearchParams(window.location.search).get('v');
+      if (!id && window.location.pathname.startsWith('/shorts/')) {
+        id = window.location.pathname.split('/')[2];
+      }
+      return id || null;
     }
-
-    if (!videoId) {
-      sendResult(null, null, 'No video ID found in URL/Path');
-      return;
-    }
-
-    _devLog('[YouSub] MainWorldExtractor: Video ID:', videoId);
 
     // -------------------------------------------------------------------------
     // Utility: Send result back to content script
     // -------------------------------------------------------------------------
-    function sendResult(tracks, parsedEntries, error) {
-      window.postMessage(
-        {
-          type: 'YOUSUB_CAPTION_TRACKS',
-          tracks: tracks,
-          parsedEntries: parsedEntries,
-          error: error,
-        },
-        '*'
-      );
+    function sendResult(tracks, parsedEntries, error, requestId) {
+      var payload = {
+        type: 'YOUSUB_CAPTION_TRACKS',
+        tracks: tracks,
+        parsedEntries: parsedEntries,
+        error: error,
+      };
+      if (requestId) payload.requestId = requestId;
+      window.postMessage(payload, '*');
     }
 
     // -------------------------------------------------------------------------
@@ -83,7 +76,10 @@
     // Utility: Parse timestamp "M:SS" or "H:MM:SS" to milliseconds
     // -------------------------------------------------------------------------
     function parseTimestamp(str) {
-      var parts = str.trim().split(':').map(Number);
+      if (typeof str !== 'string') return NaN;
+      var clean = str.trim();
+      if (!/^\d+(?::\d+){0,2}(?:\.\d+)?$/.test(clean)) return NaN;
+      var parts = clean.split(':').map(Number);
       var seconds = 0;
       if (parts.length === 3) {
         seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -101,10 +97,50 @@
           document.getElementById('shorts-player') ||
           document.querySelector('ytd-reel-video-renderer[is-active] .html5-video-player') ||
           document.querySelector('ytd-shorts .html5-video-player') ||
-          document.getElementById('movie_player')
+          document.getElementById('movie_player') ||
+          document.querySelector('.html5-video-player')
         );
       }
-      return document.getElementById('movie_player');
+      return (
+        document.getElementById('movie_player') ||
+        document.getElementById('player-container-id') ||
+        document.querySelector('.html5-video-player')
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Utility: JSDOM-safe element visibility check (avoids hidden stale SPA DOM)
+    // -------------------------------------------------------------------------
+    function isElementUsable(el) {
+      if (!el) return false;
+      if (el.hasAttribute && el.hasAttribute('hidden')) return false;
+      if (el.closest) {
+        if (
+          el.closest('[hidden]') ||
+          el.closest('[visibility="ENGAGEMENT_PANEL_VISIBILITY_HIDDEN"]') ||
+          el.closest('[visibility="ENGAGEMENT_PANEL_VISIBILITY_COLLAPSED"]') ||
+          el.closest('[visibility="ENGAGEMENT_PANEL_VISIBILITY_MINIMIZED"]')
+        ) {
+          return false;
+        }
+        var panel = el.closest('ytd-engagement-panel-section-list-renderer');
+        if (panel && panel.hasAttribute && panel.hasAttribute('visibility')) {
+          if (panel.getAttribute('visibility') !== 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED') {
+            return false;
+          }
+        }
+      }
+      if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return false;
+      if (el.style && el.style.display === 'none') return false;
+      return true;
+    }
+
+    function findFirstUsable(nodeList) {
+      if (!nodeList) return null;
+      for (var i = 0; i < nodeList.length; i++) {
+        if (isElementUsable(nodeList[i])) return nodeList[i];
+      }
+      return null;
     }
 
     // -------------------------------------------------------------------------
@@ -118,8 +154,8 @@
         var descSection = document.querySelector(
           'ytd-video-description-transcript-section-renderer'
         );
-        if (descSection) {
-          var btn = descSection.querySelector('button');
+        if (descSection && isElementUsable(descSection)) {
+          var btn = findFirstUsable(descSection.querySelectorAll('button'));
           if (btn) {
             _devLog('[YouSub] MainWorldExtractor: Found transcript button in description section.');
             return btn;
@@ -131,8 +167,10 @@
       // selectors above already cover non-English videos language-agnostically;
       // this adds EN (case-insensitive substring) + JA aria-label matches so a
       // Japanese-UI YouTube still hits the fast DOM-scrape path.
-      var ariaBtn = document.querySelector(
-        'button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
+      var ariaBtn = findFirstUsable(
+        document.querySelectorAll(
+          'button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
+        )
       );
       if (ariaBtn) {
         _devLog('[YouSub] MainWorldExtractor: Found transcript button by aria-label.');
@@ -144,9 +182,11 @@
         var shortsDesc = document.querySelector(
           'ytd-reel-video-renderer[is-active] ytd-structured-description-content-renderer, ytd-shorts ytd-structured-description-content-renderer, ytd-reel-video-renderer ytd-structured-description-content-renderer'
         );
-        if (shortsDesc) {
-          var shortsBtn = shortsDesc.querySelector(
-            'ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
+        if (shortsDesc && isElementUsable(shortsDesc)) {
+          var shortsBtn = findFirstUsable(
+            shortsDesc.querySelectorAll(
+              'ytd-video-description-transcript-section-renderer button, button[aria-label*="transcript" i], button[aria-label*="文字起こし"]'
+            )
           );
           if (shortsBtn) {
             _devLog('[YouSub] MainWorldExtractor: Found transcript button in Shorts description.');
@@ -169,6 +209,7 @@
         'ytd-button-renderer, tp-yt-paper-button, button, ytd-menu-service-item-renderer'
       );
       for (var i = 0; i < allButtons.length; i++) {
+        if (!isElementUsable(allButtons[i])) continue;
         var text = allButtons[i].textContent.trim().toLowerCase();
         if (transcriptLabels.indexOf(text) !== -1) {
           _devLog('[YouSub] MainWorldExtractor: Found transcript button by text search.');
@@ -233,6 +274,30 @@
     // -------------------------------------------------------------------------
     // Step 2: Wait for transcript segments to appear in DOM
     // -------------------------------------------------------------------------
+    var TRANSCRIPT_SEGMENT_SELECTORS = [
+      'transcript-segment-view-model', // New YouTube layout
+      'ytd-transcript-segment-renderer', // Old layout
+      'ytd-transcript-segment-list-renderer ytd-transcript-segment-renderer',
+      '[target-id="PAmodern_transcript_view"] transcript-segment-view-model',
+      '[target-id="engagement-panel-searchable-transcript"] ytd-transcript-segment-renderer',
+      'ytd-transcript-renderer [class*="segment"]',
+      'ytd-engagement-panel-section-list-renderer[visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"] [class*="segment"]',
+    ];
+
+    function findExistingSegments() {
+      for (var s = 0; s < TRANSCRIPT_SEGMENT_SELECTORS.length; s++) {
+        var rawSegments = document.querySelectorAll(TRANSCRIPT_SEGMENT_SELECTORS[s]);
+        var segments = [];
+        for (var n = 0; n < rawSegments.length; n++) {
+          if (isElementUsable(rawSegments[n])) segments.push(rawSegments[n]);
+        }
+        if (segments.length > 0) {
+          return { segments: segments, selector: TRANSCRIPT_SEGMENT_SELECTORS[s] };
+        }
+      }
+      return null;
+    }
+
     function waitForSegments(timeoutMs) {
       return new Promise(function (resolve) {
         var elapsed = 0;
@@ -240,29 +305,16 @@
         var loggedOnce = false;
 
         function check() {
-          // Try multiple selectors for transcript segments
-          var selectors = [
-            'transcript-segment-view-model', // New YouTube layout
-            'ytd-transcript-segment-renderer', // Old layout
-            'ytd-transcript-segment-list-renderer ytd-transcript-segment-renderer',
-            '[target-id="PAmodern_transcript_view"] transcript-segment-view-model',
-            '[target-id="engagement-panel-searchable-transcript"] ytd-transcript-segment-renderer',
-            'ytd-transcript-renderer [class*="segment"]',
-            'ytd-engagement-panel-section-list-renderer[visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"] [class*="segment"]',
-          ];
-
-          for (var s = 0; s < selectors.length; s++) {
-            var segments = document.querySelectorAll(selectors[s]);
-            if (segments.length > 0) {
-              _devLog(
-                '[YouSub] MainWorldExtractor: Found',
-                segments.length,
-                'segments with selector:',
-                selectors[s]
-              );
-              resolve(segments);
-              return;
-            }
+          var hit = findExistingSegments();
+          if (hit) {
+            _devLog(
+              '[YouSub] MainWorldExtractor: Found',
+              hit.segments.length,
+              'segments with selector:',
+              hit.selector
+            );
+            resolve(hit.segments);
+            return;
           }
 
           // Diagnostic: log what's in the transcript panel (once)
@@ -422,7 +474,7 @@
     // -------------------------------------------------------------------------
     // Fallback: Extract track info and video metadata from page
     // -------------------------------------------------------------------------
-    function findActiveReelPlayerResponse() {
+    function findActiveReelPlayerResponse(targetVideoId) {
       try {
         var activeReel = document.querySelector('ytd-reel-video-renderer[is-active]');
         if (activeReel && activeReel.data && activeReel.data.playerResponse) {
@@ -431,7 +483,7 @@
         var reels = document.querySelectorAll('ytd-reel-video-renderer');
         for (var i = 0; i < reels.length; i++) {
           var pr = reels[i] && reels[i].data && reels[i].data.playerResponse;
-          if (pr && pr.videoDetails && pr.videoDetails.videoId === videoId) {
+          if (pr && pr.videoDetails && pr.videoDetails.videoId === targetVideoId) {
             return pr;
           }
         }
@@ -442,7 +494,7 @@
       return null;
     }
 
-    function extractVideoMetadata() {
+    function extractVideoMetadata(targetVideoId) {
       var isShorts = window.location.pathname.startsWith('/shorts/');
       var data = {
         tracks: null,
@@ -459,7 +511,7 @@
         } catch {}
       }
       // 2. Try Shorts reel renderer data BEFORE window.ytInitialPlayerResponse (which can be stale on Shorts swipe)
-      var reelResp = findActiveReelPlayerResponse();
+      var reelResp = findActiveReelPlayerResponse(targetVideoId);
       if (reelResp) sources.push(reelResp);
       // 3. Try window.ytInitialPlayerResponse (only if it matches current videoId or lacks videoDetails)
       if (window.ytInitialPlayerResponse) sources.push(window.ytInitialPlayerResponse);
@@ -470,7 +522,7 @@
         if (
           resp.videoDetails &&
           resp.videoDetails.videoId &&
-          resp.videoDetails.videoId !== videoId
+          resp.videoDetails.videoId !== targetVideoId
         ) {
           continue;
         }
@@ -540,10 +592,16 @@
           var queryParts = [];
           if (queryParams) queryParts.push(queryParams);
           if (apiKey) queryParts.push('key=' + encodeURIComponent(apiKey));
+          var origin =
+            window.location &&
+            window.location.origin &&
+            window.location.hostname &&
+            (window.location.hostname === 'youtube.com' ||
+              window.location.hostname.endsWith('.youtube.com'))
+              ? window.location.origin
+              : 'https://www.youtube.com';
           var url =
-            'https://www.youtube.com' +
-            endpointPath +
-            (queryParts.length > 0 ? '?' + queryParts.join('&') : '');
+            origin + endpointPath + (queryParts.length > 0 ? '?' + queryParts.join('&') : '');
 
           var body = JSON.stringify(payload);
           var xhr = new XMLHttpRequest();
@@ -718,9 +776,17 @@
           var vmText = normalizeSegmentText(
             vm.simpleText || extractRunsText(vm.snippet) || vm.text || ''
           );
-          var vmStart = vm.timestamp ? parseTimestamp(String(vm.timestamp)) : NaN;
+          var vmStart = NaN;
+          if (vm.startMs != null && vm.startMs !== '' && !isNaN(Number(vm.startMs))) {
+            vmStart = Number(vm.startMs);
+          } else {
+            var vmTsText =
+              typeof vm.timestamp === 'string' ? vm.timestamp : extractRunsText(vm.timestamp);
+            vmStart = vmTsText ? parseTimestamp(vmTsText) : NaN;
+          }
+          var vmEnd = vm.endMs != null && vm.endMs !== '' ? Number(vm.endMs) || 0 : 0;
           if (!isNaN(vmStart) && vmText) {
-            rawEntries.push({ startMs: vmStart, endMs: 0, text: vmText });
+            rawEntries.push({ startMs: vmStart, endMs: vmEnd, text: vmText });
           }
           return;
         }
@@ -743,6 +809,10 @@
       }
 
       walk(data);
+
+      rawEntries.sort(function (a, b) {
+        return a.startMs - b.startMs;
+      });
 
       for (var j = 0; j < rawEntries.length; j++) {
         if (!rawEntries[j].endMs || rawEntries[j].endMs <= rawEntries[j].startMs) {
@@ -782,6 +852,26 @@
       return null;
     }
 
+    function findGetTranscriptParamsInTree(node) {
+      if (!node || typeof node !== 'object') return null;
+      if (node.getTranscriptEndpoint && typeof node.getTranscriptEndpoint.params === 'string') {
+        return node.getTranscriptEndpoint.params;
+      }
+      if (Array.isArray(node)) {
+        for (var i = 0; i < node.length; i++) {
+          var found = findGetTranscriptParamsInTree(node[i]);
+          if (found) return found;
+        }
+      } else {
+        var keys = Object.keys(node);
+        for (var k = 0; k < keys.length; k++) {
+          var foundChild = findGetTranscriptParamsInTree(node[keys[k]]);
+          if (foundChild) return foundChild;
+        }
+      }
+      return null;
+    }
+
     async function fetchTranscriptViaGetPanel(vid) {
       var initialParams = buildTranscriptPanelParams(vid);
       var context = buildInnertubeContext();
@@ -799,7 +889,7 @@
       var entries = parseGetPanelResponse(panelRes && panelRes.data);
       if (entries.length > 0) return entries;
 
-      // Fallback if YouTube rotated panel params encoding: discover via /youtubei/v1/next
+      // Fallback if YouTube rotated panel params encoding or uses classic getTranscriptEndpoint: discover via /youtubei/v1/next
       var nextRes = await postInnertubeJson('/youtubei/v1/next', {
         context: context,
         videoId: vid,
@@ -816,17 +906,81 @@
           'prettyPrint=false'
         );
         entries = parseGetPanelResponse(retryRes && retryRes.data);
+        if (entries.length > 0) return entries;
+      }
+
+      var classicParams =
+        nextRes && nextRes.data ? findGetTranscriptParamsInTree(nextRes.data) : null;
+      if (classicParams) {
+        var transcriptRes = await postInnertubeJson('/youtubei/v1/get_transcript', {
+          context: context,
+          params: classicParams,
+        });
+        entries = parseGetPanelResponse(transcriptRes && transcriptRes.data);
       }
 
       return entries.length > 0 ? entries : null;
     }
 
+    function closeTranscriptPanel(shouldCollapseDescription) {
+      try {
+        var selectors = [
+          'ytd-engagement-panel-section-list-renderer[target-id="PAmodern_transcript_view"][visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"]',
+          'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"][visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"]',
+        ];
+        var panels = Array.from(document.querySelectorAll(selectors.join(', ')));
+        if (panels.length === 0) {
+          var expandedPanels = document.querySelectorAll(
+            'ytd-engagement-panel-section-list-renderer[visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"]'
+          );
+          for (var i = 0; i < expandedPanels.length; i++) {
+            if (
+              expandedPanels[i].querySelector(
+                'ytd-transcript-renderer, transcript-segment-view-model, ytd-transcript-segment-renderer'
+              )
+            ) {
+              panels.push(expandedPanels[i]);
+            }
+          }
+        }
+        for (var j = 0; j < panels.length; j++) {
+          var closeBtn = panels[j].querySelector(
+            '#visibility-button button, ytd-engagement-panel-title-header-renderer #visibility-button button, button[aria-label*="close" i], button[aria-label*="đóng" i], button[aria-label*="閉じる"]'
+          );
+          if (closeBtn && typeof closeBtn.click === 'function') {
+            closeBtn.click();
+          } else {
+            panels[j].setAttribute('visibility', 'ENGAGEMENT_PANEL_VISIBILITY_HIDDEN');
+          }
+        }
+        if (shouldCollapseDescription) {
+          var collapseBtn =
+            document.querySelector('#description-inline-expander tp-yt-paper-button#collapse') ||
+            document.querySelector('tp-yt-paper-button#collapse');
+          if (
+            collapseBtn &&
+            isElementUsable(collapseBtn) &&
+            typeof collapseBtn.click === 'function'
+          ) {
+            collapseBtn.click();
+          }
+        }
+      } catch {}
+    }
+
     // -------------------------------------------------------------------------
     // Main flow
     // -------------------------------------------------------------------------
-    async function run() {
+    async function run(requestId) {
       try {
-        var metadata = extractVideoMetadata();
+        var currentVideoId = parseCurrentVideoId();
+        if (!currentVideoId) {
+          sendResult(null, null, 'No video ID found in URL/Path', requestId);
+          return;
+        }
+        _devLog('[YouSub] MainWorldExtractor: Video ID:', currentVideoId);
+
+        var metadata = extractVideoMetadata(currentVideoId);
         _devLog('[YouSub] MainWorldExtractor: Metadata:', metadata);
 
         var hasUsableTracks =
@@ -839,7 +993,7 @@
           _devLog(
             '[YouSub] MainWorldExtractor: No usable tracks from metadata. Trying Innertube API...'
           );
-          var innertubeResult = await fetchTracksViaInnertube(videoId);
+          var innertubeResult = await fetchTracksViaInnertube(currentVideoId);
           if (innertubeResult.tracks && innertubeResult.tracks.length > 0) {
             metadata.tracks = innertubeResult.tracks;
             _devLog(
@@ -853,76 +1007,80 @@
 
         if (metadata.isLive) {
           _devWarn('[YouSub] MainWorldExtractor: Video is LIVE. Stopping.');
-          sendResult(metadata.tracks, null, 'LIVE_STREAM_DETECTED');
+          sendResult(metadata.tracks, null, 'LIVE_STREAM_DETECTED', requestId);
           return;
         }
 
-        // Step 1: Pre-check if transcript is already open
-        var segments = await waitForSegments(500);
-        if (segments && segments.length > 0) {
+        var isShorts = window.location.pathname.startsWith('/shorts/');
+        var hasNoTracksConfirmed = !metadata.tracks || metadata.tracks.length === 0;
+
+        // Step 1: Reuse already-open transcript segments immediately without touching UI
+        var existingHit = findExistingSegments();
+        if (existingHit && existingHit.segments.length > 0) {
           _devLog('[YouSub] MainWorldExtractor: Transcript already open. Using existing segments.');
-        } else {
-          // Step 1b: Find the transcript button
-          var btn = findTranscriptButton();
-
-          if (!btn) {
-            // Expand description to reveal button (only wait if an element was actually expanded)
-            var expanded = await expandDescription();
-            if (expanded) {
-              await wait(800);
-              btn = findTranscriptButton();
-            }
-          }
-
-          if (btn) {
-            _devLog('[YouSub] MainWorldExtractor: Clicking transcript button...');
-            btn.click();
-
-            // Step 2: Wait for segments to render
-            segments = await waitForSegments(10000);
-          } else {
-            _devWarn('[YouSub] MainWorldExtractor: Transcript button not found.');
+          var existingEntries = parseTranscriptSegments(existingHit.segments);
+          if (existingEntries.length > 0) {
+            sendResult(metadata.tracks, existingEntries, null, requestId);
+            return;
           }
         }
 
-        if (segments && segments.length > 0) {
-          // Step 3: Parse segments
-          var entries = parseTranscriptSegments(segments);
-          _devLog(
-            '[YouSub] MainWorldExtractor: Parsed',
-            entries.length,
-            'entries from transcript DOM.'
-          );
-
-          if (entries.length > 0) {
-            _devLog('[YouSub] MainWorldExtractor: Sample [0]:', JSON.stringify(entries[0]));
+        // Step 2: Silent Innertube API FIRST — never pops open the Transcript sidebar
+        if (isShorts || !hasNoTracksConfirmed) {
+          _devLog('[YouSub] MainWorldExtractor: Trying silent Innertube transcript fetch...');
+          var panelEntries = await fetchTranscriptViaGetPanel(currentVideoId);
+          if (panelEntries && panelEntries.length > 0) {
+            sendResult(metadata.tracks, panelEntries, null, requestId);
             _devLog(
-              '[YouSub] MainWorldExtractor: Sample [last]:',
-              JSON.stringify(entries[entries.length - 1])
+              '[YouSub] MainWorldExtractor: SUCCESS via silent Innertube. Entries:',
+              panelEntries.length
             );
+            return;
           }
-
-          // Send result
-          sendResult(metadata.tracks, entries, null);
-          _devLog(
-            '[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:',
-            entries.length
-          );
-          return;
         }
 
-        // ================================================================
-        // Step 4 (2026 Shorts & UI-less Watch fallback): Innertube get_panel
-        // ================================================================
-        _devLog('[YouSub] MainWorldExtractor: Trying Innertube get_panel fallback...');
-        var panelEntries = await fetchTranscriptViaGetPanel(videoId);
-        if (panelEntries && panelEntries.length > 0) {
-          sendResult(metadata.tracks, panelEntries, null);
-          _devLog(
-            '[YouSub] MainWorldExtractor: SUCCESS via Innertube get_panel. Entries:',
-            panelEntries.length
-          );
-          return;
+        // Step 3: DOM fallback (Watch only unless a transcript button is already visible),
+        // then immediately close the panel so it does not stay open on screen.
+        var btn = findTranscriptButton();
+        var skipSlowWatchDomProbe = isShorts || (hasNoTracksConfirmed && !btn);
+        var expandedByUs = false;
+
+        if (!btn && !skipSlowWatchDomProbe) {
+          expandedByUs = await expandDescription();
+          if (expandedByUs) {
+            await wait(800);
+            btn = findTranscriptButton();
+          }
+        }
+
+        if (btn) {
+          _devLog('[YouSub] MainWorldExtractor: Clicking transcript button (DOM fallback)...');
+          var segments = null;
+          try {
+            btn.click();
+            segments = await waitForSegments(10000);
+            if (segments && segments.length > 0) {
+              var entries = parseTranscriptSegments(segments);
+              _devLog(
+                '[YouSub] MainWorldExtractor: Parsed',
+                entries.length,
+                'entries from transcript DOM.'
+              );
+              if (entries.length > 0) {
+                sendResult(metadata.tracks, entries, null, requestId);
+                _devLog(
+                  '[YouSub] MainWorldExtractor: SUCCESS via Transcript DOM. Entries:',
+                  entries.length
+                );
+                return;
+              }
+            }
+          } finally {
+            closeTranscriptPanel(expandedByUs);
+          }
+        } else {
+          if (expandedByUs) closeTranscriptPanel(true);
+          _devWarn('[YouSub] MainWorldExtractor: Transcript button not found.');
         }
 
         // ================================================================
@@ -932,18 +1090,23 @@
           sendResult(
             metadata.tracks,
             null,
-            'Transcript button not found or segments empty. Tracks available but pot token required for fetch.'
+            'Transcript button not found or segments empty. Tracks available but pot token required for fetch.',
+            requestId
           );
         } else {
-          sendResult(null, null, 'No transcript button and no caption tracks found.');
+          sendResult(null, null, 'No transcript button and no caption tracks found.', requestId);
         }
       } catch (e) {
         console.error('[YouSub] MainWorldExtractor: Error:', e.message, e.stack);
-        sendResult(null, null, 'Exception: ' + e.message);
+        sendResult(null, null, 'Exception: ' + e.message, requestId);
       }
     }
 
-    run();
+    window.addEventListener('message', function (event) {
+      if (event.source !== window) return;
+      if (!event.data || event.data.type !== 'YOUSUB_EXTRACT_CAPTIONS') return;
+      run(event.data.requestId);
+    });
   } catch (globalErr) {
     console.error('[YouSub] MainWorldExtractor Fatal Crash:', globalErr);
   }

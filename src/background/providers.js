@@ -456,19 +456,31 @@ export const Providers = {
     const systemInstruction = options.systemPrompt
       ? { parts: [{ text: options.systemPrompt }] }
       : undefined;
+    const parts = Array.isArray(options.parts) ? options.parts : [{ text: prompt }];
+    const effectiveThinkingBudget =
+      options.thinkingBudget !== undefined
+        ? options.thinkingBudget
+        : /^gemini-2\.5/i.test(model)
+          ? 0
+          : undefined;
+    const generationConfig = {
+      maxOutputTokens: options.maxTokens || 65000,
+      temperature: options.temperature ?? 0.3,
+      ...(options.mediaResolution ? { mediaResolution: options.mediaResolution } : {}),
+      ...(effectiveThinkingBudget !== undefined
+        ? { thinkingConfig: { thinkingBudget: effectiveThinkingBudget } }
+        : {}),
+      ...(options.responseFormat
+        ? {
+            responseMimeType: 'application/json',
+            responseSchema: options.responseSchema,
+          }
+        : {}),
+    };
     const payload = {
       systemInstruction: systemInstruction,
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: options.maxTokens || 65000,
-        temperature: options.temperature ?? 0.3,
-        ...(options.responseFormat
-          ? {
-              responseMimeType: 'application/json',
-              responseSchema: options.responseSchema,
-            }
-          : {}),
-      },
+      contents: [{ parts }],
+      generationConfig,
       safetySettings: [
         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -529,7 +541,13 @@ export const Providers = {
             usage.totalTokens = data.usage.total_tokens || 0;
           }
         } else if (style === 'gemini') {
-          text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const parts = data.candidates?.[0]?.content?.parts;
+          text = Array.isArray(parts)
+            ? parts
+                .filter((p) => p && !p.thought && typeof p.text === 'string')
+                .map((p) => p.text)
+                .join('')
+            : '';
           if (data.usageMetadata) {
             usage.promptTokens = data.usageMetadata.promptTokenCount || 0;
             usage.completionTokens = data.usageMetadata.candidatesTokenCount || 0;

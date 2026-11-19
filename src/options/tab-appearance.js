@@ -6,6 +6,7 @@ let fontSizeInput,
   bgOpacityVal,
   posBottomInput,
   posBottomVal,
+  showStagePillInput,
   previewOverlay;
 let triggerSaveCallback = null;
 let saveTimeout = null;
@@ -22,6 +23,7 @@ export function initAppearanceTab(saveIndicatorCallback) {
   bgOpacityVal = document.getElementById('bg-opacity-val');
   posBottomInput = document.getElementById('pos-bottom');
   posBottomVal = document.getElementById('pos-bottom-val');
+  showStagePillInput = document.getElementById('show-stage-pill');
 
   // Preview Element
   previewOverlay = document.getElementById('subtitle-preview');
@@ -44,6 +46,9 @@ function loadSettings() {
     fontColorInput.value = styles.fontColor;
     bgOpacityInput.value = styles.bgOpacity;
     posBottomInput.value = styles.posBottom;
+    if (showStagePillInput) {
+      showStagePillInput.checked = styles.showStagePill !== false;
+    }
 
     updateUIStrings();
     updatePreview();
@@ -60,6 +65,12 @@ function attachEventListeners() {
       debouncedSave();
     });
   });
+
+  if (showStagePillInput) {
+    showStagePillInput.addEventListener('change', () => {
+      debouncedSave();
+    });
+  }
 }
 
 function updateUIStrings() {
@@ -93,6 +104,7 @@ function saveAppearance() {
     fontColor: fontColorInput.value,
     bgOpacity: parseFloat(bgOpacityInput.value),
     posBottom: parseInt(posBottomInput.value, 10),
+    showStagePill: showStagePillInput ? showStagePillInput.checked : true,
   };
 
   browser.storage.local.set({ yousub_appearance: appearance }).then(() => {

@@ -358,4 +358,61 @@ describe('translate() characterization', () => {
     expect(fixFn).toHaveBeenCalledTimes(1);
     expect(fixFn.mock.calls[0][4]).toBeUndefined();
   });
+
+  // ── Behavior 10: Seek-Aware Batch Priority Queue (Phase 79c) ───────
+  test('prioritizes playhead batch, lookahead +1, forward batches, then backfills earlier batches', async () => {
+    // 180 segments -> 4 batches (0..49, 50..99, 100..149, 150..179).
+    seedKeys([{ provider: 'openai', apiKey: 'seek-k1', model: 'gpt-4o-mini' }]);
+
+    const batchOrder = [];
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      const { lines } = JSON.parse(userPrompt);
+      batchOrder.push(lines[0].t);
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = Array.from({ length: 180 }, (_, i) => seg(`Line_${i}`, i * 1000));
+    // Playhead starts at 110s -> Batch 2 (Line_100..149). Expect: Batch 2, Batch 3 (forward), Batch 0, Batch 1.
+    const p = translate(segments, 'en', TGT, null, null, null, null, {
+      initialPlayheadMs: 110000,
+    });
+    for (let i = 0; i < 6; i++) {
+      await jest.advanceTimersByTimeAsync(100);
+    }
+    const result = await p;
+
+    expect(result.success).toBe(true);
+    expect(batchOrder).toEqual(['Line_100', 'Line_150', 'Line_0', 'Line_50']);
+  });
+
+  test('dynamically jumps queue via getPlayheadMs when user seeks mid-translation', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'seek-dyn-k1', model: 'gpt-4o-mini' }]);
+
+    let simulatedPlayheadMs = 0;
+    const batchOrder = [];
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt) => {
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      const { lines } = JSON.parse(userPrompt);
+      batchOrder.push(lines[0].t);
+      if (batchOrder.length === 1) {
+        // User seeks ahead to 160s (Batch 3) right after Batch 0 finishes!
+        simulatedPlayheadMs = 160000;
+      }
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = Array.from({ length: 180 }, (_, i) => seg(`Seg_${i}`, i * 1000));
+    const p = translate(segments, 'en', TGT, null, null, null, null, {
+      getPlayheadMs: () => simulatedPlayheadMs,
+    });
+    for (let i = 0; i < 6; i++) {
+      await jest.advanceTimersByTimeAsync(100);
+    }
+    const result = await p;
+
+    expect(result.success).toBe(true);
+    // Batch 0 runs first, then jumps straight to Batch 3 (Seg_150), then backfills Batch 1 (Seg_50) and Batch 2 (Seg_100)
+    expect(batchOrder).toEqual(['Seg_0', 'Seg_150', 'Seg_50', 'Seg_100']);
+  });
 });

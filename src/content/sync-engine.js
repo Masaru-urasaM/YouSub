@@ -82,16 +82,32 @@ function onTimeUpdate() {
   }
 }
 
+function isEntryTranslated(entry) {
+  return Boolean(
+    entry &&
+    entry.text &&
+    (entry.isAiGenerated || (entry.original !== undefined && entry.text !== entry.original))
+  );
+}
+
 export const SyncEngine = {
-  start: function (subs, video) {
+  start: function (subs, video, options = {}) {
     this.stop();
 
-    subtitles = subs || [];
+    subtitles = Array.isArray(subs) ? subs.slice() : [];
     videoElement = video;
     currentIndex = -1;
     translatedIndices = new Set();
+    for (let i = 0; i < subtitles.length; i++) {
+      if (isEntryTranslated(subtitles[i])) {
+        translatedIndices.add(i);
+      }
+    }
 
-    if (!subtitles.length || !videoElement) {
+    if ((!subtitles.length && !options.allowEmpty) || !videoElement) {
+      subtitles = [];
+      videoElement = null;
+      translatedIndices = new Set();
       devWarn('[YouSub] SyncEngine: Missing subtitles or video element.');
       return;
     }
@@ -172,7 +188,7 @@ export const SyncEngine = {
 
     subtitles = newSubs;
     for (let i = 0; i < newSubs.length; i++) {
-      if (newSubs[i].text !== newSubs[i].original) {
+      if (isEntryTranslated(newSubs[i])) {
         translatedIndices.add(i);
       }
     }
@@ -228,6 +244,79 @@ export const SyncEngine = {
       if (currentIndex >= startIndex && currentIndex <= endIndex) {
         currentIndex = -1;
       }
+      onTimeUpdateBound();
+    }
+  },
+
+  /**
+   * Convenience wrapper to start SyncEngine with an empty buffer while
+   * streaming/windowed entries arrive incrementally.
+   */
+  startDynamic: function (video) {
+    this.start([], video, { allowEmpty: true });
+  },
+
+  /**
+   * Merge out-of-order subtitle entries (e.g. seek-jump windows) into the active
+   * timeline, keeping entries sorted by startMs with non-overlapping boundaries.
+   * @param {Array<{startMs:number, endMs:number, original?:string, text:string, isAiGenerated?:boolean}>} newEntries
+   */
+  mergeBatchEntries: function (newEntries) {
+    if (!Array.isArray(newEntries) || newEntries.length === 0) return;
+
+    const byRange = new Map();
+    for (const existing of subtitles) {
+      if (existing && typeof existing.startMs === 'number' && typeof existing.endMs === 'number') {
+        byRange.set(`${existing.startMs}_${existing.endMs}`, existing);
+      }
+    }
+
+    for (const item of newEntries) {
+      if (!item || typeof item.startMs !== 'number' || typeof item.endMs !== 'number') continue;
+      if (item.endMs <= item.startMs) continue;
+      const text = item.text || item.original || '';
+      const original = item.original !== undefined ? item.original : text;
+      if (!text && !original) continue;
+
+      byRange.set(`${item.startMs}_${item.endMs}`, {
+        startMs: item.startMs,
+        endMs: item.endMs,
+        original,
+        text,
+        ...(item.isAiGenerated ? { isAiGenerated: true } : {}),
+      });
+    }
+
+    const sorted = Array.from(byRange.values()).sort(
+      (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+    );
+
+    const normalized = [];
+    for (const entry of sorted) {
+      if (normalized.length > 0) {
+        const prev = normalized[normalized.length - 1];
+        if (prev.endMs > entry.startMs) {
+          prev.endMs = entry.startMs;
+          if (prev.endMs <= prev.startMs) {
+            normalized.pop();
+          }
+        }
+      }
+      normalized.push(entry);
+    }
+
+    subtitles = normalized;
+    currentIndex = -1;
+    translatedIndices = new Set();
+    for (let i = 0; i < subtitles.length; i++) {
+      if (isEntryTranslated(subtitles[i])) {
+        translatedIndices.add(i);
+      }
+    }
+
+    devLog(`[YouSub] SyncEngine: Merged dynamic batch. Total entries: ${subtitles.length}`);
+
+    if (isRunning && onTimeUpdateBound) {
       onTimeUpdateBound();
     }
   },

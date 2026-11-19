@@ -146,6 +146,12 @@
   "optionsStreamingModeDesc": {
     "message": "AIが生成するのに合わせて字幕が逐次表示されます。注意：キャッシュは翻訳が完了した後にのみ行われます。"
   },
+  "optionsGeminiFallback": {
+    "message": "字幕がない動画で Gemini AI フォールバックを使用する"
+  },
+  "optionsGeminiFallbackDesc": {
+    "message": "公開動画に字幕がない場合、設定済みの Google Gemini キーに YouTube URL を送信し、4分単位の先読みで字幕を生成します。"
+  },
   "optionsApiConfiguration": {
     "message": "API設定"
   },
@@ -260,6 +266,12 @@
   "optionsVerticalPosition": {
     "message": "垂直位置（下からのオフセット px）"
   },
+  "optionsShowStagePill": {
+    "message": "動画上に翻訳ステータスバッジを表示"
+  },
+  "optionsShowStagePillDesc": {
+    "message": "翻訳中に字幕の上へコンパクトな進行状況バッジを表示します。無効にしても、ポップアップやデバッグ画面で詳細なフローを確認できます。"
+  },
   "optionsLivePreview": {
     "message": "ライブプレビュー"
   },
@@ -301,5 +313,88 @@
   },
   "optionsModalYesProceed": {
     "message": "はい、実行する"
+  },
+
+  "pipelineStageExtract": {
+    "message": "1. 抽出"
+  },
+  "pipelineStageRoute": {
+    "message": "2. 経路"
+  },
+  "pipelineStageVerify": {
+    "message": "3. 検証"
+  },
+  "pipelineStageSync": {
+    "message": "4. 同期"
+  },
+  "pipelineHorizonPast": {
+    "message": "完了"
+  },
+  "pipelineHorizonPresent": {
+    "message": "実行中"
+  },
+  "pipelineHorizonFuture": {
+    "message": "次"
+  },
+
+  "popupResumeTitle": {
+    "message": "再生位置の自動保存"
+  },
+  "popupResumeBookmarkBtn": {
+    "message": "+ ブックマーク"
+  },
+  "popupResumeRecentTitle": {
+    "message": "最近再生した動画・音声"
+  },
+  "popupResumeNoRecent": {
+    "message": "保存された再生位置はまだありません。"
+  },
+  "popupResumeLastLabel": {
+    "message": "前回"
+  },
+  "popupResumeFurthestLabel": {
+    "message": "最長位置"
+  },
+  "popupResumeActiveLabel": {
+    "message": "最終操作"
+  },
+  "popupResumeCheckpointsLabel": {
+    "message": "チェックポイント"
+  },
+  "optionsTabResume": {
+    "message": "再生位置"
+  },
+  "optionsResumeHeading": {
+    "message": "再生位置の保存と同期"
+  },
+  "optionsResumeTitle": {
+    "message": "長時間音声・動画の自動レジューム"
+  },
+  "optionsResumeDesc": {
+    "message": "PC と Firefox モバイル間で再生位置を自動保存・復元し、0:00 リセットや寝落ちによる進行状況の消失を防ぎます。"
+  },
+  "optionsResumeEnabled": {
+    "message": "YouTube で再生位置の自動復元を有効にする"
+  },
+  "optionsResumeSync": {
+    "message": "ブラウザ同期および YouTube アカウントの視聴履歴と位置を同期する"
+  },
+  "optionsResumePreventReset": {
+    "message": "長時間動画の 95% 以上再生による自動リセットを防ぐ（寝落ち保護）"
+  },
+  "optionsResumeRewind": {
+    "message": "復元時のスマート巻き戻し（秒）"
+  },
+  "optionsResumeMinDuration": {
+    "message": "対象とする最小動画時間（秒）"
+  },
+  "optionsResumeClearHistory": {
+    "message": "再生履歴をすべて削除"
+  },
+  "optionsResumeClearConfirmTitle": {
+    "message": "再生履歴の削除"
+  },
+  "optionsResumeClearConfirmMsg": {
+    "message": "ローカルおよび同期ストレージに保存されたすべての再生位置・チェックポイント・ブックマークを削除しますか？"
   }
 }

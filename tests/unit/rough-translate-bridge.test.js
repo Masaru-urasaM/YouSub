@@ -43,15 +43,20 @@ describe('RoughTranslateBridge.translateBatch', () => {
     expect(postSpy).not.toHaveBeenCalled();
   });
 
-  test('injects the main-world translator once (idempotent)', () => {
+  test('registers the main-world response listener once (idempotent) without DOM <script> injection', () => {
     jest.useFakeTimers();
-    jest.spyOn(window, 'postMessage').mockImplementation(() => {});
+    const postSpy = jest.spyOn(window, 'postMessage').mockImplementation(() => {});
+    const addSpy = jest.spyOn(window, 'addEventListener');
 
     RoughTranslateBridge.translateBatch(['a'], 'en', 'vi');
     RoughTranslateBridge.translateBatch(['b'], 'en', 'vi');
 
-    expect(chrome.runtime.getURL).toHaveBeenCalledTimes(1);
-    expect(chrome.runtime.getURL).toHaveBeenCalledWith('src/content/main-world-translator.js');
+    expect(chrome.runtime.getURL).not.toHaveBeenCalled();
+    expect(document.querySelector('script[src*="main-world-translator.js"]')).toBeNull();
+    expect(addSpy.mock.calls.filter((c) => c[0] === 'message')).toHaveLength(1);
+    expect(postSpy).toHaveBeenCalledTimes(2);
+    addSpy.mockRestore();
+    postSpy.mockRestore();
   });
 
   test('posts a correlated request and resolves translations in order', async () => {

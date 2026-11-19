@@ -68,6 +68,7 @@ function validate(manifest, pkg, constantsContent) {
   if (manifest.action && manifest.action.default_popup)
     filesToCheck.push(manifest.action.default_popup);
   if (manifest.options_page) filesToCheck.push(manifest.options_page);
+  if (manifest.options_ui && manifest.options_ui.page) filesToCheck.push(manifest.options_ui.page);
 
   const iconSets = [manifest.icons, manifest.action?.default_icon].filter(Boolean);
   iconSets.forEach((icons) => Object.values(icons).forEach((f) => filesToCheck.push(f)));
@@ -185,6 +186,18 @@ function verifyZip(outputPath, platform) {
       if (platform === 'firefox' && !(m.background && m.background.scripts)) {
         errors.push('Firefox ZIP missing background.scripts (Firefox MV3 requires it)');
       }
+      if (
+        platform === 'firefox' &&
+        !(m.browser_specific_settings && m.browser_specific_settings.gecko_android)
+      ) {
+        errors.push('Firefox ZIP missing browser_specific_settings.gecko_android');
+      }
+      if (platform === 'firefox' && m.options_page) {
+        errors.push('Firefox ZIP still contains options_page (should use options_ui)');
+      }
+      if (platform === 'firefox' && !(m.options_ui && m.options_ui.page)) {
+        errors.push('Firefox ZIP missing options_ui.page');
+      }
     } catch (e) {
       errors.push(`manifest.json is invalid JSON: ${e.message}`);
     }
@@ -235,6 +248,12 @@ function buildForPlatform(platform, manifest, constantsTransform) {
       // (Chrome-clean, no dev-load warning), so derive scripts here.
       m.background.scripts = [m.background.service_worker];
       delete m.background.service_worker;
+
+      // Firefox MV3 prefers options_ui with open_in_tab over Chrome's options_page.
+      if (m.options_page) {
+        m.options_ui = { page: m.options_page, open_in_tab: true };
+        delete m.options_page;
+      }
     }
     return JSON.stringify(m, null, 2) + '\n';
   };

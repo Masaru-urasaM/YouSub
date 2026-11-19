@@ -316,19 +316,48 @@ export function parseJsonResponse(responseText, segments) {
     't' in rawLines[0];
 
   if (isObjectFormat) {
+    const parsedItems = [];
+    let minIdx = Infinity;
+    let maxIdx = -Infinity;
+    let hasZero = false;
+
     for (let i = 0; i < rawLines.length; i++) {
       const entry = rawLines[i];
-      const idx = typeof entry.n === 'number' ? entry.n : -1;
+      if (!entry || typeof entry !== 'object') continue;
+      const rawN =
+        typeof entry.n === 'number' && Number.isInteger(entry.n)
+          ? entry.n
+          : typeof entry.n === 'string' && /^\d+$/.test(entry.n.trim())
+            ? Number(entry.n.trim())
+            : -1;
       const text = typeof entry.t === 'string' ? entry.t.trim() : '';
-      if (idx >= 0 && idx < expected && text) {
-        result[idx] = text;
+      if (rawN >= 0 && text) {
+        parsedItems.push({ rawIndex: rawN, arrayPos: i, text });
+        if (rawN === 0) hasZero = true;
+        if (rawN < minIdx) minIdx = rawN;
+        if (rawN > maxIdx) maxIdx = rawN;
+      }
+    }
+
+    const isOneBased =
+      parsedItems.length > 0 &&
+      !hasZero &&
+      minIdx === 1 &&
+      maxIdx <= expected &&
+      (maxIdx === expected || (rawLines.length === expected && parsedItems.length === expected));
+    const indexOffset = isOneBased ? 1 : 0;
+
+    for (const item of parsedItems) {
+      const idx = item.rawIndex - indexOffset;
+      if (idx >= 0 && idx < expected) {
+        result[idx] = item.text;
         validCount++;
-        if (idx !== i) hadReorder = true;
+        if (idx !== item.arrayPos) hadReorder = true;
       }
     }
     Logger.trace(
       'Translator',
-      `[JSON_PARSE] Object format: ${validCount}/${expected} placed by index`
+      `[JSON_PARSE] Object format: ${validCount}/${expected} placed by index${isOneBased ? ' (normalized 1-based)' : ''}`
     );
   } else {
     for (let i = 0; i < rawLines.length && i < expected; i++) {

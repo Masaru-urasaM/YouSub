@@ -49,6 +49,58 @@
 
         <hr class="divider" />
 
+        <!-- Playback Resume & Quick Bookmarks (Phase 85 / Decision 23) -->
+        <section id="resume-section" class="resume-card" aria-label="Playback Resume">
+          <div class="resume-header">
+            <div class="resume-title-wrap">
+              <label class="switch switch-compact">
+                <input type="checkbox" id="resume-auto-toggle" checked />
+                <span class="slider round"></span>
+              </label>
+              <label for="resume-auto-toggle" class="resume-title" data-i18n="popupResumeTitle">
+                Playback Resume
+              </label>
+            </div>
+            <button
+              type="button"
+              id="resume-add-bookmark-btn"
+              class="resume-mini-btn hidden"
+              data-i18n="popupResumeBookmarkBtn"
+            >
+              + Bookmark
+            </button>
+          </div>
+
+          <div id="resume-active-panel" class="resume-active-panel hidden">
+            <div id="resume-quick-pills" class="resume-pills-row"></div>
+            <div id="resume-bookmarks-list" class="resume-bookmarks-list hidden"></div>
+            <div id="resume-checkpoints-wrap" class="resume-checkpoints-wrap hidden">
+              <div class="resume-sub-label" data-i18n="popupResumeCheckpointsLabel">
+                Checkpoints
+              </div>
+              <div id="resume-checkpoints-list" class="resume-pills-row"></div>
+            </div>
+          </div>
+
+          <div class="resume-recent-wrap">
+            <button
+              type="button"
+              id="resume-recent-toggle"
+              class="resume-recent-toggle"
+              aria-expanded="false"
+            >
+              <span data-i18n="popupResumeRecentTitle">Recent Audio / Videos</span>
+              <span id="resume-recent-count" class="resume-recent-count">0</span>
+            </button>
+            <div id="resume-recent-list" class="resume-recent-list hidden"></div>
+          </div>
+        </section>
+
+        <hr class="divider" />
+
+        <!-- Live Sparrow-style Pipeline Flow Visualizer (Phase 80b) -->
+        <div id="pipeline-visualizer" class="pipeline-visualizer hidden" aria-live="polite"></div>
+
         <!-- Execution Stats Section (New Phase 35.13) -->
         <div id="execution-stats" class="stats-container hidden">
           <div class="stats-header">

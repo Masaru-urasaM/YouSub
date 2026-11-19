@@ -1,0 +1,86 @@
+name: Release & Publish Stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target store(s) to publish'
+        type: choice
+        required: true
+        default: 'all'
+        options:
+          - all
+          - chrome
+          - firefox
+      dry_run:
+        description: 'Run validation & packaging without uploading to stores'
+        type: boolean
+        required: true
+        default: true
+      chrome_staged:
+        description: 'Chrome: stage publish instead of immediate release after approval'
+        type: boolean
+        required: false
+        default: false
+      firefox_channel:
+        description: 'Firefox AMO channel'
+        type: choice
+        required: false
+        default: 'listed'
+        options:
+          - listed
+          - unlisted
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build_and_publish:
+    name: Verify, Package & Publish
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify lint, format, unit tests & build packages
+        run: npm run verify
+
+      - name: Upload dist ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yousub-store-packages
+          path: dist/yousub-v*.zip
+
+      - name: Publish to Store APIs
+        env:
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_ITEM_ID: ${{ secrets.CWS_ITEM_ID }}
+          CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          FLAGS="--target=${{ inputs.target || 'all' }}"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+          if [ "${{ inputs.chrome_staged }}" = "true" ]; then
+            FLAGS="$FLAGS --staged"
+          fi
+          if [ "${{ inputs.firefox_channel }}" = "unlisted" ]; then
+            FLAGS="$FLAGS --unlisted"
+          fi
+          node scripts/publish.js $FLAGS

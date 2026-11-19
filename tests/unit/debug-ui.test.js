@@ -6,13 +6,19 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEBUG_HTML = fs.readFileSync(path.resolve(__dirname, '../../src/debug/debug.html'), 'utf8');
 
-const flushAsync = async (turns = 6) => {
+const flushAsync = async (turns = 16) => {
   for (let i = 0; i < turns; i++) await Promise.resolve();
 };
 
-async function mountDebug(logs = []) {
+async function mountDebug(logs = [], pipelineSnap = null) {
   jest.resetModules();
   chrome.storage.local.store = { yousub_debug_history: logs };
+  chrome.storage.session.store = {};
+  if (pipelineSnap) {
+    chrome.storage.session.store.yousub_pipeline_latest_video = pipelineSnap.videoId;
+    chrome.storage.session.store[`yousub_pipeline_${pipelineSnap.videoId}`] = pipelineSnap;
+  }
+  chrome.storage.onChanged._listeners.length = 0;
   const parsed = new DOMParser().parseFromString(DEBUG_HTML, 'text/html');
   document.body.innerHTML = parsed.body.innerHTML;
 
@@ -24,7 +30,7 @@ async function mountDebug(logs = []) {
   spy.mockRestore();
 
   await readyCb();
-  await flushAsync(6);
+  await flushAsync(8);
 }
 
 describe('debug.js UI (T10)', () => {
@@ -125,5 +131,81 @@ describe('debug.js UI (T10)', () => {
     await flushAsync();
     expect(chrome.storage.local.store.yousub_debug_history).toBeUndefined();
     expect(document.getElementById('debug-list').textContent).toContain('No batches recorded yet');
+  });
+
+  test('renders interactive Sparrow DAG inspector, filters by batch pill, and refreshes live', async () => {
+    await mountDebug(
+      [
+        {
+          timestamp: 1700000000000,
+          provider: 'google',
+          model: 'gemini-2.5-flash',
+          windowRange: '0s-240s',
+          duration: '1200ms',
+          success: true,
+          input: 'w0',
+          output: 'out0',
+          systemPrompt: 'sys',
+        },
+        {
+          timestamp: 1700000005000,
+          provider: 'google',
+          model: 'gemini-2.0-flash',
+          windowRange: '240s-480s',
+          duration: '1400ms',
+          success: true,
+          input: 'w1',
+          output: 'out1',
+          systemPrompt: 'sys',
+        },
+      ],
+      {
+        videoId: 'vid-dag',
+        mode: 'gemini-video',
+        stage: 'ROUTE',
+        extraction: { source: 'gemini-url', targetLang: 'vi' },
+        router: {
+          activeProvider: 'google',
+          activeModel: 'gemini-2.5-flash',
+          failovers: [
+            {
+              fromProvider: 'google',
+              fromModel: 'gemini-2.5-flash',
+              toProvider: 'google',
+              toModel: 'gemini-2.0-flash',
+              reason: 'HTTP 429',
+            },
+          ],
+        },
+        batches: [
+          { batchIndex: 0, startMs: 0, endMs: 240000, status: 'DONE', model: 'gemini-2.5-flash' },
+          {
+            batchIndex: 1,
+            startMs: 240000,
+            endMs: 480000,
+            status: 'IN_FLIGHT',
+            model: 'gemini-2.0-flash',
+          },
+        ],
+        sink: { syncedCues: 12, totalCues: 24 },
+      }
+    );
+
+    const inspector = document.getElementById('pipeline-inspector');
+    expect(inspector.querySelector('.sparrow-flow-svg')).not.toBeNull();
+    expect(inspector.textContent).toContain('HTTP 429');
+    expect(document.querySelectorAll('.batch-card')).toHaveLength(2);
+
+    // Click batch 1 pill -> filters to matching batch card
+    const pill1 = inspector.querySelector('[data-batch-index="1"]');
+    pill1.click();
+    await flushAsync();
+    expect(document.querySelectorAll('.batch-card')).toHaveLength(1);
+    expect(document.querySelector('.batch-card .model-info').textContent).toContain('240s-480s');
+
+    // Reset filter shows all batches again
+    inspector.querySelector('[data-batch-reset="true"]').click();
+    await flushAsync();
+    expect(document.querySelectorAll('.batch-card')).toHaveLength(2);
   });
 });

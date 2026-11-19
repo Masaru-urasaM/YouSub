@@ -11,7 +11,7 @@
  */
 import { devLog } from '../shared/constants.js';
 
-let injected = false;
+let listenerRegistered = false;
 const pendingRequests = {}; // requestId → { resolve }
 let idCounter = 0;
 
@@ -29,19 +29,12 @@ function handleResponse(event) {
   pending.resolve(event.data.translations);
 }
 
-function ensureInjected() {
-  if (injected) return;
-  injected = true;
-
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('src/content/main-world-translator.js');
-  script.onload = function () {
-    this.remove();
-  };
-  (document.head || document.documentElement).appendChild(script);
+function ensureBridgeReady() {
+  if (listenerRegistered) return;
+  listenerRegistered = true;
 
   window.addEventListener('message', handleResponse);
-  devLog('[YouSub] RoughTranslateBridge: Main-world translator injected.');
+  devLog('[YouSub] RoughTranslateBridge: Main-world bridge ready.');
 }
 
 export const RoughTranslateBridge = {
@@ -54,7 +47,7 @@ export const RoughTranslateBridge = {
     const list = Array.isArray(texts) ? texts : [];
     if (list.length === 0) return Promise.resolve([]);
 
-    ensureInjected();
+    ensureBridgeReady();
 
     return new Promise((resolve) => {
       const requestId = 'yousub_rt_' + ++idCounter;
@@ -78,14 +71,10 @@ export const RoughTranslateBridge = {
         },
       };
 
-      // Defer the post so the main-world listener is registered first (mirrors
-      // subtitle-parser.js's fetch bridge).
-      setTimeout(() => {
-        window.postMessage(
-          { type: 'YOUSUB_ROUGH_TRANSLATE_REQUEST', requestId, texts: list, src, tgt },
-          '*'
-        );
-      }, 50);
+      window.postMessage(
+        { type: 'YOUSUB_ROUGH_TRANSLATE_REQUEST', requestId, texts: list, src, tgt },
+        '*'
+      );
     });
   },
 };

@@ -6,6 +6,205 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Post-85 — Dark-Theme UI Polish, Automated Store Release Tooling & `v0.2.5` Submissions (2026-11-18)
+
+- **Dark-Theme Contrast Fix (`src/popup/popup.css`, `src/options/options.css`)**: Added `color-scheme: dark` across Popup & Options, converted Playback Resume pills/chips/recent rows from light translucent backgrounds to YouSub's native dark slate palette (`#182030`, `#212b3f`, `#1f293b`, `#93c5fd`, `#d1fae5`), brightened `.resume-danger-row .danger-text`, and corrected `@media (max-width: 600px)` selectors in `options.css` (`.settings-container`, `.settings-header`, `.tab-list`).
+- **Automated Store Release Pipeline (`scripts/publish.js`, `scripts/amo-metadata.json`, `.github/workflows/release.yml`, `.env.example`, `package.json`)**: Built zero-dependency CLI + CI publisher supporting Chrome Web Store **API v2** (Google Service Account RS256 JWT assertion, OAuth2 refresh token, or raw access token → `:upload` / `:fetchStatus` / `:publish`) and Mozilla **AMO API v5** (HS256 JWT → upload → validation polling → automatic initial add-on creation vs version submission for Firefox Desktop + Android under `AGPL-3.0-only`). Added `publish:dry-run`, `publish:chrome`, `publish:firefox`, and `publish:stores` npm scripts.
+- **Privacy Gist & Store Submissions**:
+  - Updated live GitHub Gist `15f9846972ccb68a120d29e988f42847` with `privacy-policy.md` (`November 18, 2026`).
+  - Validated `dist/yousub-v0.2.5-firefox.zip` with Mozilla `addons-linter` (**0 errors**), submitted `v0.2.5` (`yousub@xinh.tools`, Version ID `6728292`, `listed`, Desktop + Android `>= 128.0`), and **approved live** on AMO (`https://addons.mozilla.org/addon/yousub/`; updated `.env` `FIREFOX_AMO`).
+  - Resolved true Chrome Web Store Item ID (`jlpgmjpekhnlncfdkmddoienleiljehk`, live at `0.2.0`), updated Draft Privacy permission justifications & Store listing description/Homepage URL, resolved initial `Yellow Argon` (*Keyword Spam* rejection on stacked LLM provider names across both `English – en` and `Japanese – ja` descriptions) with brand-free wording, and **resubmitted `v0.2.5`** (`Pending review`).
+- **Verification**: Added `tests/unit/publish.test.js` (+7 tests). Suite **736 → 743 tests** across **48 suites** (`88.59%` stmts / `91.03%` lines), ESLint `0`, Prettier clean, and Chrome & Firefox `v0.2.5` packages `[VERIFY OK]`.
+
+### Phase 85 — Popup & Options Playback Resume UI, Bookmarks, Recent History & Full Documentation Sync (2026-11-18)
+
+- **Popup Playback Resume UI (`src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup-resume-view.js`, `src/popup/popup.js`)**: Added a compact `#resume-section` card with an auto-resume toggle, `/watch`-only `+ Bookmark` action and active-video jump panel (`Last` / `Last Active` / `Furthest` quick-jump pills, rolling 30m checkpoints, and clickable/removable bookmark chips while keeping Shorts clean), collapsible Recent Audio / Videos list with safe DOM text rendering, progress bars, and delete buttons, live `storage.onChanged` updates, and `@media (hover: none) and (pointer: coarse)` responsive rules so Firefox for Android full-tab popups expand cleanly with `40px` touch targets without affecting the `340px` desktop popup layout.
+- **Options Playback Tab (`src/options/options.html`, `src/options/options.css`, `src/options/tab-resume.js`, `src/options/options.js`)**: Added a 4th ARIA-wired `Playback` tab (`#tab-resume-tab` / `#tab-resume` between Appearance and About) exposing toggles for Auto-Resume, Browser Sync & YouTube Account Watchtime Sync, `>95%` sleep completion-reset protection, Smart Rewind (`0/3/5/10s`), Minimum Duration (`60/180/300/600s`), accessible Clear Playback History confirmation modal (`showConfirmModal`), and `@media (max-width: 600px)` mobile layout refinements.
+- **Localization, Privacy Policy & Architecture Spec (`_locales/en/`, `_locales/ja/`, `privacy-policy.md`, `YOUSUB_PROJECT_SPEC.md`)**: Added 20 matching EN/JA UI strings (`popupResume*`, `optionsTabResume`, `optionsResume*`), updated `privacy-policy.md` (`November 18, 2026`) documenting local/synced playback resume storage & first-party `/api/stats/watchtime` sync behavior, and updated `YOUSUB_PROJECT_SPEC.md` (`v2.8`) with §2.5, §2.7 (19 WAR modules), and §3.6.
+- **Verification**: Added `tests/unit/popup-resume.test.js` & `tests/unit/options-resume.test.js` and updated `tests/unit/options-a11y.test.js` (4 tabs/panels). Suite grew **724 → 736 tests** across **47 suites** (`88.59%` stmts / `91.03%` lines), ESLint `0`, Prettier clean, and Chrome & Firefox `v0.2.5` packages `[VERIFY OK]`.
+
+### Phase 84 — Content Auto-Resume Controller, Standalone Toast & Unified Content->SW Logging (2026-11-18)
+
+**Added**
+
+- `src/content/playback-resume.js`: Created `PlaybackResume` controller running independently of subtitle translation on all non-Shorts, non-Live `/watch` videos `>= minDurationSec`. Performs parallel `YOUSUB_RESUME_PROBE_PLAYER` + independent `<video>` DOM binding (never clobbering `VideoBinder.bind`), arms the 15s `0:00` guard immediately from stored state, auto-seeks with a 3.5s early-reset re-assert guard, renders a standalone 6.5s status toast with `[0:00]`, `[Last Active]`, and `[Furthest]` quick-jump buttons, throttles `timeupdate` writes to 3s, flushes + pushes YouTube account watchtime on `pause`/`seeked`/`visibilitychange`/`pagehide` and every 30s, tracks a 5s real-user-interaction window for sleep recovery, and relays `YOUSUB_RESUME_LOG` events into `Logger`.
+- `manifest.json`: Exposed `src/content/playback-resume.js` in `web_accessible_resources`.
+- `tests/unit/playback-resume.test.js`: Added comprehensive tests covering eligibility filters, auto-seek + early-reset re-assert, toast action callbacks, 3s throttling, sleep vs active interaction tracking, pause/visibilitychange/pagehide flush+push, cross-world log relay, bookmarks/state queries, and `onLeave()` cancellation.
+
+**Changed**
+
+- `src/content/overlay.js`: Added `Overlay.init()` + a 3-item `pendingStatusQueue` so `Overlay.showStatus()` works reliably even when invoked before `#movie_player` finishes mounting, and cleans up queued items/timers in `destroy()`.
+- `src/content/main.js`: Wired `PlaybackResume.onEnter(videoId)` (post-`Overlay.destroy`), `PlaybackResume.onLeave()`, and `YOUSUB_RESUME_GET_STATE` / `YOUSUB_RESUME_SEEK_TO` / `YOUSUB_RESUME_ADD_BOOKMARK` runtime messages.
+- `src/shared/logger.js` & `src/background/service-worker.js`: Added `YOUSUB_LOG_BATCH` content-script relay fallback in `Logger._flush()` (whenever `storage.session` is inaccessible, e.g. Chrome MV3 content scripts) and `Logger.appendExternalEntries()` ingestion in `service-worker.js` so `Export Debug Logs (.jsonl)` captures all content-script and MAIN-world diagnostic traces alongside background logs without adding `storage.local` contention.
+- Expanded `tests/unit/main.test.js`, `tests/unit/overlay.test.js`, `tests/unit/logger.test.js`, and `tests/unit/service-worker.test.js`.
+
+**Tests**: 715 → **724** across **45 suites** (`playback-resume.js` `83.91%` lines, `overlay.js` `93.18%` lines); ESLint `0`, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
+### Phase 83 — Main-World YouTube Account Watchtime Guard & `startSeconds` Bridge (2026-11-18)
+
+**Added**
+
+- `src/content/main-world-resume.js`: Declarative `world: "MAIN"` script registered in `manifest.json` (`run_at: document_start`). Extracts `playerConfig.playbackStartConfig.startSeconds`, `videostatsWatchtimeUrl.baseUrl`, `lengthSeconds`, `isLive`, and `title` from active player / `ytInitialPlayerResponse` / Innertube `/youtubei/v1/player`; intercepts outgoing `/api/stats/watchtime` pings (`fetch`, `XMLHttpRequest.prototype.open`, `navigator.sendBeacon` across own/prototype descriptors) to rewrite premature `0:00` pings during the 15s startup guard window, clamp `>= 95%` completion pings on long videos (`>= 600s`) down to `90%`, capture live session `cpn`/template URLs, and dispatch same-origin credentialed `keepalive` watchtime pushes (`www.youtube.com` / `m.youtube.com`). Emits structured `YOUSUB_RESUME_LOG` events for cross-world audit logging.
+- `tests/unit/main-world-resume.test.js`: 10 unit tests covering `rewriteWatchtimeUrl`, `buildActiveWatchtimePushUrl`, `YOUSUB_RESUME_PROBE_PLAYER` (active player + SPA Innertube fallback), `YOUSUB_RESUME_SET_GUARD`, `fetch`/`XHR`/`sendBeacon` interception + `YOUSUB_RESUME_PUSH_WATCHTIME` with captured `cpn`, and duplicate registration guard.
+
+**Tests**: 705 → **715** across **44 suites** (`main-world-resume.js` `82.74%` lines); ESLint `0`, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
+### Phase 82 — Multi-Tier Playback Resume Store & Conflict Resolution Engine (2026-11-18)
+
+**Added**
+
+- `src/shared/constants.js`: Added `RESUME_STORAGE_KEY`, `RESUME_SYNC_KEY`, `RESUME_SETTINGS_KEY`, and `DEFAULT_RESUME_SETTINGS` (`enabled`, `rewindSec: 3`, `minDurationSec: 60`, `syncEnabled`, `preventCompletionReset`).
+- `src/shared/playback-resume-store.js`: Created `PlaybackResumeStore` managing the 4-timestamp audiobook safety net (`lastTimeSec`, `furthestTimeSec`, `lastInteractionTimeSec`, rolling 30-minute `checkpoints` max 6) + manual `bookmarks` (max 20/video), write serialization queue, LRU pruning (`500` local / `40` compact sync capped at `7500` UTF-8 bytes), cross-device `storage.sync` preservation merge, anti-zero-overwrite guard, deterministic `resolveResumeTarget()` with `-3s` smart rewind & sleep/furthest alternatives, and structured JSONL `Logger` telemetry.
+- `manifest.json`: Exposed `src/shared/playback-resume-store.js` in `web_accessible_resources`.
+- `tests/mocks/chrome.js` & `tests/unit/playback-resume-store.test.js`: Added `chrome.storage.sync` mock + 18 comprehensive unit tests covering normalization, merge, conflict resolution, anti-zero-lock, sleep detection, LRU pruning, UTF-8 byte capping, sync throttling, and bookmark CRUD.
+
+**Tests**: 687 → **705** across **43 suites** (`playback-resume-store.js` `99.25%` lines); ESLint `0`, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
+### Phase 81 — Firefox Mobile (`m.youtube.com`) Compatibility & Cross-Origin Innertube Hardening (2026-11-18)
+
+**Added**
+
+- `manifest.json`: Added `"gecko_android": { "strict_min_version": "128.0" }` inside `browser_specific_settings` for Firefox for Android distribution and `world: "MAIN"` MV3 support.
+- `tests/unit/mobile-youtube-compat.test.js` (plus expanded `tests/unit/page-detector.test.js` and `tests/unit/overlay.test.js`) covering `m.youtube.com` origin Innertube XHR, History `pushState` polling, `popstate`/`state-navigateend`/`yt-page-data-updated`, and mobile control bar clearance.
+
+**Changed**
+
+- `scripts/package.js`: Firefox build transform now converts `options_page` into `options_ui: { page, open_in_tab: true }` (eliminating AMO `addons-linter` compatibility warnings while keeping Chrome `options_page` unchanged), and `verifyZip` verifies `gecko_android` and `options_ui`.
+- `src/content/page-detector.js`: Added `popstate`, `state-navigateend`, `yt-page-data-updated`, and a 1000ms URL polling backstop (`urlPollInterval`, cleaned up on `destroy()`) for reliable `m.youtube.com` SPA transitions.
+- `src/content/main-world-extractor.js`: Resolved Innertube XHR origin dynamically from `window.location.origin` on `*.youtube.com` hosts (preventing CORS blocks on `m.youtube.com`) and added `#player-container-id` / `.html5-video-player` mobile player fallbacks.
+- `src/content/overlay.js` & `src/content/overlay.css`: Added `#player-container-id` / `ytm-player` detection, mobile control bar clearance measurement (`.player-controls-bottom`, honoring `#player-control-overlay[aria-hidden="true"]`), and `@media (max-width: 600px)` portrait viewport responsiveness.
+
+**Tests**: 683 → **687** across **42 suites**; ESLint `0`, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
+### [Hotfix] Comprehensive translation alignment overhaul (`MergeFixer` JSON isolation, cache schema v2 & extractor/coalescer timing guards) (2026-11-18)
+
+**Fixed / Improved**
+
+- **Eliminated remaining `MergeFixer` index-shift path (`src/background/merge-fixer.js`, `src/background/translator-quality.js`, `src/background/translator-failover.js`)**:
+  - Threaded `_isIndexedJson` from `tryKeyForBatch()` through `finalizeSuccessfulBatch()` to `MergeFixer.fix(..., { isIndexedJson })`. On JSON indexed batches (where every entry carries an explicit `"n"` slot), disabled the `detectTailAnomalies` + `findShiftCandidates` → `buildRealignment()` path (which had been shifting valid lines forward by `+1..+K` indices whenever a batch ended in a natural short cue and had a normal EN→VI word ratio >= 1.8 while `RoughTranslator` returned `null`) and blocked blind fail-open `proportionalSplit()` over non-empty followers.
+  - Updated `detectTailAnomalies(outputLines, segments)` so naturally short cues matching short source text (`wordCount(source) <= 4`) and identical consecutive cues are no longer misclassified as tail garbage or reverted in duplicate-tail checks, and stopped empty `MAX_FIX_PASSES` loops early when nothing changed.
+- **Hardened JSON index normalization, `'auto'` key resolution, request dedup & stale session cancellation (`src/background/translator-prompts.js`, `src/background/translator-failover.js`, `src/background/translator.js`, `src/content/main.js`)**:
+  - `parseJsonResponse()` now parses numeric string keys (`"0"`) and normalizes 1-based `"n"` (`1..N` → `0..N-1`) without shifting all cues by `+1`.
+  - `tryKeyForBatch()` now resolves `provider === 'auto'` via `YOUSUB_PROVIDERS.detectProviderFromKey()` before `getProviderJsonConfig()` so auto-detected Google/OpenAI/Groq keys stay in JSON mode rather than falling back to timestamp-queue text mode.
+  - Added `videoId` to `translator.js`'s `inFlightRequests` `dedupKey` (`${tabId}_${videoId}_${src}_${tgt}`), tracked `activeStreamPort` in `main.js`, and gated `CHUNK`/`COMPLETE` handling on `pipelineSessionGen` to prevent fast video navigation from applying stale batches.
+- **Cache schema invalidation (`src/background/cache.js`)**: Added `CACHE_SCHEMA_VERSION = 2` to `Cache.set`/`Cache.get` so pre-v2 cached translations produced under the buggy alignment path are cleanly evicted and re-translated once instead of being re-served.
+- **Extractor, Coalescer & Gemini clip timestamp alignment (`src/content/main-world-extractor.js`, `src/content/subtitle-coalescer.js`, `src/background/video-transcriber.js`)**:
+  - `main-world-extractor.js`: validated `parseTimestamp()` against empty/non-numeric strings (returning `NaN` cleanly instead of `0`), rejected `ENGAGEMENT_PANEL_VISIBILITY_COLLAPSED`/`MINIMIZED` stale panels in `isElementUsable()`, added support for `vm.startMs`, `vm.endMs`, and structured `vm.timestamp` objects via `extractRunsText()` in `parseGetPanelResponse()`, and stably sorted parsed `get_panel` entries by `startMs`.
+  - `subtitle-coalescer.js`: added `normalizeCueIntervals()` to evenly split tied whole-second `startMs` cues and clamp overlapping intervals so `SyncEngine.findSubtitleAt` binary search always receives strictly monotonic non-overlapping ranges.
+  - `video-transcriber.js`: fixed `sanitizeGeminiVideoEntries()` relative-vs-absolute detection on Batch #1 (`240s`) when a trailing relative cue slightly exceeds `240s` (`<= windowMs + 15000`), preventing premature dropping of `[0..239s]` cues.
+- **Docs & Tests**: Recorded Decision 22 in `YOUSUB_DESIGN_DECISIONS.md` and added 9 regression tests across `tests/unit/merge-fixer.test.js`, `tests/unit/translator-helpers.test.js`, `tests/unit/translator-advanced.test.js`, `tests/unit/cache.test.js`, `tests/unit/subtitle-coalescer.test.js`, `tests/unit/main-world-extractor.test.js`, `tests/unit/video-transcriber.test.js`, and `tests/unit/main.test.js` (**674 → 683** across **41 suites**, **88.91% stmts / 76.10% branches / 88.82% funcs / 91.15% lines**).
+
+### [Hotfix] Declarative `world: "MAIN"` content scripts & silent-first transcript extraction (2026-11-18)
+
+**Fixed / Improved**
+
+- **Eliminated MAIN-world `<script src="chrome-extension://...">` DOM injection (`manifest.json`, `src/content/subtitle-extractor.js`, `src/content/subtitle-parser.js`, `src/content/rough-translate-bridge.js`, `src/content/main-world-*.js`)**: Registered `main-world-extractor.js`, `main-world-fetcher.js`, and `main-world-translator.js` declaratively under `manifest.json` `content_scripts` with `"world": "MAIN"` and `"run_at": "document_start"` (supported in Chrome 111+ and Firefox 128+ with zero new permissions), removed DOM `<script>` injection in the 3 content bridges, dropped all 3 `main-world-*.js` files from `web_accessible_resources`, added double-registration guards + `requestId` correlation (`YOUSUB_EXTRACT_CAPTIONS` → `YOUSUB_CAPTION_TRACKS`), and removed the `?v=` timestamp cache-buster & pre-import production log from `src/content/loader.js` (Decision 21).
+- **Silent Innertube transcript extraction & auto-close panel fallback (`src/content/main-world-extractor.js`)**: Reversed Watch extraction priority to try silent background Innertube APIs (`/youtubei/v1/get_panel` `PAmodern_transcript_view`, `/youtubei/v1/next` parameter discovery, and classic `getTranscriptEndpoint` → `/youtubei/v1/get_transcript`) BEFORE touching the DOM, eliminating visible Transcript panel flashes on supported videos while still reusing already-open user panels untouched. When the DOM `"Show transcript"` fallback is needed, `closeTranscriptPanel()` now automatically closes the panel (`#visibility-button button`) and collapses `#collapse` in `finally` right after parsing so YouTube's transcript UI never stays open on screen.
+- **Docs & Tests**: Reconciled `YOUSUB_PROJECT_SPEC.md` §2.5/2.7/Appendix E and recorded Decision 21 in `YOUSUB_DESIGN_DECISIONS.md`; updated & expanded `tests/unit/main-world-extractor.test.js`, `tests/unit/subtitle-extractor.test.js`, `tests/unit/subtitle-parser.test.js`, `tests/unit/rough-translate-bridge.test.js`, and `tests/unit/main-world-fetcher.test.js` (**669 → 674** across **41 suites**, **88.59% stmts / 74.99% branches / 88.15% funcs / 90.88% lines**). Verified live Chromium `"world": "MAIN"` cross-world `postMessage` extraction + DOM auto-close in headless Edge `157.0.4341.60` against local `https://www.localhost`.
+
+### [Hotfix] Async error & rejection resilience audit (2026-11-18)
+
+**Fixed / Improved**
+
+- **Unhandled promise & fallback error cleanup (`src/content/subtitle-parser.js`, `src/content/video-binder.js`, `src/background/service-worker.js`, `src/popup/popup.js`, `src/options/tab-translation.js`, `src/options/translation-row.js`)**:
+  - Added `script.onerror` cleanup and downgraded expected missing-caption empty fallback in `SubtitleParser.fetch()` (`console.error` → `devWarn`) so captionless videos using Gemini fallback no longer emit spurious red console errors.
+  - Guarded `VideoBinder` `MutationObserver.observe()` target with `document.body || document.documentElement`.
+  - Wrapped `browser.runtime.openOptionsPage()`, `browser.tabs.query()`, `PipelineTelemetry` unawaited calls, `browser.storage.local.*`, `browser.permissions.request()`, and `YOUSUB_CLEAR_CACHE` / `YOUSUB_CLEAR_VIDEO_CACHE` `sendMessage` chains with safe rejection handlers so Popup/Options/SW do not leak unhandled rejections or freeze the Clear Page Cache button.
+- **Tests**: Added regression tests for `SubtitleParser` `script.onerror`, `Popup` `YOUSUB_CLEAR_VIDEO_CACHE` rejection recovery, and `Options` `YOUSUB_CLEAR_CACHE` rejection handling (+3 tests, **666 → 669** across **41 suites**, **88.84% stmts / 75.07% branches / 87.83% funcs / 91.12% lines**).
+
+### [Hotfix] Stage pill race fix, human-readable labels & Appearance toggle (2026-11-18)
+
+**Fixed / Improved**
+
+- **Tight subtitle backdrop padding (`src/content/overlay.css`)**: Added `#yousub-status-container:empty { display: none; }` and `#yousub-text-translated:empty { display: none; }` (removing the phantom `8px margin-bottom + 8px flex gap = 16px` empty cushion above subtitle text when no toast is shown), tightened `#yousub-overlay` padding (`2px 6px`, Shorts `2px 6px`), container gap (`4px`), border-radius (`6px`), and `.yousub-text-line` line-height (`1.2`).
+
+- **Eliminated cross-context telemetry race (`src/shared/pipeline-telemetry.js`, `src/content/main.js`)**: `readSnapshotFromStorage()` now queries `storage.session` and `storage.local` in parallel and selects the freshest snapshot via `pickFreshestSnapshot()` (timestamp-first with same-run stage tie-breaking) so privileged background updates no longer miss newer content-script writes in `storage.local`. Parallelized `persistSnapshot()` writes across both areas. `processEntries()` now awaits `PipelineTelemetry.reset()` (with a shared `runId` threaded from `startSubtitlePipeline()` through `processEntries()` and `startGeminiVideoFallback()`) before opening `yousub-stream`, while `isStaleStageRegression()` prevents delayed same-run resets (such as `COALESCE`) from overwriting later stages (`ROUTE` / `COMPLETE`). `processEntries()` error handling also clears the stage pill cleanly.
+- **Readable on-player stage pill (`src/content/overlay.js`)**: Replaced terse shorthand/internal stage names (`229c`, `COALESCE`, `EXTRACT`) with clear labels (`229 cues`, `Merging cues...`, `Translating...`, `Scanning subtitles...`, `Verifying...`, `Syncing...`), and hides the `Next` chip and trailing arrow whenever no follow-up step/batch exists (`Next: —` removed).
+- **Appearance setting to disable pill (`src/options/options.html`, `src/options/tab-appearance.js`, `src/content/overlay.js`, `_locales/{en,ja}/messages.json`)**: Added `"Show translation status pill on video"` (`#show-stage-pill`, saved as `yousub_appearance.showStagePill`, default `true`) in Settings → Appearance; disabling it hides the pill immediately while leaving Popup and Debug Inspector graphs active.
+- **Tests**: Added 2 race/freshest-snapshot regression tests in `tests/unit/pipeline-telemetry.test.js`, updated `tests/unit/options-ui.test.js`, aligned microtask drain turns in `tests/unit/main.test.js` & `tests/unit/debug-ui.test.js`, and added pill readability/toggle test in `tests/unit/overlay.test.js` (+3 tests, **663 → 666** across **41 suites**, **88.78% stmts / 75.07% branches / 89.38% funcs / 91.07% lines**).
+
+### [Hotfix] Overlay auto-fit width, bottom-anchored upward growth & dynamic control-bar dodge (2026-11-18)
+
+**Fixed / Improved**
+
+- **Auto-shrinking width & upward-only vertical growth (`src/content/overlay.js`, `src/content/overlay.css`)**: Replaced fixed custom `width: <widthPct>%` and hardcoded `min-width: 200px` with `width: fit-content; min-width: 0; max-width: <maxWidthPct>%`, shrinking snugly around short cues while wrapping cleanly at the user's chosen `maxWidthPct`. Migrated custom layout state from `(leftPct, topPct, widthPct)` to bottom-anchored centered `(centerXPct, bottomPct, maxWidthPct)` (`top: auto`, flex `justify-content: flex-end`, dynamic edge clamping in `syncOverlayBounds()` and backward-compatible `normalizeLayout()` migration) so multi-line cues grow strictly upward from the fixed bottom baseline. Corner resize handles temporarily activate `.yousub-resizing` for clear max-width boundary preview during drag, while corner handles use `z-index: 2` over slightly narrower `30px` move/reset handles for crisp corner grip on short pills.
+- **Dynamic `.ytp-chrome-bottom` bar dodge (`src/content/overlay.js`, `src/content/overlay.css`)**: Replaced the hardcoded `52px` default-only `--yousub-offset` with live control-bar measurement via `MutationObserver` (`.ytp-autohide` / `.ytp-autohide-active` / `.ytp-hide-controls`) + `ResizeObserver` on both `playerElement` and `.ytp-chrome-bottom` (`playerBottom - barTop + 10px` saved to `--yousub-bar-clearance`), governed by a unified CSS dynamic floor `bottom: min(var(--yousub-max-bottom, 100%), max(userBottom, var(--yousub-bar-clearance, 0px)))` across both default and custom positions. Bar clearance suspends during drag (`z-index: 70`) so users can place subtitles near the bottom edge, then smoothly glides the box above controls on hover and drops it back on autohide.
+- **Tests**: Updated 4 layout/geometry assertions and added 2 unit tests in `tests/unit/overlay.test.js` (+2 tests, **661 → 663** across **41 suites**, **88.77% stmts / 74.93% branches / 89.40% funcs / 91.05% lines**; `overlay.js` **92.96% lines**).
+
+### [Hotfix] Sparrow flow stage accuracy & model label readability (2026-11-18)
+
+**Fixed**
+
+- **Accurate per-stage node & pipe states (`src/popup/pipeline-flow-view.js`)**: Extracted `deriveFlowVisualState()`, `deriveRouteVisualState()`, and `resolveActiveRouteIndex()` so unreached downstream stages (`Verify / Fix`, `Sync & Cache`) stay `node-standby` / `flow-pipe-standby` with `'Waiting...'` labels instead of glowing `node-active` or showing `'Verify Clean'` during `EXTRACT` / `COALESCE` / initial `ROUTE`. Replaced the misleading Router → Sync shortcut split with a linear sequential flow (`Extract ↓ Coalescer -> Router -> Verify / Fix ↓ Sync & Cache`), localized `NO_SUBTITLES` / `LIVE_STREAM_DETECTED` errors to `1. Extract` in both stepper and DAG, and accurately displayed `'Checking...'` / streaming partial progress during multi-batch translation.
+- **Full model name legibility (`src/popup/pipeline-flow-view.js`, `src/popup/popup.css`, `src/debug/debug.css`)**: Widened the center compact router column (`midW` 86 → 104, label cap 13 → 22), added `.is-compact-long` font scaling and native `<title>` hover tooltips so models like `gemini-2.5-flash-lite` render completely without clipping to `gemini-2.5-f…`.
+- **Tests**: Added unit test suite `tests/unit/pipeline-flow-view.test.js` (+5 tests, **656 → 661** across **41 suites**, **88.75% stmts / 75% branches / 89.28% funcs / 90.98% lines**).
+
+### [Hotfix] No-transcript button feedback, fast no-caption probing & stale-tab recovery (2026-11-18)
+
+**Fixed**
+
+- **Stale-tab & instant UI feedback (`src/popup/popup.js`, `src/popup/popup.css`)**: Clicking `TRANSLATE` now includes `videoId`, renders an optimistic initial `EXTRACT` Sparrow flow card immediately inside `#pipeline-visualizer`, uses distinct inviting button contrast (`.primary-btn` vs active `.primary-btn.active`), and automatically schedules `yousub_autostart_video` + reloads the active YouTube tab when `browser.tabs.sendMessage` rejects on an already-open tab after an extension reload.
+- **Extraction feedback, autostart & active-state tracking (`src/content/main.js`)**: Added immediate `PipelineTelemetry.reset(..., { stage: 'EXTRACT' })` and a `'Checking video subtitles...'` status toast inside `startSubtitlePipeline()` (cleared upon extractor callback), consumed `yousub_autostart_video` in `onEnter()`, tracked `isPipelineActive` + `activeGeminiFallback` inside `YOUSUB_GET_STATE` and `showNoSubtitlesPrompt()`, and guarded overlapping extraction sessions via `pipelineSessionGen`.
+- **Fast no-caption probing (`src/content/main-world-extractor.js`, `src/content/page-detector.js`)**: Added JSDOM-safe `isElementUsable()` filtering so hidden/stale SPA transcript nodes are ignored, skipped expanding description / 10s segment polling / unnecessary `get_panel` requests on trackless regular watch videos when no transcript button exists, and added initialized `window.location` fallback to `PageDetector.getCurrentVideoId()`.
+- **Gemini router visibility (`src/background/service-worker.js`)**: Pre-populated `router: { activeProvider: 'google', activeModel }` at `TRANSCRIBE_WINDOW` dispatch so the live UI shows the active model while the first video window is in flight.
+- **Tests**: **652 → 656** passing across 40 suites (**88.65% stmts / 74.41% branches / 89.17% funcs / 90.92% lines**; ESLint 0, Prettier clean, `[VERIFY OK]`).
+
+### Phase 80 — Sparrow-Style Pipeline & Flow Visualizer (Past / Present / Future Telemetry + Soft Non-Glaring Palette) (2026-11-18)
+
+**Added**
+
+- `src/shared/pipeline-telemetry.js` — unified cross-context telemetry store (`yousub_pipeline_<videoId>` mirrored across `storage.session` and LRU-pruned `storage.local` index max 5), tracking extraction waterfall steps, `SubtitleCoalescer` stats (`rawCount -> coalescedCount`), multi-key/model router & failover routes, `MergeFixer` / verification counts, per-batch states (`DONE`, `IN_FLIGHT`, `PREFETCH`, `PENDING`, `FAILED`), playhead seek jumps (`SEEK_PRIORITY`), sync/cache sinks, and computed `Past / Present / Future` horizon summaries.
+- `src/popup/pipeline-flow-view.js` — reusable Sparrow Wallet-inspired Left-to-Right SVG node & cubic-bezier pipe graph (`Inputs + Coalescer -> Model Router -> Verify & Sync/Cache`), 4-stage stepper, segmented batch timeline bar with playhead marker and seek highlight, and 3-horizon status rows rendered inside Popup (`#pipeline-visualizer`) and Batch Inspector (`#pipeline-inspector`).
+- On-player compact stage indicator pill `#yousub-stage-pill` (`Overlay.updateStagePill` / `clearStagePill`) showing `[Past] -> [Present] -> [Next]` during active translation/seek with auto-hide 2.5s after `COMPLETE`.
+- Synchronized EN and JA i18n keys (`pipelineStage*`, `pipelineHorizon*`) in `_locales/{en,ja}/messages.json`.
+- Unit test suite `tests/unit/pipeline-telemetry.test.js` and expanded tests in `health.test.js`, `service-worker.test.js`, `popup-ui.test.js`, `debug-ui.test.js`, and `overlay.test.js`.
+
+**Changed**
+
+- Fixed all telemetry gaps: `service-worker.js` now writes `yousub_stats_<videoId>` during streaming translation (`YOUSUB_TRANSLATE_STREAM` cache hit, live progress, and completion) and Gemini video fallback (`yousub-gemini-video`), `video-transcriber.js` now records `saveDebugBatch()` entries with `windowRange` metadata, and `HealthManager.getSummary()` (`src/background/health.js`) resolves `'auto'` providers and migrates deprecated model IDs via `YOUSUB_PROVIDERS.resolveModel()`.
+- Refactored `src/popup/popup.css`, `src/debug/debug.css`, and `src/content/overlay.css` onto a calm, non-glaring dark palette (`#111622` canvas, `#182030` cards, sage teal `#34d399`, periwinkle sky `#60a5fa`, muted lavender `#a78bfa`, warm ochre `#f59e0b`, soft rose coral `#f87171`).
+- Upgraded `src/debug/debug.html` + `src/debug/debug.js` (`type="module"`) to an interactive Pipeline & Batch Inspector with live `storage.onChanged` refresh and clickable batch filter pills.
+
+**Tests**: Included in Phase 79–80 combined verification (**623 → 652 tests** across **40 suites**).
+
+### Phase 79 — Subtitle Alignment Overhaul, Core Bugfixes, Semantic Coalescing & Seek-Aware Priority (2026-11-18)
+
+**Added**
+
+- `src/content/subtitle-coalescer.js` (`SubtitleCoalescer`) — coalesces consecutive fragmented ASR/transcript cues into complete semantic clauses/sentences prior to batching & translation when lacking terminal punctuation, gap `<= 500ms` (`<= 1500ms` for bridged DOM transcripts), duration `<= 7000ms`, and text length `<= 120` Latin chars (`<= 60` CJK chars), preserving exact `[first.startMs, last.endMs]` timing.
+- Seek-aware batch priority queue in `src/background/translator.js` (`buildBatchQueue`, `findBatchIndexForPlayhead`, `selectNextPendingBatchIndex`): orders translation by playhead anchor batch -> 1-batch lookahead -> forward batches -> earlier backfill, dynamically interrupted by `{ type: 'SEEK_PRIORITY', playheadMs }` over `yousub-stream` when seeking in `src/content/main.js`. (`MAX_LINES_PER_BATCH` kept at `50` per Rule 12.)
+- Unit test suite `tests/unit/subtitle-coalescer.test.js` and regression tests in `merge-fixer.test.js`, `providers.test.js`, `translator-helpers.test.js`, `translator-translate.test.js`, `translator-advanced.test.js`, `service-worker.test.js`, and `main.test.js`.
+
+**Changed**
+
+- **Fix A1 (`src/background/merge-fixer.js`)**: `buildRealignment()` now stops pushing indices at `corrected.length >= N` (eliminating out-of-bounds index `50` on 50-line batches); `MergeFixer.fix()` handles `detectCascadeShifts()` in-place (`[position, position + direction]`) without shifting later valid lines downward.
+- **Fix A2 (`src/background/merge-fixer.js`)**: `_computeLineCascadeScore()` now requires a misplaced preserved-token signal (`tokenScore !== null && tokenScore > 0.3`) before flagging a cascade shift, preventing punctuation/length variance false positives.
+- **Fix A3 (`src/background/translator-quality.js`)**: `retranslateShiftedLines()` and `retranslateWithVerification()` filter `pendingIndices` to valid integer bounds within `0 .. segments.length - 1` and guard `segments[idx]` access, fixing `Cannot read properties of undefined (reading 'startMs')`.
+- **Fix A4 (`src/background/providers.js`, `src/background/translator-failover.js`)**: `Providers.callGemini()` defaults `thinkingConfig: { thinkingBudget: 0 }` on `gemini-2.5-*` models unless overridden, and `callProviderWithRetry()` sets `BATCH_REQUEST_TIMEOUT_MS = 35000` (up from 15s) to eliminate `signal is aborted without reason` timeouts.
+- `src/background/service-worker.js` skips length-mismatched legacy cache entries when coalescing changes segment counts.
+
+**Tests**: 623 → **652** (+29 tests across 40 suites; global coverage **88.67% stmts / 74.13% branches / 89.00% funcs / 90.91% lines**; ESLint 0, Prettier clean, `[VERIFY OK]`; `npm audit`: 0 runtime / 37 high dev-only `picomatch` advisories in `jest`/`lint-staged`).
+
+### Phase 78 — Gemini YouTube URL Fallback (Playback-Driven 1-Batch Lookahead) & SRT/VTT Import (2026-11-17)
+
+**Added**
+
+- `src/background/video-transcriber.js` — multimodal Gemini YouTube URL (`fileData.fileUri`) transcription & translation fallback for public VODs/Shorts lacking transcripts (`DEFAULT_WINDOW_SEC = 240`, `DEFAULT_FPS = 0.2`, `MEDIA_RESOLUTION_LOW`, `thinkingBudget: 0` on Gemini 2.5+, automatic relative-vs-absolute timestamp offset normalization, overlap/drift clamping, error classification).
+- `src/content/gemini-fallback-scheduler.js` — playback-driven 1-batch lookahead + seek-jump state machine (`createGeminiFallbackScheduler`) and MV3 keepalive port fetcher (`createGeminiPortFetcher`). Processes the active window first, prefetches at most 1 window ahead, waits until playback enters the prefetched window before requesting the next, and aborts stale prefetches immediately on seek jumps.
+- `.srt` and `.vtt` subtitle parsing (`SubtitleParser.parseTimestampMs`, `parseSrt`, `parseVtt`, `parseSubtitleFile`) in `src/content/subtitle-parser.js`.
+- Interactive `"Import .srt / .vtt"` button + drag-and-drop zone directly inside `"Could not find subtitles"` / fallback status toasts (`Overlay.showStatus` sticky/action options + `Overlay.clearStatus` + `overlay.css` styles), plus a `"Use Gemini AI fallback when video has no captions"` toggle in `options.html` / `tab-translation.js` (EN/JA i18n in `_locales/`).
+- `SyncEngine.startDynamic` / `start(..., { allowEmpty: true })` and `SyncEngine.mergeBatchEntries` for out-of-order dynamic batch merging; incremental `Cache.getGenerated` / `setGenerated` / `mergeGeneratedBatch` (`sl = 'gen'`) in `src/background/cache.js`.
+- New test suites `tests/unit/video-transcriber.test.js` and `tests/unit/gemini-fallback-scheduler.test.js`, plus expanded unit coverage across `subtitle-parser.test.js`, `sync-engine.test.js`, `overlay.test.js`, `cache.test.js`, `providers.test.js`, `service-worker.test.js`, `main.test.js`, and `options-ui.test.js`.
+
+**Changed**
+
+- `src/background/providers.js` — extended `callGemini()` with optional `parts`, `mediaResolution`, `thinkingBudget`, and non-thought `parts` aggregation in `handleResponse()`.
+- `src/background/service-worker.js` — added `yousub-gemini-video` port (`TRANSCRIBE_WINDOW`, `CANCEL_BATCH`, `PING`/`PONG`, disconnect abort) and `YOUSUB_CHECK_GEMINI_AVAILABLE`, `YOUSUB_GET_GENERATED_CACHE`, `YOUSUB_SAVE_GENERATED_CACHE` message handlers.
+- `src/content/main.js` & `manifest.json` — wired generated cache restoration, live-stream skip, Gemini fallback scheduler, and `.srt`/`.vtt` file import on missing-transcript paths; exposed `gemini-fallback-scheduler.js` in `web_accessible_resources`.
+- `privacy-policy.md` — disclosed optional transmission of public YouTube video URLs to the user's configured Google Gemini endpoint when transcripts are unavailable.
+
+**Tests**: 592 → **623** (+31 tests across 38 suites; ESLint 0, Prettier clean, `npm audit` 0 vulnerabilities, coverage threshold met).
+
 ## [0.2.5] - 2026-11-17
 
 ### [Hotfix] Live Groq model/JSON-mode compatibility & 2026 YouTube Shorts extraction (2026-11-17)

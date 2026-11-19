@@ -10,6 +10,17 @@ export const Constants = {
   DEFAULT_SOURCE_LANG: 'auto',
 };
 
+export const RESUME_STORAGE_KEY = 'yousub_playback_resume_v1';
+export const RESUME_SYNC_KEY = 'yousub_resume_sync_v1';
+export const RESUME_SETTINGS_KEY = 'yousub_resume_settings';
+export const DEFAULT_RESUME_SETTINGS = Object.freeze({
+  enabled: true,
+  rewindSec: 3,
+  minDurationSec: 60,
+  syncEnabled: true,
+  preventCompletionReset: true,
+});
+
 // Message types for chrome.runtime.sendMessage between content ↔ background
 export const MSG = {
   TRANSLATE_REQUEST: 'YOUSUB_TRANSLATE_REQUEST',

@@ -8,6 +8,8 @@ const mockTranslate = jest.fn();
 const mockCache = {
   get: jest.fn(),
   set: jest.fn(),
+  getGenerated: jest.fn(),
+  setGenerated: jest.fn(),
   hasAnyForVideoTarget: jest.fn(),
   removeByVideoId: jest.fn(),
   clearAll: jest.fn(),
@@ -17,6 +19,10 @@ const mockProviders = {
 };
 const mockHealthManager = {
   getSummary: jest.fn(),
+};
+const mockVideoTranscriber = {
+  hasActiveGeminiKey: jest.fn(),
+  transcribeVideoWindow: jest.fn(),
 };
 
 jest.unstable_mockModule('../../src/shared/libs/browser-polyfill.js', () => ({}));
@@ -32,8 +38,10 @@ jest.unstable_mockModule('../../src/background/providers.js', () => ({
 jest.unstable_mockModule('../../src/background/health.js', () => ({
   HealthManager: mockHealthManager,
 }));
+jest.unstable_mockModule('../../src/background/video-transcriber.js', () => mockVideoTranscriber);
 
 await import('../../src/background/service-worker.js');
+const { Logger } = await import('../../src/shared/logger.js');
 
 const onMessageHandler = browser.runtime.onMessage._listeners[0];
 const onConnectHandler = browser.runtime.onConnect._listeners[0];
@@ -63,6 +71,7 @@ describe('service-worker.js routers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     browser.storage.local.store = {};
+    browser.storage.session.store = {};
     global.fetch = jest.fn();
   });
 
@@ -339,6 +348,220 @@ describe('service-worker.js routers', () => {
         error: 'boom',
         failureReason: 'STREAM_CRASH',
       });
+    });
+
+    test('YOUSUB_CHECK_GEMINI_AVAILABLE, generated cache handlers, and yousub-gemini-video port work', async () => {
+      browser.storage.local.store = { yousub_gemini_fallback_enabled: true };
+      mockVideoTranscriber.hasActiveGeminiKey.mockResolvedValue(true);
+      expect(await sendMessageAsync({ type: 'YOUSUB_CHECK_GEMINI_AVAILABLE' })).toEqual({
+        available: true,
+        enabled: true,
+        hasKey: true,
+      });
+
+      mockCache.getGenerated.mockResolvedValue({
+        entries: [{ startMs: 0, endMs: 1000, text: 'x' }],
+      });
+      expect(
+        await sendMessageAsync({
+          type: 'YOUSUB_GET_GENERATED_CACHE',
+          videoId: 'v-gen',
+          targetLang: 'vi',
+        })
+      ).toEqual({ cached: { entries: [{ startMs: 0, endMs: 1000, text: 'x' }] } });
+
+      await sendMessageAsync({
+        type: 'YOUSUB_SAVE_GENERATED_CACHE',
+        videoId: 'v-srt',
+        targetLang: 'vi',
+        payload: { entries: [{ startMs: 0, endMs: 1000, text: 'y' }] },
+      });
+      expect(mockCache.setGenerated).toHaveBeenCalledWith('v-srt', 'vi', {
+        entries: [{ startMs: 0, endMs: 1000, text: 'y' }],
+      });
+
+      // Port: PING, TRANSCRIBE_WINDOW, CANCEL_BATCH, disconnect abort
+      const port = makePort('yousub-gemini-video', 12);
+      onConnectHandler(port);
+
+      await port.emitMessage({ type: 'PING' });
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'PONG' });
+
+      let capturedSignal;
+      mockVideoTranscriber.transcribeVideoWindow.mockImplementation(async ({ signal }) => {
+        capturedSignal = signal;
+        return { success: true, batchIndex: 0, entries: [{ startMs: 0, endMs: 1000, text: 'ok' }] };
+      });
+      await port.emitMessage({
+        type: 'TRANSCRIBE_WINDOW',
+        requestId: 'req-1',
+        videoId: 'v-gen',
+        batchIndex: 0,
+        targetLang: 'vi',
+      });
+      expect(capturedSignal.aborted).toBe(false);
+      expect(port.postMessage).toHaveBeenCalledWith({
+        type: 'BATCH_RESULT',
+        requestId: 'req-1',
+        success: true,
+        batchIndex: 0,
+        entries: [{ startMs: 0, endMs: 1000, text: 'ok' }],
+      });
+
+      let resolveDeferred;
+      mockVideoTranscriber.transcribeVideoWindow.mockImplementationOnce(
+        ({ signal }) =>
+          new Promise((resolve) => {
+            capturedSignal = signal;
+            resolveDeferred = resolve;
+          })
+      );
+      const pendingEmit = port.emitMessage({
+        type: 'TRANSCRIBE_WINDOW',
+        requestId: 'req-cancel',
+        videoId: 'v-gen',
+        batchIndex: 1,
+        targetLang: 'vi',
+      });
+      await port.emitMessage({ type: 'CANCEL_BATCH', requestId: 'req-cancel' });
+      expect(capturedSignal.aborted).toBe(true);
+      resolveDeferred({ success: false, batchIndex: 1, failureReason: 'ABORTED' });
+      await pendingEmit;
+      port.emitDisconnect();
+    });
+
+    test('handles SEEK_PRIORITY, writes streaming/gemini telemetry & stats, and skips length-mismatched cache', async () => {
+      const port = makePort('yousub-stream', 55);
+      onConnectHandler(port);
+
+      // Length-mismatched old cache is skipped rather than misaligning coalesced segments
+      mockCache.get.mockResolvedValue(['old-0', 'old-1', 'old-2']);
+      let receivedOpts;
+      mockTranslate.mockImplementation(
+        async (_segs, _sl, _tl, _tabId, _onChunk, _sig, _onProg, opts) => {
+          receivedOpts = opts;
+          opts?.onStatsUpdate?.({
+            model: 'gemini-2.5-flash',
+            provider: 'google',
+            totalTokens: 100,
+            promptTokens: 60,
+            completionTokens: 40,
+            batchCount: 1,
+            durationMs: 900,
+          });
+          // Simulate dynamic seek event arriving mid-translation
+          await port.emitMessage({ type: 'SEEK_PRIORITY', playheadMs: 95000 });
+          expect(opts.getPlayheadMs()).toBe(95000);
+          return {
+            success: true,
+            hadFallback: false,
+            translated: ['Translated coalesced'],
+            stats: {
+              model: 'gemini-2.5-flash',
+              provider: 'google',
+              totalTokens: 120,
+              promptTokens: 70,
+              completionTokens: 50,
+              batchCount: 1,
+              durationMs: 1100,
+            },
+          };
+        }
+      );
+
+      await port.emitMessage({
+        type: 'YOUSUB_TRANSLATE_STREAM',
+        videoId: 'v-stream-stats',
+        segments: [{ text: 'Merged sentence.', startMs: 0 }],
+        sourceLang: 'en',
+        targetLang: 'vi',
+        playheadMs: 12000,
+        coalesceStats: { rawCount: 3, coalescedCount: 1, mergedCues: 2 },
+        extractionSource: 'dom-transcript',
+      });
+
+      expect(receivedOpts.initialPlayheadMs).toBe(12000);
+      expect(browser.storage.local.store['yousub_stats_v-stream-stats']).toMatchObject({
+        source: 'api',
+        model: 'gemini-2.5-flash',
+        totalTokens: 120,
+      });
+      expect(browser.storage.session.store['yousub_pipeline_v-stream-stats']).toMatchObject({
+        stage: 'COMPLETE',
+        coalescer: { rawCount: 3, coalescedCount: 1, mergedCues: 2 },
+      });
+
+      // Gemini video port persists stats and pipeline telemetry (including initial router state)
+      const gPort = makePort('yousub-gemini-video', 56);
+      onConnectHandler(gPort);
+      let resolveInFlight;
+      mockVideoTranscriber.transcribeVideoWindow.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveInFlight = resolve;
+          })
+      );
+
+      const pendingGem = gPort.emitMessage({
+        type: 'TRANSCRIBE_WINDOW',
+        requestId: 'g-stats-1',
+        videoId: 'v-gem-stats',
+        batchIndex: 0,
+        durationSec: 300,
+        windowSec: 240,
+        targetLang: 'vi',
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(browser.storage.session.store['yousub_pipeline_v-gem-stats']).toMatchObject({
+        mode: 'gemini-video',
+        stage: 'ROUTE',
+        router: { activeProvider: 'google', activeModel: 'gemini-2.5-flash' },
+      });
+
+      resolveInFlight({
+        success: true,
+        batchIndex: 0,
+        model: 'gemini-2.5-flash',
+        provider: 'google',
+        keyMask: '...9999',
+        durationMs: 2100,
+        usage: { promptTokens: 500, completionTokens: 100, totalTokens: 600 },
+        entries: [{ startMs: 0, endMs: 5000, original: 'Hi', text: 'Chao', isAiGenerated: true }],
+      });
+      await pendingGem;
+
+      expect(browser.storage.local.store['yousub_stats_v-gem-stats']).toMatchObject({
+        source: 'gemini-video',
+        model: 'gemini-2.5-flash',
+        totalTokens: 600,
+      });
+      expect(browser.storage.session.store['yousub_pipeline_v-gem-stats']?.mode).toBe(
+        'gemini-video'
+      );
+    });
+
+    test('YOUSUB_LOG_BATCH appends content logs via Logger.appendExternalEntries (Phase 84)', async () => {
+      Logger._buffer = [];
+      const debugSpy = jest.spyOn(Logger, 'debug');
+      const res = await sendMessageAsync({
+        type: 'YOUSUB_LOG_BATCH',
+        entries: [
+          '{"ts":"2026-11-18T10:00:00.000Z","level":"INFO","tag":"PlaybackResume","msg":"ok"}',
+        ],
+      });
+      expect(res).toEqual({ success: true });
+      expect(Logger._buffer).toHaveLength(1);
+      expect(Logger._buffer[0]).toContain('PlaybackResume');
+      expect(debugSpy).not.toHaveBeenCalledWith(
+        'ServiceWorker',
+        expect.stringContaining('YOUSUB_LOG_BATCH')
+      );
+      if (Logger._flushTimer) {
+        clearTimeout(Logger._flushTimer);
+        Logger._flushTimer = null;
+      }
+      debugSpy.mockRestore();
     });
   });
 });

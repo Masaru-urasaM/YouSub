@@ -327,3 +327,139 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 **Test coverage note**: `deriveSourceLang` and the extractor→callback wiring are unit-tested (`subtitle-extractor.test.js`); `hasAnyForVideoTarget` is unit-tested (`cache.test.js`). The threading **downstream** of the extract callback lives in `main.js` (`processEntries` sourceLang param, the two `startSubtitlePipeline` paths, the `sourceLang || 'auto'` post) which has no unit harness — verified in-browser at B-d (tracked in `DEFERRED.md`).
 
 **References**: `src/content/subtitle-extractor.js` (`deriveSourceLang`), `src/content/main.js` (`processEntries` sourceLang param), `src/background/service-worker.js` / `translator.js` (`options.src`, cache key), `tests/unit/subtitle-extractor.test.js`, `DEFERRED.md` (LanguageDetector follow-up); enables Phase B / Decision 15 restoration.
+
+---
+
+### Decision 17 — Phase 78: Gemini YouTube URL Fallback (Windowed 1-Batch Lookahead + Manual SRT/VTT Import)
+
+**Date**: 2026-11-17
+**Status**: RESOLVED
+
+**Problem**: When a YouTube video has neither a Transcript panel nor usable `captionTracks` (CC disabled, no ASR, or `pot`-gated empty `timedtext`), YouSub halted with `"Could not find subtitles"`. Downloading `adaptiveFormats` audio streams directly in the extension risks `signatureCipher`/POT breakage and Chrome Web Store policy rejection; `tabCapture` + Whisper only works in real time (no seeking ahead) and breaks Chromium/Firefox parity.
+
+**Options considered**:
+1. **Whole-video Gemini YouTube URL request** — Pros: single call. Cons: default 1 FPS (~300 tok/s) easily breaches Gemini Free Tier TPM ceilings (`429 RESOURCE_EXHAUSTED`) on 20–60m videos, risks output truncation/drift, and wastes quota if the user stops watching early.
+2. **Playback-driven fixed-window 1-batch lookahead via Gemini YouTube URL + `.srt`/`.vtt` import** — Pros: zero new manifest permissions (`generativelanguage.googleapis.com` already permitted), works on Chrome & Firefox, stays ~80%+ below Free Tier TPM ceilings (`240s` windows at `MEDIA_RESOLUTION_LOW` + `fps: 0.2`), aborts stale prefetches on seek jumps, and covers private/unlisted/live videos cleanly via drag-and-drop `.srt`/`.vtt` import. Cons: AI fallback requires a Google Gemini key and public VODs; LLM timestamps are less exact than forced alignment.
+
+**Resolution**: Option 2 chosen (`video-transcriber.js`, `gemini-fallback-scheduler.js`, `subtitle-parser.js`, `overlay.js`, `sync-engine.js`, `cache.js`). 1-pass structured JSON output (`[{ startSec, endSec, original, translated }]`) keeps latency and quota usage minimal while preserving Dual Mode (`original` + `text`) and incremental `sl='gen'` cache persistence (`yousub_vcache_<videoId>_gen_<tl>`). Includes automatic relative-vs-absolute timestamp detection for `startOffset`/`endOffset` chunks.
+
+**Tradeoff accepted**: Live-API empirical calibration of `DEFAULT_WINDOW_SEC` (`240s`) and `fps` (`0.2`) against a live Gemini key remains a post-implementation manual verification item since no Gemini key was present in the local test environment.
+
+**References**: `src/background/video-transcriber.js`, `src/content/gemini-fallback-scheduler.js`, `src/content/subtitle-parser.js`, `src/content/sync-engine.js`, `src/content/overlay.js`, `src/background/cache.js`, `privacy-policy.md`.
+
+---
+
+### Decision 18 — Phase 79: In-Place Cascade Repair, Semantic Sentence Coalescing & Seek-Aware Batch Queue
+
+**Date**: 2026-11-18
+**Status**: RESOLVED
+
+**Problem**: Live production logs (`watch?v=WPyRAcdZHDo`) uncovered progressive misalignment on later batches and `Translator: Cannot read properties of undefined (reading 'startMs')` crashes plus repeated 15s timeout aborts (`signal is aborted without reason`) on `gemini-2.5-*`. Three mechanisms compounded: (1) `MergeFixer.fix()` called `buildRealignment()` on cascade detections in JSON mode, shifting every valid subsequent index down by `+1..+K` and pushing out-of-bounds index `50` into `pendingIndices`; (2) `_computeLineCascadeScore()` fired without preserved-token evidence whenever punctuation and length varied; (3) raw unpunctuated 2–3s ASR fragments split clauses across adjacent translation items while the sequential batch loop ignored playhead seeks.
+
+**Options considered**:
+1. **Fix bounds crashes only** — Pros: minimal edit. Cons: leaves cross-line ASR clause reordering and sequential wait on seek unresolved.
+2. **Tier A 4 bugfixes + Upgrade B1 Semantic Sentence Coalescer + Upgrade B2 Seek-Aware Batch Priority Queue** — Pros: stops all crashes/timeouts/cascade shifts immediately, coalesces incomplete ASR fragments (`<= 500ms` gap / `<= 1500ms` bridged DOM, `<= 7s` duration, `<= 120` Latin / `<= 60` CJK chars) into complete sentences before translation, and dynamically prioritizes `[playheadBatch, lookahead, forward, backfill]` via `SEEK_PRIORITY` without modifying `MAX_LINES_PER_BATCH` (`50`).
+
+**Resolution**: Option 2 chosen (`merge-fixer.js`, `translator-quality.js`, `providers.js`, `translator-failover.js`, `subtitle-coalescer.js`, `translator.js`, `service-worker.js`, `main.js`). Keeping `MAX_LINES_PER_BATCH = 50` honors Rule 12 while preventing 15s aborts via `thinkingBudget: 0` on Gemini 2.5 and `BATCH_REQUEST_TIMEOUT_MS = 35000`. Legacy pre-coalesce cache entries with mismatched lengths are bypassed cleanly in `service-worker.js`.
+
+**References**: `src/background/merge-fixer.js`, `src/background/translator-quality.js`, `src/background/providers.js`, `src/background/translator-failover.js`, `src/content/subtitle-coalescer.js`, `src/background/translator.js`, `src/background/service-worker.js`.
+
+---
+
+### Decision 19 — Phase 80: Unified `PipelineTelemetry` Store & Sparrow-Style Flow Visualizer
+
+**Date**: 2026-11-18
+**Status**: RESOLVED
+
+**Problem**: Users had no clear visual feedback showing extraction fallback source, coalescing reduction, active provider/model/failover route, or seek-priority progress across streaming and Gemini video fallback runs, partly because `yousub_stats_<videoId>` only wrote on legacy `YOUSUB_TRANSLATE_REQUEST` and `storage.session` is inaccessible to content scripts by default in Chrome MV3.
+
+**Options considered**:
+1. **Session-storage-only telemetry + popup DOM text** — Pros: zero local storage writes. Cons: content script overlay cannot observe `storage.session` in Chrome MV3 without changing session access levels, and text labels fail to show multi-route failover structure.
+2. **Unified `PipelineTelemetry` mirrored across `storage.session` and LRU-pruned `storage.local` (`<= 5` snapshots) + shared SVG Sparrow-style flow renderer (`PipelineFlowView`)** — Pros: works identically across Popup, interactive Debug Inspector (`debug.html`), Content Overlay stage pill, and Chrome/Firefox MV3, with a soft low-glare dark palette.
+
+**Resolution**: Option 2 chosen (`src/shared/pipeline-telemetry.js`, `src/popup/pipeline-flow-view.js`). All dynamic text in SVG/HTML is escaped via `escapeHtml()` (`utils.js`), keeping content-script overlay compatible with YouTube's Trusted Types policy via DOM text nodes.
+
+**References**: `src/shared/pipeline-telemetry.js`, `src/popup/pipeline-flow-view.js`, `src/popup/`, `src/debug/`, `src/content/overlay.js`.
+
+---
+
+### Decision 20 — Overlay Auto-Fit Width, Bottom-Anchored Growth & Dynamic `.ytp-chrome-bottom` Bar Dodge
+
+**Date**: 2026-11-18
+**Status**: RESOLVED
+
+**Problem**: Short subtitles could not shrink below hardcoded `min-width: 200px` in default mode, and dragging/resizing entered `yousub-custom-position` which locked `width: widthPct%` and anchored `top: topPct%` with `bottom: auto`. That caused two UX issues: (1) short lines stayed trapped inside wide empty boxes and multi-line cues expanded downward instead of upward from a fixed bottom edge; (2) `bottom: auto` disabled `--yousub-offset`, causing low-placed subtitles to be hidden or overlap when YouTube raised `.ytp-chrome-bottom` on hover (including taller modern/fullscreen `.ytp-delhi-modern` bars >52px).
+
+**Options considered**:
+1. **JS-measured explicit `px` width transitions + additive `userBottom + barOffset` push** — Pros: smooth animated width on single-line text. Cons: animating `width` alongside `height: auto` causes temporary multi-line wrap bounce mid-transition; additive offsets needlessly jump already high subtitles whenever controls appear.
+2. **Pure CSS `width: fit-content` + bottom-anchored `(centerXPct, bottomPct, maxWidthPct)` + DOM-measured dynamic floor `max(userBottom, barClearance)`** — Pros: zero wrap-bounce (instant 1-frame line layout, smooth CSS `bottom` glide), short cues tightly fit content while respecting drag `maxWidthPct` ceiling, upward-only vertical growth, live `.ytp-chrome-bottom` clearance across normal/Theater/Fullscreen via `MutationObserver` + `ResizeObserver` (suspended while dragging), ignoring `.ytp-tooltip` thumbnail popups to avoid cursor-sweep jitter, and backward-compatible migration for legacy `{ leftPct, topPct, widthPct }` storage entries.
+
+**Resolution**: Option 2 chosen (`src/content/overlay.js`, `src/content/overlay.css`).
+
+**References**: `src/content/overlay.js`, `src/content/overlay.css`, `tests/unit/overlay.test.js`.
+
+---
+
+### Decision 21 — Declarative `world: "MAIN"` Content Scripts & Silent-First Transcript Extraction
+
+**Date**: 2026-11-18
+**Status**: RESOLVED (developer-approved)
+
+**Problem**: Two UX/platform issues affected YouTube sessions:
+1. Content bridges (`subtitle-extractor.js`, `subtitle-parser.js`, `rough-translate-bridge.js`) injected DOM `<script src="chrome-extension://...">` elements via `web_accessible_resources`, creating cross-origin `<script>` loads from `https://www.youtube.com/` and leaving Chrome `chrome://extensions` `Errors` warnings on `main-world-extractor.js` (alongside `loader.js`'s cache-busted `?v=` dynamic ESM import).
+2. `main-world-extractor.js` clicked YouTube's `"Show transcript"` button BEFORE attempting silent Innertube `/youtubei/v1/get_panel`, and lacked the promised "Close the panel" step — causing the YouTube Transcript sidebar (and expanded description) to pop open visibly and stay cluttering the player on every translation.
+
+**Options considered**:
+1. **Declarative `"world": "MAIN"` in `manifest.json` (`run_at: document_start`) + silent Innertube first** — Pros: zero new permissions (supported in Chrome 111+ and Firefox 128+ matching `strict_min_version: "128.0"`), eliminates all 3 `<script src="chrome-extension://...">` DOM injections and drops `main-world-*.js` from `web_accessible_resources`, preserves zero-build-step `loader.js` ESM unpacked workflow (with `?v=` cache-buster removed), and avoids opening YouTube's visible Transcript sidebar on `get_panel`/`get_transcript` hits while automatically closing the panel & collapsing `#collapse` on DOM fallback. Cons: keeps the 3 lightweight `window.addEventListener('message', ...)` listeners registered on matching YouTube pages at `document_start`, and retains `loader.js` dynamic ESM `import()` (eliminating `loader.js` completely would require a bundler such as `esbuild`).
+2. **Add `"scripting"` permission (`chrome.scripting.executeScript({ world: "MAIN" })`) + introduce `esbuild` bundle step** — Pros: lazy main-world execution and single classic content bundle. Cons: adds a new `"scripting"` permission and breaks the zero-build-step unpacked loading flow (`CLAUDE.md`).
+
+**Resolution**: Option 1 chosen (`manifest.json`, `src/content/loader.js`, `src/content/subtitle-extractor.js`, `src/content/subtitle-parser.js`, `src/content/rough-translate-bridge.js`, `src/content/main-world-fetcher.js`, `src/content/main-world-extractor.js`). `MainWorldExtractor` now correlates `requestId` per extraction, reuses already-open user transcripts untouched, prioritizes silent `/youtubei/v1/get_panel` + `/next` (`PAmodern_transcript_view` and classic `getTranscriptEndpoint` → `/get_transcript`), and closes the engagement panel + description collapse button in `finally` whenever DOM fallback opens them.
+
+**References**: `manifest.json`, `src/content/loader.js`, `src/content/main-world-extractor.js`, `src/content/subtitle-extractor.js`, `src/content/subtitle-parser.js`, `src/content/rough-translate-bridge.js`, `YOUSUB_PROJECT_SPEC.md` §2.5/2.7.
+
+---
+
+### Decision 22 — Eliminate JSON-Mode `buildRealignment` Index Shifting, Fail-Closed `RoughTranslator`-Absent Merges & `CACHE_SCHEMA_VERSION = 2`
+
+**Date**: 2026-11-18
+**Status**: RESOLVED (developer-approved)
+
+**Problem**: Live production translation continued exhibiting multi-cue index shifting ("dịch vẫn bị lệch") after Phase 79. Investigation revealed four compounding defects:
+1. Phase 79 bypassed `buildRealignment()` on `detectCascadeShifts`, leaving the sibling `detectTailAnomalies` + `findShiftCandidates` → `buildRealignment()` path active in `MergeFixer.fix()`. Any batch ending with a naturally short cue (`<= 2` words, even when matched by a short source cue) plus a single earlier EN→VI expansion (`ratio >= 1.8`) triggered fail-open verification when on-device `RoughTranslator` returned `null` (`src === 'auto'` or model absent) and shifted every subsequent cue in that batch by `+1..+K` indices.
+2. In Pass 1–3 (`detectMerges`), unavailable `RoughTranslator` (`fallback: true`) ran `proportionalSplit()` on non-empty EN→VI followers, splitting valid cues into half-fragments.
+3. Cache lookups checked only `cached.length === segments.length`, continuing to serve previously shifted cached arrays, while `parseJsonResponse` dropped string `"n"` / shifted 1-based `"n"` indices, `provider: 'auto'` bypassed JSON mode in `tryKeyForBatch()`, `inFlightRequests` lacked `videoId` in its dedup key, `SubtitleCoalescer` left tied whole-second or overlapping intervals for `SyncEngine` binary search, and `video-transcriber.js` dropped early Batch 1 relative cues if a trailing cue slightly crossed `240s`.
+
+**Options considered**:
+1. **Disable `tailInfo -> buildRealignment` only + bump cache version** — Pros: smallest patch. Cons: leaves fail-open `proportionalSplit()`, `'auto'` non-JSON fallback, tied whole-second interval overlap, and `video-transcriber.js` Batch 1 boundary drop unresolved.
+2. **Full Option A: isolate JSON Indexed Mode (`isIndexedJson: true`), fail-closed absent `RoughTranslator` non-empty splits, harden JSON/extractor/coalescer/session/Gemini-clip boundaries, and enforce `CACHE_SCHEMA_VERSION = 2`** — Pros: eliminates every index-shift and overlap vector at the root while keeping legacy text-mode recovery intact. Cons: one-time invalidation of pre-v2 cached translations on upgrade.
+
+**Resolution**: Option 2 chosen across `src/background/merge-fixer.js`, `src/background/translator-quality.js`, `src/background/translator-failover.js`, `src/background/translator-prompts.js`, `src/background/translator.js`, `src/background/cache.js`, `src/background/video-transcriber.js`, `src/content/main-world-extractor.js`, `src/content/subtitle-coalescer.js`, and `src/content/main.js`.
+
+**References**: `src/background/merge-fixer.js`, `src/background/translator-failover.js`, `src/background/translator-prompts.js`, `src/background/cache.js`, `src/content/subtitle-coalescer.js`, `src/content/main-world-extractor.js`, `src/background/video-transcriber.js`, `src/content/main.js`.
+
+---
+
+### Decision 23 — Milestone 8: Firefox Mobile (`m.youtube.com`) Support & 3-Tier Playback Auto-Resume with Hardened YouTube Account Watchtime Sync
+
+**Date**: 2026-11-18
+**Status**: RESOLVED (developer-approved)
+
+**Problem**: The developer listens to long-form audiobooks on YouTube (10–50+ hours) across PC (Chrome/Firefox) and Mobile (Firefox for Android on `m.youtube.com`). YouTube's native resume feature intermittently loses progress due to four failure modes: (1) reopening a video that initializes at `0:00` immediately sends a `/api/stats/watchtime` ping at `cmt=0..2`, overwriting the 15-hour server timestamp; (2) falling asleep lets playback reach >95% duration, causing YouTube to mark the video complete and reset `startSeconds` to `0`; (3) mobile OS tab suspension kills pending `watchtime` heartbeats; and (4) adblockers / Firefox ETP block `s.youtube.com/api/stats/watchtime`. Meanwhile, `chrome.storage.sync` (Google) and `browser.storage.sync` (Mozilla) do not bridge Chrome ↔ Firefox, and YouSub's privacy policy prohibits developer-operated backend servers.
+
+**Options considered**:
+1. **Local-only storage (`storage.local`)** — Pros: simple, zero network calls. Cons: no cross-device sync when switching from Chrome PC to Firefox Mobile.
+2. **External cloud database or mandatory 3rd-party token (Firebase / GitHub Gist)** — Pros: syncs arbitrary JSON across browsers. Cons: requires external accounts/tokens or developer servers, complicating store compliance and user setup.
+3. **3-Tier Hybrid Architecture (`storage.local` + `storage.sync` + Hardened YouTube Account `watchtime`/`startSeconds`) + 4-Timestamp Audiobook Safety Net + Full `m.youtube.com` Compatibility** — Pros:
+   - **Zero-config Chrome ↔ Firefox sync via the user's existing YouTube login**: reads `playerConfig.playbackStartConfig.startSeconds` from Innertube `/youtubei/v1/player` and actively pushes credentialed watchtime pings to `window.location.origin + '/api/stats/watchtime'` (bypassing `s.youtube.com` adblock filters) on `pause`, `seeked`, `visibilitychange`, `pagehide`, and every 30s.
+   - **Main-World Watchtime Guard**: intercepts outgoing `/api/stats/watchtime` calls during the first 15s of page load to block premature `cmt < target - 10` pings from wiping server state, and clamps `cmt >= 0.95 * duration` on long videos (`>= 600s`) so falling asleep never triggers YouTube's 100% completion reset.
+   - **4-Timestamp Audiobook Safety Net**: stores `lastTimeSec`, `furthestTimeSec` (accidental seek protection), `lastInteractionTimeSec` (sleep protection: records playhead at last user input), rolling 30-minute `checkpoints`, and manual `bookmarks` in `storage.local` (500 videos LRU) + compact `storage.sync` (40 videos LRU).
+   - **Zero new permissions or privacy policy violations**: operates strictly within existing `*://*.youtube.com/*` and `storage` permissions.
+
+**Resolution**: Option 3 chosen, structured into 5 sequential phases (Phases 81–85):
+- **Phase 81**: Firefox Mobile (`m.youtube.com`) compatibility (`gecko_android` manifest target, History/URL-polling SPA detector in `page-detector.js`, `window.location.origin` Innertube XHR fix in `main-world-extractor.js`, mobile control bar clearance in `overlay.js`/`overlay.css`).
+- **Phase 82**: `src/shared/playback-resume-store.js` (CRUD, LRU eviction, `storage.local` + debounced `storage.sync` mirror, deterministic conflict resolution between local, sync, and YouTube account `startSeconds`, smart `-3s` rewind).
+- **Phase 83**: `src/content/main-world-resume.js` (declarative `world: "MAIN"` script: extracts `startSeconds` + `videostatsWatchtimeUrl`, intercepts/blocks premature `0:00` and `>95%` watchtime pings, dispatches same-origin credentialed watchtime sync requests).
+- **Phase 84**: `src/content/playback-resume.js` (content-script lifecycle independent of subtitle translation, 3s throttled save, user interaction tracker for `lastInteractionTimeSec`, rolling 30m checkpoints, auto-seek on video bind, standalone on-video toast with `[0:00]`, `[Furthest]`, and `[Last Active]` quick-jump actions).
+- **Phase 85**: Popup & Options UI (`popup.html`/`.js`/`.css`, `options.html`/`.js`, `_locales/en` & `_locales/ja` parity, `privacy-policy.md` & `YOUSUB_PROJECT_SPEC.md` updates).
+
+**References**: `manifest.json`, `src/content/page-detector.js`, `src/content/main-world-extractor.js`, `src/shared/playback-resume-store.js`, `src/content/main-world-resume.js`, `src/content/playback-resume.js`, `src/content/main.js`, `src/content/overlay.js`, `src/popup/`, `src/options/`.

@@ -192,6 +192,12 @@ function _computeLineCascadeScore(i, segments, outputLines, medianRatio) {
   const nextOutput = i < outputLines.length - 1 ? outputLines[i + 1] : null;
 
   const tokenScore = computeTokenAnchorScore(inputTokens, outputLines[i], prevOutput, nextOutput);
+  // Fix A2: Require a real misplaced preserved-token signal so normal punctuation
+  // and length variance never trigger batch-wide false cascade shifts.
+  if (tokenScore === null || tokenScore <= 0.3) {
+    return { score: 0, signalCount: 0 };
+  }
+
   const boundaryScore = computeBoundaryAlignmentScore(segments[i].text, outputLines[i]);
   const lengthScore = computeLengthOutlierScore(
     wordCount(segments[i].text),
@@ -199,15 +205,10 @@ function _computeLineCascadeScore(i, segments, outputLines, medianRatio) {
     medianRatio
   );
 
-  let totalWeight = 0;
-  let weightedSum = 0;
-  let signalCount = 0;
+  let totalWeight = CASCADE_TOKEN_WEIGHT;
+  let weightedSum = tokenScore * CASCADE_TOKEN_WEIGHT;
+  let signalCount = 1;
 
-  if (tokenScore !== null) {
-    totalWeight += CASCADE_TOKEN_WEIGHT;
-    weightedSum += tokenScore * CASCADE_TOKEN_WEIGHT;
-    if (tokenScore > 0.3) signalCount++;
-  }
   if (boundaryScore !== null) {
     totalWeight += CASCADE_BOUNDARY_WEIGHT;
     weightedSum += boundaryScore * CASCADE_BOUNDARY_WEIGHT;
@@ -253,19 +254,32 @@ function detectCascadeShifts(segments, outputLines) {
   return cascades;
 }
 
-function detectTailAnomalies(outputLines) {
+function detectTailAnomalies(outputLines, segments = null) {
   let count = 0;
   let gaps = 0;
   for (let i = outputLines.length - 1; i > 0; i--) {
     const line = outputLines[i];
-    const isShort = wordCount(line) <= GARBAGE_WORD_THRESHOLD;
+    const outWc = wordCount(line);
+    const srcWc =
+      Array.isArray(segments) && segments[i] && typeof segments[i].text === 'string'
+        ? wordCount(segments[i].text)
+        : Infinity;
+    const isShort =
+      outWc === 0 || (outWc <= GARBAGE_WORD_THRESHOLD && srcWc > GARBAGE_WORD_THRESHOLD * 2);
     const hasInternalRepetition = detectInternalRepetition(line);
-    const isDuplicate = line && line === outputLines[i - 1];
+    const sameSourceAsPrev =
+      Array.isArray(segments) &&
+      segments[i] &&
+      segments[i - 1] &&
+      segments[i].text === segments[i - 1].text;
+    const isDuplicate = line && line === outputLines[i - 1] && !sameSourceAsPrev;
     const overlapNext =
       i < outputLines.length - 1 &&
       computeWordOverlap(line, outputLines[i + 1]) > TAIL_OVERLAP_THRESHOLD;
     const overlapPrev =
-      i > 1 && computeWordOverlap(line, outputLines[i - 1]) > TAIL_OVERLAP_THRESHOLD;
+      i > 1 &&
+      !sameSourceAsPrev &&
+      computeWordOverlap(line, outputLines[i - 1]) > TAIL_OVERLAP_THRESHOLD;
 
     if (isShort || hasInternalRepetition || isDuplicate || overlapNext || overlapPrev) {
       count += 1 + gaps;
@@ -307,6 +321,8 @@ function buildRealignment(outputLines, confirmedMerges, N) {
     if (confirmedMerges.has(readIdx)) {
       const absorbed = confirmedMerges.get(readIdx);
       for (let j = 0; j <= absorbed; j++) {
+        // Fix A1a: Never push out-of-bounds indices (>= N) into pendingIndices.
+        if (corrected.length >= N) break;
         pendingIndices.push(corrected.length);
         corrected.push('');
       }
@@ -316,7 +332,10 @@ function buildRealignment(outputLines, confirmedMerges, N) {
   }
 
   while (corrected.length < N) corrected.push('');
-  return { lines: corrected.slice(0, N), pendingIndices };
+  return {
+    lines: corrected.slice(0, N),
+    pendingIndices: pendingIndices.filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < N),
+  };
 }
 
 async function verifyAndRefineMerge(
@@ -482,53 +501,77 @@ export const MergeFixer = {
     return merges;
   },
 
-  async fix(segments, outputLines, src, tgt, roughTranslate) {
+  async fix(segments, outputLines, src, tgt, roughTranslate, fixOptions = {}) {
+    if (!Array.isArray(segments) || !Array.isArray(outputLines) || segments.length === 0) {
+      return { lines: Array.isArray(outputLines) ? [...outputLines] : [], pendingIndices: [] };
+    }
+
     const lines = [...outputLines];
     const N = segments.length;
+    const isIndexedJson = Boolean(fixOptions && fixOptions.isIndexedJson);
 
-    const tailInfo = detectTailAnomalies(lines);
-    if (tailInfo.count > 0) {
-      const candidates = findShiftCandidates(segments, lines);
-      if (candidates.length > 0) {
-        const confirmedMerges = new Map();
-        for (const { position } of candidates) {
-          const maxScan = Math.min(SHIFT_MAX_SCAN, N - position - 1);
-          const verifyResult = await verifyAndRefineMerge(
-            position,
-            1,
-            maxScan,
-            segments,
-            lines[position],
-            src,
-            tgt,
-            roughTranslate
-          );
-          if (verifyResult.verified) {
-            confirmedMerges.set(position, verifyResult.absorbed);
+    // Positional shift realignment (buildRealignment) can ONLY apply to unindexed text output;
+    // in JSON indexed mode every item carries an explicit slot `n`, so inserting blank slots
+    // shifts valid subsequent lines down by +1..+K cues.
+    if (!isIndexedJson) {
+      const tailInfo = detectTailAnomalies(lines, segments);
+      if (tailInfo.count > 0) {
+        const candidates = findShiftCandidates(segments, lines);
+        if (candidates.length > 0) {
+          const confirmedMerges = new Map();
+          for (const { position } of candidates) {
+            const maxScan = Math.min(SHIFT_MAX_SCAN, N - position - 1);
+            const verifyResult = await verifyAndRefineMerge(
+              position,
+              1,
+              maxScan,
+              segments,
+              lines[position],
+              src,
+              tgt,
+              roughTranslate
+            );
+            if (verifyResult.verified) {
+              confirmedMerges.set(position, verifyResult.absorbed);
+            }
           }
-        }
-        if (confirmedMerges.size > 0) {
-          const totalAbsorbed = [...confirmedMerges.values()].reduce((a, b) => a + b, 0);
-          Logger.debug(
-            'MergeFixer',
-            `[SHIFT] ${confirmedMerges.size} merge(s), ${totalAbsorbed} absorbed (tail=${tailInfo.count})`
-          );
-          return buildRealignment(lines, confirmedMerges, N);
+          if (confirmedMerges.size > 0) {
+            const totalAbsorbed = [...confirmedMerges.values()].reduce((a, b) => a + b, 0);
+            Logger.debug(
+              'MergeFixer',
+              `[SHIFT] ${confirmedMerges.size} merge(s), ${totalAbsorbed} absorbed (tail=${tailInfo.count})`
+            );
+            return buildRealignment(lines, confirmedMerges, N);
+          }
         }
       }
     }
 
     const cascades = detectCascadeShifts(segments, lines);
     if (cascades.length > 0) {
-      Logger.debug(
-        'MergeFixer',
-        `[CASCADE] ${cascades.length} cascade shift(s) detected via offline signals`
-      );
-      const cascadeMerges = new Map();
-      for (const { position } of cascades) {
-        cascadeMerges.set(position, 1);
+      // Fix A1b: In JSON/indexed mode, never call buildRealignment() for cascade shifts
+      // because inserting blank slots shifts every subsequent valid line down by +1..+K.
+      // Instead, clear and queue only the flagged [position, neighbor] indices in-place.
+      const pendingSet = new Set();
+      for (const { position, direction } of cascades) {
+        if (Number.isInteger(position) && position >= 0 && position < N) {
+          pendingSet.add(position);
+        }
+        const neighbor = position + (direction === -1 ? -1 : 1);
+        if (Number.isInteger(neighbor) && neighbor >= 0 && neighbor < N) {
+          pendingSet.add(neighbor);
+        }
       }
-      return buildRealignment(lines, cascadeMerges, N);
+      const pendingIndices = [...pendingSet].sort((a, b) => a - b);
+      for (const idx of pendingIndices) {
+        lines[idx] = '';
+      }
+      Logger.info('MergeFixer', '[CASCADE] In-place cascade shift detected', {
+        cascadesCount: cascades.length,
+        pendingIndices,
+        batchSize: N,
+      });
+      return { lines, pendingIndices };
     }
 
     for (let pass = 0; pass < MAX_FIX_PASSES; pass++) {
@@ -540,6 +583,7 @@ export const MergeFixer = {
         `[Pass ${pass + 1}] Detected ${merges.length} merge(s). Fixing...`
       );
 
+      let modifiedInPass = false;
       for (let m = merges.length - 1; m >= 0; m--) {
         const { position, absorbed: initialAbsorbed } = merges[m];
         const mergedText = lines[position];
@@ -562,7 +606,14 @@ export const MergeFixer = {
           roughTranslate
         );
 
-        if (!verifyResult.verified) continue;
+        const followerNonEmpty = Boolean(lines[position + 1] && lines[position + 1].trim() !== '');
+        if (
+          !verifyResult.verified ||
+          (isIndexedJson && verifyResult.fallback && followerNonEmpty)
+        ) {
+          continue;
+        }
+        modifiedInPass = true;
 
         const absorbed = verifyResult.absorbed;
         const roughTranslations = verifyResult.roughTranslations;
@@ -662,8 +713,12 @@ export const MergeFixer = {
         lines.splice(N);
       }
 
+      if (!modifiedInPass) break;
+
       for (let i = lines.length - 1; i > 0; i--) {
-        if (lines[i] === lines[i - 1] && lines[i]) {
+        const sameSourceAsPrev =
+          segments[i] && segments[i - 1] && segments[i].text === segments[i - 1].text;
+        if (lines[i] === lines[i - 1] && lines[i] && !sameSourceAsPrev) {
           lines[i] = segments[i] ? segments[i].text : '';
           Logger.debug('MergeFixer', `[DEDUP] Duplicate tail at ${i}, reverted to original`);
         } else {
@@ -704,4 +759,5 @@ export const _internals = {
   computeLengthOutlierScore,
   computeMedianRatio,
   detectCascadeShifts,
+  _computeLineCascadeScore,
 };

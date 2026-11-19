@@ -22,6 +22,7 @@ describe('Logger', () => {
     Logger._buffer = [];
     Logger._errorBuffer = [];
     Logger._flushInProgress = false;
+    Logger._swRelayCursor = 0;
     if (Logger._flushTimer) {
       clearTimeout(Logger._flushTimer);
       Logger._flushTimer = null;
@@ -181,6 +182,28 @@ describe('Logger', () => {
       Logger.info('Test', 'ts-check');
       const entry = JSON.parse(Logger._buffer[0]);
       expect(new Date(entry.ts).toISOString()).toBe(entry.ts);
+    });
+  });
+
+  describe('Content-script relay & external log ingestion (Phase 84)', () => {
+    it('relays buffered entries via YOUSUB_LOG_BATCH when storage.session throws or is absent', async () => {
+      global.chrome.storage.session.set.mockRejectedValueOnce(new Error('No session access'));
+      Logger.info('PlaybackResume', 'Relayed line');
+      await Logger._flush();
+
+      expect(global.chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'YOUSUB_LOG_BATCH',
+        entries: [expect.stringContaining('Relayed line')],
+      });
+    });
+
+    it('appendExternalEntries merges incoming content logs into ring buffer', () => {
+      Logger.appendExternalEntries([
+        '{"ts":"2026-11-18T00:00:00Z","level":"INFO","tag":"X","msg":"ext"}',
+        '',
+      ]);
+      expect(Logger._buffer).toHaveLength(1);
+      expect(Logger._buffer[0]).toContain('"msg":"ext"');
     });
   });
 });

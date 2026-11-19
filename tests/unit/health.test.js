@@ -97,4 +97,25 @@ describe('HealthManager Module', () => {
       expect(HealthManager.computeScore({ successCount: 3, failCount: 0, avgTime: 0 })).toBe(1.0);
     });
   });
+
+  describe('getSummary (Phase 80a model normalization)', () => {
+    test('resolves deprecated model IDs and auto-detected providers cleanly', async () => {
+      await HealthManager.report('groq', 'gsk_demo_key_1234', true, 400);
+      const summary = await HealthManager.getSummary([
+        { provider: 'auto', model: 'llama-3.3-70b-versatile', apiKey: 'gsk_demo_key_1234' },
+        { provider: 'google', model: 'auto', apiKey: 'AIzaDemoKey5678' },
+      ]);
+
+      expect(summary[0]).toMatchObject({
+        provider: 'groq',
+        model: 'openai/gpt-oss-120b',
+        status: 'healthy',
+      });
+      expect(summary[1]).toMatchObject({
+        provider: 'google',
+        model: 'gemini-2.5-flash',
+        status: 'healthy',
+      });
+    });
+  });
 });

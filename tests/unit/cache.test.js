@@ -23,6 +23,24 @@ describe('Cache Module', () => {
     expect(chrome.storage.local.set).toHaveBeenCalled();
   });
 
+  test('invalidates legacy unversioned cache entries predating alignment fixes', async () => {
+    const key = 'yousub_vcache_vid_old_en_vi';
+    await chrome.storage.local.set({
+      [key]: {
+        videoId: 'vid_old',
+        sl: 'en',
+        tl: 'vi',
+        timestamp: Date.now(),
+        translated: ['shifted legacy line'],
+      },
+    });
+
+    const cached = await Cache.get('vid_old', 'en', 'vi');
+    expect(cached).toBeNull();
+    const stored = await chrome.storage.local.get(key);
+    expect(stored[key]).toBeUndefined();
+  });
+
   test('should respect TTL (expiration)', async () => {
     const videoId = 'test_ttl';
     const translated = [{ text: 'Old' }];
@@ -130,6 +148,49 @@ describe('Cache Module', () => {
     test('returns false for a falsy videoId', async () => {
       expect(await Cache.hasAnyForVideoTarget('', 'vi')).toBe(false);
       expect(await Cache.hasAnyForVideoTarget(null, 'vi')).toBe(false);
+    });
+  });
+
+  describe('generated & incremental batch cache (Phase 78)', () => {
+    test('mergeGeneratedBatch accumulates out-of-order windows and integrates with probe & clear', async () => {
+      await Cache.mergeGeneratedBatch('vid_gen', 'vi', {
+        windowSec: 240,
+        durationSec: 1500,
+        batchIndex: 5,
+        entries: [{ startMs: 1200000, endMs: 1203000, original: 'Six', text: 'Sau' }],
+      });
+      await Cache.mergeGeneratedBatch('vid_gen', 'vi', {
+        windowSec: 240,
+        durationSec: 1500,
+        batchIndex: 0,
+        entries: [{ startMs: 1000, endMs: 4000, original: 'One', text: 'Mot' }],
+      });
+
+      expect(await Cache.hasAnyForVideoTarget('vid_gen', 'vi')).toBe(true);
+
+      const cached = await Cache.getGenerated('vid_gen', 'vi');
+      expect(cached.windowSec).toBe(240);
+      expect(cached.completedBatches).toEqual([0, 5]);
+      expect(cached.entries.map((e) => e.text)).toEqual(['Mot', 'Sau']);
+
+      await Cache.removeByVideoId('vid_gen');
+      expect(await Cache.getGenerated('vid_gen', 'vi')).toBeNull();
+    });
+
+    test('setGenerated stores full imported SRT entries and enforces 30-day TTL', async () => {
+      await Cache.setGenerated('vid_srt', 'ja', {
+        entries: [{ startMs: 500, endMs: 1500, original: 'Hi', text: 'こんにちは' }],
+        completedBatches: ['all'],
+      });
+      const hit = await Cache.getGenerated('vid_srt', 'ja');
+      expect(hit.completedBatches).toEqual(['all']);
+      expect(hit.entries).toHaveLength(1);
+
+      const key = 'yousub_vcache_vid_srt_gen_ja';
+      const stored = await chrome.storage.local.get(key);
+      stored[key].timestamp = Date.now() - 31 * 24 * 60 * 60 * 1000;
+      await chrome.storage.local.set({ [key]: stored[key] });
+      expect(await Cache.getGenerated('vid_srt', 'ja')).toBeNull();
     });
   });
 });

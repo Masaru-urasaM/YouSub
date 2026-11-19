@@ -18,6 +18,9 @@ const {
   sortGroupsByHealth,
   selectGroupForBatch,
   MAX_PAYLOAD_BYTES,
+  buildBatchQueue,
+  findBatchIndexForPlayhead,
+  selectNextPendingBatchIndex,
 } = _internals;
 
 // ─── formatTimestamp ──────────────────────────────────────────────────
@@ -281,6 +284,30 @@ describe('parseJsonResponse', () => {
     const result = parseJsonResponse(response, segments);
     expect(result.lines[0]).toBe('one'); // empty t -> original kept, not counted
     expect(result.validCount).toBe(2);
+  });
+
+  test('normalizes 1-based line indices (1..N) and numeric string keys without shifting by +1', () => {
+    const oneBased = JSON.stringify({
+      lines: [
+        { n: 1, t: 'uno' },
+        { n: 2, t: 'dos' },
+        { n: 3, t: 'tres' },
+      ],
+    });
+    const r1 = parseJsonResponse(oneBased, segments);
+    expect(r1.lines).toEqual(['uno', 'dos', 'tres']);
+    expect(r1.validCount).toBe(3);
+
+    const stringKeys = JSON.stringify({
+      lines: [
+        { n: '0', t: 'uno' },
+        { n: '1', t: 'dos' },
+        { n: '2', t: 'tres' },
+      ],
+    });
+    const r2 = parseJsonResponse(stringKeys, segments);
+    expect(r2.lines).toEqual(['uno', 'dos', 'tres']);
+    expect(r2.validCount).toBe(3);
   });
 });
 
@@ -584,5 +611,49 @@ describe('parseTimestampedText', () => {
     const { lines, validCount } = parseTimestampedText('[00:00:00] ONLY-FIRST', segments);
     expect(lines).toEqual(['ONLY-FIRST', 'keep-en-1']);
     expect(validCount).toBe(1);
+  });
+});
+
+// ─── Seek-Aware Batch Queue Helpers (Phase 79c) ───────────────────────
+
+describe('Seek-aware batch queue helpers', () => {
+  test('buildBatchQueue partitions segments cleanly and preserves timestamp spans', () => {
+    const segments = Array.from({ length: 120 }, (_, i) => ({ text: `L${i}`, startMs: i * 1000 }));
+    const batches = buildBatchQueue(segments, 50);
+
+    expect(batches).toHaveLength(3);
+    expect(batches[0]).toMatchObject({
+      batchIndex: 0,
+      start: 0,
+      end: 50,
+      startMs: 0,
+      endMs: 50000,
+    });
+    expect(batches[1]).toMatchObject({
+      batchIndex: 1,
+      start: 50,
+      end: 100,
+      startMs: 50000,
+      endMs: 100000,
+    });
+    expect(batches[2]).toMatchObject({ batchIndex: 2, start: 100, end: 120, startMs: 100000 });
+  });
+
+  test('findBatchIndexForPlayhead and selectNextPendingBatchIndex follow priority order', () => {
+    const batches = [
+      { batchIndex: 0, startMs: 0, endMs: 50000, status: 'PENDING' },
+      { batchIndex: 1, startMs: 50000, endMs: 100000, status: 'PENDING' },
+      { batchIndex: 2, startMs: 100000, endMs: 150000, status: 'PENDING' },
+      { batchIndex: 3, startMs: 150000, endMs: 200000, status: 'PENDING' },
+    ];
+
+    expect(findBatchIndexForPlayhead(batches, 120000)).toBe(2);
+    expect(selectNextPendingBatchIndex(batches, 120000)).toBe(2); // anchor
+
+    batches[2].status = 'DONE';
+    expect(selectNextPendingBatchIndex(batches, 120000)).toBe(3); // lookahead +1
+
+    batches[3].status = 'DONE';
+    expect(selectNextPendingBatchIndex(batches, 120000)).toBe(0); // backfill earliest pending
   });
 });

@@ -1,27 +1,8 @@
 import { devLog, devWarn } from '../shared/constants.js';
 
 let messageHandler = null;
-
-/**
- * Inject a script file into the MAIN world to bypass CSP 'unsafe-inline'.
- */
-function injectScriptFile(file) {
-  devLog('[YouSub] SubtitleExtractor: Injecting script file:', file);
-  try {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL(file);
-    script.onload = function () {
-      devLog('[YouSub] SubtitleExtractor: Script loaded and removed from DOM:', file);
-      this.remove();
-    };
-    script.onerror = function (e) {
-      console.error('[YouSub] SubtitleExtractor: Script injection FAILED:', file, e);
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } catch (err) {
-    console.error('[YouSub] SubtitleExtractor: Critical injection error:', err);
-  }
-}
+let extractIdCounter = 0;
+let activeRequestId = null;
 
 /**
  * Best-effort source language of the DOM-scraped transcript.
@@ -60,9 +41,13 @@ export const SubtitleExtractor = {
   extract: function (callback) {
     this.destroy();
 
+    const requestId = 'yousub_extract_' + ++extractIdCounter;
+    activeRequestId = requestId;
+
     messageHandler = function (event) {
       if (event.source !== window) return;
       if (!event.data || event.data.type !== 'YOUSUB_CAPTION_TRACKS') return;
+      if (event.data.requestId && event.data.requestId !== activeRequestId) return;
 
       const tracks = event.data.tracks;
       const parsedEntries = event.data.parsedEntries;
@@ -105,14 +90,15 @@ export const SubtitleExtractor = {
     }.bind(this);
 
     window.addEventListener('message', messageHandler);
-    injectScriptFile('src/content/main-world-extractor.js');
-    devLog('[YouSub] SubtitleExtractor: Injected extraction script.');
+    window.postMessage({ type: 'YOUSUB_EXTRACT_CAPTIONS', requestId }, '*');
+    devLog('[YouSub] SubtitleExtractor: Dispatched main-world extraction request.');
   },
 
   /**
    * Clean up the message listener.
    */
   destroy: function () {
+    activeRequestId = null;
     if (messageHandler) {
       window.removeEventListener('message', messageHandler);
       messageHandler = null;

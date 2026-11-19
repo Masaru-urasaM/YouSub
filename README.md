@@ -1,19 +1,15 @@
 # YouSub
 
-Real-time AI subtitle translator for YouTube. YouSub intercepts YouTube's native
-transcript tracks, translates them with your own LLM API keys (BYOK,
-multi-provider), and renders a synced, customizable subtitle overlay on the
-player — including a dual (original + translated) mode.
+Real-time AI subtitle translator & Audio/Long-Video Auto-Resume for YouTube. YouSub intercepts YouTube's native transcript tracks (or falls back to Gemini / local `.srt`/`.vtt`), translates them with your own LLM API keys (BYOK, multi-provider), renders a synced, customizable dual-subtitle overlay, and automatically preserves & syncs exact playback positions across Chrome, Firefox Desktop, and Firefox for Android (`m.youtube.com`).
 
-> **Status**: Shipped — **v0.2.2** (Chrome Web Store); local **v0.2.5** built. Manifest V3, vanilla
-> JavaScript ES modules, **no build step**. Open source under GNU AGPL-3.0-only.
+> **Status**: **Live v0.2.5** on [Firefox Add-ons (Desktop + Android)](https://addons.mozilla.org/addon/yousub/); **Live v0.2.0 / v0.2.5 Pending Review** on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (**743/743 tests**, 48 suites). Manifest V3, vanilla JavaScript ES modules, **no build step**. Open source under GNU AGPL-3.0-only.
 
 ---
 
 ## Tech stack
 
-- **Manifest V3** browser extension (Chrome primary; Firefox/Edge/Brave compatible via the vendored `webextension-polyfill`).
-- **Vanilla JavaScript (ES2020+ ESM)** — no bundler/transpiler. Content scripts are loaded by a single entry (`src/content/loader.js`) that dynamic-`import()`s the ESM module graph; `window.YouSub` is a compatibility shim.
+- **Manifest V3** browser extension (Chrome Desktop, Firefox Desktop, Firefox for Android >= 128.0, Edge, Brave via the vendored `webextension-polyfill`).
+- **Vanilla JavaScript (ES2020+ ESM)** — no bundler/transpiler. Declarative `"world": "MAIN"` helpers handle page-context YouTube Innertube extraction & on-device translation (`src/content/main-world-*.js`), while isolated content scripts load via `src/content/loader.js` dynamic-`import()`ing the ESM module graph (`window.YouSub` kept as a compatibility shim).
 - **Background service worker** (`type: module`) hosts the multi-provider translation engine, key failover, health/circuit-breaker, and translation cache.
 - **Tests**: Jest + jsdom (`node --experimental-vm-modules`).
 - **Tooling**: ESLint 9 (flat config) + Prettier, EditorConfig, `.nvmrc` (Node 22), husky + lint-staged pre-commit hook.
@@ -26,6 +22,9 @@ npm test               # run the unit suite (jsdom) with the coverage gate
 npm run lint           # ESLint
 npm run format         # Prettier --write
 npm run package        # build dist/ ZIPs for Chrome + Firefox
+npm run verify         # run lint + format:check + test:log + package
+npm run publish:dry-run # verify store ZIPs & API credentials without uploading
+npm run publish:stores  # upload & submit dist/ ZIPs via CWS API v2 + AMO API v5
 ```
 
 **Load the unpacked extension** (for manual testing): open `chrome://extensions`,

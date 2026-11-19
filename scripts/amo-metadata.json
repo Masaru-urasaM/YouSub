@@ -1,0 +1,25 @@
+{
+  "name": {
+    "en-US": "YouSub"
+  },
+  "summary": {
+    "en-US": "Real-time BYOK AI subtitle translator for YouTube with dual subtitles plus cross-device Audio & Long-Video Auto-Resume for Desktop and Firefox Mobile."
+  },
+  "categories": {
+    "firefox": ["language-support", "photos-music-videos"],
+    "android": ["language-support", "photos-music-videos"]
+  },
+  "license": "AGPL-3.0-only",
+  "homepage": {
+    "en-US": "https://github.com/Masaru-urasaM/YouSub"
+  },
+  "support_email": {
+    "en-US": "sytacxinh1123@gmail.com"
+  },
+  "requires_payment": false,
+  "is_experimental": false,
+  "release_notes": {
+    "en-US": "v0.2.5: Added Firefox for Android (m.youtube.com) compatibility, cross-platform Audio & Long-Video Auto-Resume with bookmarks/checkpoints/sleep-reset protection, Popup & Options Playback controls, Gemini no-transcript fallback, local SRT/VTT import, Seek-Aware translation prioritization, and Sparrow telemetry."
+  },
+  "approval_notes": "YouSub uses plain vanilla ES modules with no minification, bundling, or obfuscation. Source repository: https://github.com/Masaru-urasaM/YouSub (AGPL-3.0-only). Declared world:MAIN scripts extract public YouTube Innertube transcript tracks silently, expose optional Chrome built-in Translator API, and harden first-party YouTube watchtime pings under the user's existing session when Auto-Resume Sync is enabled. Dynamic import() in src/content/loader.js only resolves static web_accessible_resources URLs via browser.runtime.getURL(). No external developer servers or tracking are used."
+}

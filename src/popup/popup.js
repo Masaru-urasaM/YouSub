@@ -1,6 +1,14 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { devLog, devWarn } from '../shared/constants.js';
 import { applyI18n } from '../shared/i18n.js';
+import { escapeHtml as esc } from '../shared/utils.js';
+import {
+  PipelineTelemetry,
+  PIPELINE_KEY_PREFIX,
+  createInitialSnapshot,
+} from '../shared/pipeline-telemetry.js';
+import { PipelineFlowView } from './pipeline-flow-view.js';
+import { PopupResumeView } from './popup-resume-view.js';
 
 // Localized message helper with graceful fallback to the provided default.
 function i18n(key, fallback, substitutions) {
@@ -44,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }, 2000);
 
   let currentLang = 'vi';
+  let activeVideoId = null;
 
   // Phase 56: Populate language selector (exclude 'auto')
   YOUSUB_PROVIDERS.languages
@@ -77,42 +86,63 @@ document.addEventListener('DOMContentLoaded', function () {
       // 2. Async/Optional Updates (Wrapped in try-catch to prevent UI freeze)
       try {
         const videoId = await getCurrentVideoId();
+        activeVideoId = videoId;
+        PopupResumeView.init({ i18n }).catch((err) => {
+          devWarn('[YouSub] Popup: Resume view init error:', err);
+        });
         if (videoId) {
           clearPageCacheBtn.classList.remove('hidden');
           loadExecutionStats(videoId);
+          loadPipelineFlow(videoId);
 
           // Phase 35.16: Query real-time state from content script
-          browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-            if (tabs[0]) {
-              browser.tabs
-                .sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
-                .then((res) => {
-                  if (res) {
-                    devLog('[YouSub] Popup: State received from Tab:', res);
-                    if (res.isTranslationActive) getSubBtn.classList.add('active');
-                    else getSubBtn.classList.remove('active');
+          browser.tabs
+            .query({ active: true, currentWindow: true })
+            .then((tabs) => {
+              if (tabs[0]) {
+                browser.tabs
+                  .sendMessage(tabs[0].id, { type: 'YOUSUB_GET_STATE' })
+                  .then((res) => {
+                    if (res) {
+                      devLog('[YouSub] Popup: State received from Tab:', res);
+                      if (res.isTranslationActive) getSubBtn.classList.add('active');
+                      else getSubBtn.classList.remove('active');
 
-                    dualModeToggle.checked = !!res.isDualMode;
-                  }
-                })
-                .catch((err) => {
-                  devWarn(
-                    '[YouSub] Popup: Could not get state from Tab (likely script not loaded).',
-                    err
-                  );
-                });
-            }
-          });
+                      dualModeToggle.checked = !!res.isDualMode;
+                    }
+                  })
+                  .catch((err) => {
+                    devWarn(
+                      '[YouSub] Popup: Could not get state from Tab (likely script not loaded).',
+                      err
+                    );
+                  });
+              }
+            })
+            .catch(() => {});
         }
       } catch (e) {
         devWarn('[YouSub] Popup: Async initialization failed, falling back to safe UI.', e);
       }
+    })
+    .catch((err) => {
+      devWarn('[YouSub] Popup: Failed to read initial storage.', err);
     });
 
-  // Sync language changes from Options page in real-time
+  // Sync language & live telemetry changes in real-time
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.targetLang) {
       updateLanguageUI(changes.targetLang.newValue);
+    }
+    if (!activeVideoId) return;
+    const pipelineKey = `${PIPELINE_KEY_PREFIX}${activeVideoId}`;
+    const statsKey = `yousub_stats_${activeVideoId}`;
+    if (changes[pipelineKey]) {
+      const container = document.getElementById('pipeline-visualizer');
+      PipelineFlowView.renderPopupFlow(container, changes[pipelineKey].newValue || null, i18n);
+    }
+    if (area === 'local' && changes[statsKey]) {
+      loadExecutionStats(activeVideoId);
     }
   });
 
@@ -180,12 +210,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const onlineLabel = i18n('popupHealthOnlineSuffix', 'Online');
             const names = healthy.map((s) => {
               const p = YOUSUB_PROVIDERS.getProvider(s.provider);
+              const resolvedId = YOUSUB_PROVIDERS.resolveModel(s.provider, s.model);
               const m = p
-                ? p.models.find((m) => m.id === s.model) || { name: s.model }
-                : { name: s.model };
-              return `${m.name} (${onlineLabel})`;
+                ? p.models.find((m) => m.id === resolvedId) || { name: resolvedId }
+                : { name: resolvedId };
+              const pTag = p ? p.name.split(' ')[0] : s.provider;
+              return `<span class="health-row"><span class="health-provider">${esc(pTag)}</span> <span class="health-model">${esc(m.name)}</span> <span class="health-tag">(${esc(onlineLabel)})</span></span>`;
             });
-            healthText.innerHTML = names.join('<br>');
+            healthText.innerHTML = names.join('');
           } else if (poor.length > 0) {
             healthStatus.className = 'health-indicator health-warning';
             healthText.textContent = i18n(
@@ -241,41 +273,51 @@ document.addEventListener('DOMContentLoaded', function () {
         clearPageCacheBtn.disabled = true;
         clearPageCacheBtn.textContent = i18n('popupClearing', 'Clearing...');
 
+        const resetClearBtn = () => {
+          clearPageCacheBtn.disabled = false;
+          clearPageCacheBtn.textContent = i18n('popupClearPageCache', 'Clear Page Cache');
+        };
+        const showClearError = () => {
+          clearPageCacheBtn.textContent = i18n('popupErrorClearing', 'Error clearing');
+          setTimeout(resetClearBtn, 2000);
+        };
+
         browser.runtime
           .sendMessage({
             type: 'YOUSUB_CLEAR_VIDEO_CACHE',
             videoId,
           })
           .then((res) => {
-            if (res.success) {
+            if (res && res.success) {
               clearPageCacheBtn.textContent = i18n('popupCacheCleared', 'Cache Cleared!');
 
-              // Hide stats when cache is cleared
+              // Hide stats & pipeline visualizer when cache is cleared
               const statsContainer = document.getElementById('execution-stats');
               if (statsContainer) statsContainer.classList.add('hidden');
-              browser.storage.local.remove(`yousub_stats_${videoId}`);
+              const flowContainer = document.getElementById('pipeline-visualizer');
+              if (flowContainer) flowContainer.classList.add('hidden');
+              Promise.resolve(browser.storage.local.remove(`yousub_stats_${videoId}`)).catch(
+                () => {}
+              );
+              Promise.resolve(PipelineTelemetry.clear(videoId)).catch(() => {});
 
-              setTimeout(() => {
-                clearPageCacheBtn.disabled = false;
-                clearPageCacheBtn.textContent = i18n('popupClearPageCache', 'Clear Page Cache');
-              }, 2000);
+              setTimeout(resetClearBtn, 2000);
 
               // Disable translation if it was active, as cache is gone
               getSubBtn.classList.remove('active');
-              browser.storage.local.set({ yousub_translation_enabled: false });
+              Promise.resolve(
+                browser.storage.local.set({ yousub_translation_enabled: false })
+              ).catch(() => {});
               sendMessageToActiveTab({
                 type: 'YOUSUB_TOGGLE_TRANSLATION',
                 enabled: false,
                 targetLang: currentLang,
               });
             } else {
-              clearPageCacheBtn.textContent = i18n('popupErrorClearing', 'Error clearing');
-              setTimeout(() => {
-                clearPageCacheBtn.disabled = false;
-                clearPageCacheBtn.textContent = i18n('popupClearPageCache', 'Clear Page Cache');
-              }, 2000);
+              showClearError();
             }
-          });
+          })
+          .catch(showClearError);
       }
     );
   });
@@ -287,6 +329,30 @@ document.addEventListener('DOMContentLoaded', function () {
     // UI Update
     if (newState) {
       getSubBtn.classList.add('active');
+      const flowContainer = document.getElementById('pipeline-visualizer');
+      if (flowContainer && activeVideoId && flowContainer.classList.contains('hidden')) {
+        PipelineFlowView.renderPopupFlow(
+          flowContainer,
+          createInitialSnapshot(activeVideoId, {
+            mode: 'transcript',
+            stage: 'EXTRACT',
+            extraction: {
+              source: 'probing',
+              sourceLang: 'auto',
+              targetLang: currentLang,
+              steps: [
+                {
+                  id: 'extract',
+                  label: 'Scan Captions',
+                  status: 'active',
+                  detail: 'DOM & Innertube',
+                },
+              ],
+            },
+          }),
+          i18n
+        );
+      }
     } else {
       getSubBtn.classList.remove('active');
     }
@@ -299,19 +365,38 @@ document.addEventListener('DOMContentLoaded', function () {
       type: 'YOUSUB_TOGGLE_TRANSLATION',
       enabled: newState,
       targetLang: currentLang,
+      ...(activeVideoId ? { videoId: activeVideoId } : {}),
     });
   });
 
   function sendMessageToActiveTab(msg) {
-    browser.tabs.query({ active: true, currentWindow: true }).then(function (tabs) {
-      if (!tabs[0] || !tabs[0].url) return;
-      const url = tabs[0].url;
+    Promise.resolve(browser.tabs.query({ active: true, currentWindow: true }))
+      .then(function (tabs) {
+        if (!tabs || !tabs[0] || !tabs[0].url) return;
+        const url = tabs[0].url;
 
-      // Phase 50.1.4: Support both regular watch and shorts URLs
-      if (url.includes('youtube.com/watch') || url.includes('youtube.com/shorts/')) {
-        browser.tabs.sendMessage(tabs[0].id, msg).catch(() => {});
-      }
-    });
+        // Phase 50.1.4: Support both regular watch and shorts URLs
+        if (url.includes('youtube.com/watch') || url.includes('youtube.com/shorts/')) {
+          Promise.resolve(browser.tabs.sendMessage(tabs[0].id, msg)).catch(() => {
+            if (msg.type === 'YOUSUB_TOGGLE_TRANSLATION' && msg.enabled) {
+              const targetVideoId = msg.videoId || activeVideoId;
+              Promise.resolve(
+                browser.storage.local.set({
+                  yousub_translation_enabled: true,
+                  ...(targetVideoId ? { yousub_autostart_video: targetVideoId } : {}),
+                })
+              )
+                .then(() => {
+                  if (typeof browser.tabs.reload === 'function') {
+                    return Promise.resolve(browser.tabs.reload(tabs[0].id)).catch(() => {});
+                  }
+                })
+                .catch(() => {});
+            }
+          });
+        }
+      })
+      .catch(() => {});
   }
 
   /**
@@ -365,6 +450,17 @@ document.addEventListener('DOMContentLoaded', function () {
     modalCancelBtn.focus();
   }
 
+  async function loadPipelineFlow(videoId) {
+    const flowContainer = document.getElementById('pipeline-visualizer');
+    if (!flowContainer || !videoId) return;
+    try {
+      const snapshot = await PipelineTelemetry.getSnapshot(videoId);
+      PipelineFlowView.renderPopupFlow(flowContainer, snapshot, i18n);
+    } catch (e) {
+      devWarn('[YouSub] Popup: Failed to load pipeline telemetry.', e);
+    }
+  }
+
   /**
    * Phase 35.13: Load and display translation metrics
    */
@@ -395,36 +491,38 @@ document.addEventListener('DOMContentLoaded', function () {
     statsTitle.title = videoTitle; // Tooltip for full title
 
     const key = `yousub_stats_${videoId}`;
-    browser.storage.local.get([key]).then((res) => {
-      const stats = res[key];
-      if (!stats) {
-        statsContainer.classList.add('hidden');
-        return;
-      }
+    Promise.resolve(browser.storage.local.get([key]))
+      .then((res) => {
+        const stats = res[key];
+        if (!stats) {
+          statsContainer.classList.add('hidden');
+          return;
+        }
 
-      statsContainer.classList.remove('hidden');
+        statsContainer.classList.remove('hidden');
 
-      if (stats.source === 'cache') {
-        sourceBadge.textContent = i18n('popupStatsCache', 'Cache');
-        sourceBadge.className = 'stats-badge cache';
-        modelName.textContent = i18n('popupStatsLoadedFromMemory', 'Loaded from memory');
-        requestsVal.textContent = '--';
-        durationVal.textContent = '--';
-        inputTokensVal.textContent = '--';
-        outputTokensVal.textContent = '--';
-      } else {
-        sourceBadge.textContent = i18n('popupStatsApi', 'API');
-        sourceBadge.className = 'stats-badge';
-        modelName.textContent = stats.model || i18n('popupStatsUnknownModel', 'Unknown model');
+        if (stats.source === 'cache') {
+          sourceBadge.textContent = i18n('popupStatsCache', 'Cache');
+          sourceBadge.className = 'stats-badge cache';
+          modelName.textContent = i18n('popupStatsLoadedFromMemory', 'Loaded from memory');
+          requestsVal.textContent = '--';
+          durationVal.textContent = '--';
+          inputTokensVal.textContent = '--';
+          outputTokensVal.textContent = '--';
+        } else {
+          sourceBadge.textContent = i18n('popupStatsApi', 'API');
+          sourceBadge.className = 'stats-badge';
+          modelName.textContent = stats.model || i18n('popupStatsUnknownModel', 'Unknown model');
 
-        requestsVal.textContent = stats.batchCount || '0';
+          requestsVal.textContent = stats.batchCount || '0';
 
-        const seconds = (stats.durationMs / 1000).toFixed(1);
-        durationVal.textContent = `${seconds}s`;
+          const seconds = (stats.durationMs / 1000).toFixed(1);
+          durationVal.textContent = `${seconds}s`;
 
-        inputTokensVal.textContent = (stats.promptTokens || 0).toLocaleString();
-        outputTokensVal.textContent = (stats.completionTokens || 0).toLocaleString();
-      }
-    });
+          inputTokensVal.textContent = (stats.promptTokens || 0).toLocaleString();
+          outputTokensVal.textContent = (stats.completionTokens || 0).toLocaleString();
+        }
+      })
+      .catch(() => {});
   }
 });

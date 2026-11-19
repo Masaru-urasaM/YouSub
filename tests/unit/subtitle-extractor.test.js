@@ -49,14 +49,21 @@ describe('SubtitleExtractor', () => {
     SubtitleExtractor.destroy();
   });
 
-  describe('Script injection', () => {
-    test('injects a <script> into document.head using the extension URL', () => {
+  describe('Main-world postMessage dispatch', () => {
+    test('dispatches YOUSUB_EXTRACT_CAPTIONS via window.postMessage without DOM <script> injection', () => {
+      const postSpy = jest.spyOn(window, 'postMessage').mockImplementation(() => {});
       SubtitleExtractor.extract(jest.fn());
 
-      const script = document.head.querySelector('script');
-      expect(script).not.toBeNull();
-      expect(chrome.runtime.getURL).toHaveBeenCalledWith('src/content/main-world-extractor.js');
-      expect(script.src).toBe('chrome-extension://mock-id/src/content/main-world-extractor.js');
+      expect(document.head.querySelector('script')).toBeNull();
+      expect(chrome.runtime.getURL).not.toHaveBeenCalled();
+      expect(postSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'YOUSUB_EXTRACT_CAPTIONS',
+          requestId: expect.any(String),
+        }),
+        '*'
+      );
+      postSpy.mockRestore();
     });
 
     test('registers a window message listener that survives until a caption message', () => {
@@ -65,6 +72,40 @@ describe('SubtitleExtractor', () => {
 
       // No message yet -> callback not fired.
       expect(callback).not.toHaveBeenCalled();
+    });
+
+    test('ignores stale YOUSUB_CAPTION_TRACKS responses carrying a mismatched requestId', () => {
+      const postSpy = jest.spyOn(window, 'postMessage').mockImplementation(() => {});
+      const callback = jest.fn();
+      SubtitleExtractor.extract(callback);
+
+      const dispatchedReqId = postSpy.mock.calls.find(
+        (c) => c[0] && c[0].type === 'YOUSUB_EXTRACT_CAPTIONS'
+      )[0].requestId;
+      postSpy.mockRestore();
+
+      postRawMessage({
+        type: 'YOUSUB_CAPTION_TRACKS',
+        requestId: 'stale_req_id',
+        tracks: [],
+        parsedEntries: [{ startMs: 0, endMs: 1, text: 'stale' }],
+      });
+      expect(callback).not.toHaveBeenCalled();
+
+      postRawMessage({
+        type: 'YOUSUB_CAPTION_TRACKS',
+        requestId: dispatchedReqId,
+        tracks: [],
+        parsedEntries: [{ startMs: 0, endMs: 1, text: 'fresh' }],
+        error: null,
+      });
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith(
+        [],
+        [{ startMs: 0, endMs: 1, text: 'fresh' }],
+        null,
+        'auto'
+      );
     });
   });
 

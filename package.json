@@ -32,6 +32,10 @@
     "package": "node scripts/package.js all",
     "package:chrome": "node scripts/package.js chrome",
     "package:firefox": "node scripts/package.js firefox",
+    "publish:chrome": "node scripts/publish.js --target=chrome",
+    "publish:firefox": "node scripts/publish.js --target=firefox",
+    "publish:stores": "node scripts/publish.js --target=all",
+    "publish:dry-run": "node scripts/publish.js --target=all --dry-run",
     "verify": "npm run lint && npm run format:check && npm run test:log && npm run package",
     "prepare": "husky"
   },

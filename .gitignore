@@ -13,3 +13,7 @@ Thumbs.db
 *.zip
 *_output.txt
 *-original.png
+
+# Store publishing credentials (belt-and-suspenders alongside tmp/ and .env)
+cws-key.json
+*-key.json

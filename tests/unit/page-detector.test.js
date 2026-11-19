@@ -192,6 +192,25 @@ describe('PageDetector', () => {
   });
 
   describe('destroy()', () => {
+    test('getCurrentVideoId falls back to window.location when initialized even if SPA state lags', () => {
+      setUrl('/watch?v=init123');
+      PageDetector.init(jest.fn(), jest.fn());
+      expect(PageDetector.getCurrentVideoId()).toBe('init123');
+
+      // Simulate URL update before yt-navigate-finish clears/updates tracked ID
+      PageDetector.destroy();
+      PageDetector.init(jest.fn(), jest.fn());
+      setUrl('/shorts/lagShort99');
+      expect(PageDetector.getCurrentVideoId()).toBe('init123');
+
+      // Leaving to a video when currentVideoId was somehow cleared while still initialized
+      setUrl('/');
+      document.dispatchEvent(new Event('yt-navigate-finish'));
+      expect(PageDetector.getCurrentVideoId()).toBeNull();
+      setUrl('/shorts/direct99');
+      expect(PageDetector.getCurrentVideoId()).toBe('direct99');
+    });
+
     test('removes the navigation listener and resets state', () => {
       setUrl('/watch?v=destroyme');
       const onEnter = jest.fn();
@@ -205,6 +224,57 @@ describe('PageDetector', () => {
       onEnter.mockClear();
       setUrl('/watch?v=afterdestroy');
       document.dispatchEvent(new Event('yt-navigate-finish'));
+      expect(onEnter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Mobile Web (m.youtube.com) SPA detection & URL polling (Phase 81)', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test('detects navigation via popstate, yt-page-data-updated, and state-navigateend', () => {
+      setUrl('/watch?v=mob1');
+      const onEnter = jest.fn();
+      const onLeave = jest.fn();
+      PageDetector.init(onEnter, onLeave);
+      expect(onEnter).toHaveBeenCalledWith('mob1');
+
+      setUrl('/watch?v=mob2');
+      window.dispatchEvent(new Event('popstate'));
+      expect(onLeave).toHaveBeenCalledTimes(1);
+      expect(onEnter).toHaveBeenLastCalledWith('mob2');
+
+      setUrl('/watch?v=mob3');
+      window.dispatchEvent(new Event('state-navigateend'));
+      expect(onLeave).toHaveBeenCalledTimes(2);
+      expect(onEnter).toHaveBeenLastCalledWith('mob3');
+
+      setUrl('/');
+      document.dispatchEvent(new Event('yt-page-data-updated'));
+      expect(onLeave).toHaveBeenCalledTimes(3);
+      expect(PageDetector.getCurrentVideoId()).toBeNull();
+    });
+
+    test('detects History pushState changes via 1000ms URL poll and stops polling on destroy()', () => {
+      jest.useFakeTimers();
+      setUrl('/watch?v=poll1');
+      const onEnter = jest.fn();
+      const onLeave = jest.fn();
+      PageDetector.init(onEnter, onLeave);
+      expect(onEnter).toHaveBeenCalledTimes(1);
+
+      setUrl('/watch?v=poll2');
+      jest.advanceTimersByTime(1000);
+      expect(onLeave).toHaveBeenCalledTimes(1);
+      expect(onEnter).toHaveBeenCalledTimes(2);
+      expect(onEnter).toHaveBeenLastCalledWith('poll2');
+
+      // Destroy clears the polling timer
+      PageDetector.destroy();
+      onEnter.mockClear();
+      setUrl('/watch?v=poll3');
+      jest.advanceTimersByTime(3000);
       expect(onEnter).not.toHaveBeenCalled();
     });
   });

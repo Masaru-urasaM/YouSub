@@ -97,7 +97,19 @@ export async function retranslateShiftedLines(
   tryKeyFn
 ) {
   const result = [...lines];
-  let remaining = [...new Set(pendingIndices)];
+  const segList = Array.isArray(segments) ? segments : [];
+  const validPending = [...new Set(Array.isArray(pendingIndices) ? pendingIndices : [])].filter(
+    (idx) => Number.isInteger(idx) && idx >= 0 && idx < segList.length && segList[idx]
+  );
+  if (validPending.length === 0) {
+    Logger.warn('Translator', '[RE-TRANSLATE] Skipped: no valid pendingIndices within bounds', {
+      rawPendingCount: Array.isArray(pendingIndices) ? pendingIndices.length : 0,
+      segmentCount: segList.length,
+    });
+    return result;
+  }
+
+  let remaining = [...validPending];
   const src = options.src || 'auto';
   const tgt = options.tgt || 'vi';
   const context = options.context || '';
@@ -106,16 +118,18 @@ export async function retranslateShiftedLines(
   for (let round = 0; round < MAX_RETRANSLATION_ROUNDS && remaining.length > 0; round++) {
     Logger.debug(
       'Translator',
-      `[RE-TRANSLATE] Round ${round + 1}: ${remaining.length} lines (${key.provider})`
+      `[RE-TRANSLATE] Round ${round + 1}: ${remaining.length} lines (${key.provider})`,
+      { round: round + 1, provider: key.provider, remainingIndices: remaining }
     );
 
     for (let i = 0; i < remaining.length; i += RE_TRANSLATION_MAX_LINES) {
       const chunk = remaining.slice(i, i + RE_TRANSLATION_MAX_LINES);
-      const miniSegments = chunk.map((idx) => segments[idx]);
+      const miniSegments = chunk.map((idx) => segList[idx]).filter(Boolean);
+      if (miniSegments.length !== chunk.length) continue;
 
       const miniSystemPrompt = buildSystemPrompt(context, src, tgt, miniSegments.length);
       const miniUserPrompt = miniSegments
-        .map((s, idx) => `#${idx + 1} ${formatTimestamp(s.startMs)} ${s.text}`)
+        .map((s, idx) => `#${idx + 1} ${formatTimestamp(s.startMs ?? 0)} ${s.text}`)
         .join('\n');
 
       const reOptions = { ...options, _skipMergeFix: true, _skipSanitize: true, isLastKey: true };
@@ -136,7 +150,7 @@ export async function retranslateShiftedLines(
     }
 
     const stillBad = [];
-    for (const idx of pendingIndices) {
+    for (const idx of validPending) {
       const line = result[idx];
       if (!line || (typeof line === 'string' && line.trim() === '')) {
         stillBad.push(idx);
@@ -160,9 +174,11 @@ export async function retranslateShiftedLines(
     );
   }
 
-  for (const idx of pendingIndices) {
+  for (const idx of validPending) {
     if (!result[idx] || (typeof result[idx] === 'string' && result[idx].trim() === '')) {
-      result[idx] = segments[idx].text;
+      if (segList[idx]) {
+        result[idx] = segList[idx].text;
+      }
       Logger.warn(
         'Translator',
         `[RE-TRANSLATE] Line ${idx} empty after ${MAX_RETRANSLATION_ROUNDS} rounds, using original`
@@ -182,11 +198,15 @@ export async function retranslateWithVerification(
   options
 ) {
   const result = [...lines];
+  const segList = Array.isArray(segments) ? segments : [];
   const tgt = options.tgt || 'vi';
   const src = options.src || 'auto';
   const accepted = new Set();
   const signal = options.signal; // Phase 64 (c): honor batch/global abort
-  let remaining = [...new Set(pendingIndices)];
+  let remaining = [...new Set(Array.isArray(pendingIndices) ? pendingIndices : [])].filter(
+    (idx) => Number.isInteger(idx) && idx >= 0 && idx < segList.length && segList[idx]
+  );
+  if (remaining.length === 0) return result;
 
   for (let round = 0; round < MAX_RETRANSLATION_ROUNDS && remaining.length > 0; round++) {
     if (signal && signal.aborted) break;
@@ -200,7 +220,7 @@ export async function retranslateWithVerification(
       const chunk = remaining.slice(i, i + RE_TRANSLATION_MAX_LINES);
       const systemPrompt = buildVerificationPrompt(src, tgt, chunk.length);
       const userPrompt = JSON.stringify({
-        lines: chunk.map((idx, j) => ({ n: j, t: segments[idx].text })),
+        lines: chunk.map((idx, j) => ({ n: j, t: segList[idx]?.text ?? '' })),
       });
 
       try {
@@ -281,6 +301,10 @@ export async function finalizeSuccessfulBatch(
   tryKeyFn
 ) {
   let fixedLines;
+  let pendingCountStats = 0;
+  let contaminatedStats = 0;
+  let untranslatedStats = 0;
+
   if (options._skipMergeFix) {
     fixedLines = rawLines;
   } else {
@@ -290,10 +314,12 @@ export async function finalizeSuccessfulBatch(
       rawLines,
       options.src || 'auto',
       options.tgt || 'vi',
-      roughTranslate
+      roughTranslate,
+      { isIndexedJson: Boolean(options._isIndexedJson) }
     );
     fixedLines = fixResult.lines;
     const pendingCount = fixResult.pendingIndices.length;
+    pendingCountStats = pendingCount;
     if (pendingCount > 0) {
       Logger.info(
         'Translator',
@@ -326,6 +352,7 @@ export async function finalizeSuccessfulBatch(
     }
 
     const contaminated = detectForeignScriptLines(fixedLines, options.tgt || 'vi');
+    contaminatedStats = contaminated.length;
     if (contaminated.length > 0) {
       Logger.info(
         'Translator',
@@ -349,6 +376,7 @@ export async function finalizeSuccessfulBatch(
     }
 
     const untranslated = detectUntranslatedLines(fixedLines, segments, options.tgt || 'vi');
+    untranslatedStats = untranslated.length;
     if (untranslated.length > 0) {
       Logger.info(
         'Translator',
@@ -373,11 +401,22 @@ export async function finalizeSuccessfulBatch(
   const finalLines = options._skipSanitize
     ? fixedLines
     : sanitizeForeignScript(fixedLines, segments, options.tgt || 'vi');
+  const rawKey = typeof key.apiKey === 'string' ? key.apiKey.trim() : '';
   return {
     status: 'success',
     translated: finalLines,
     hadFallback,
     hadRateLimit: false,
-    stats: { usage: result.usage, model: result.model },
+    stats: {
+      usage: result.usage,
+      model: result.model || key.model,
+      provider: key.provider,
+      keyMask: rawKey ? `...${rawKey.slice(-4)}` : '',
+      verification: {
+        mergeFixes: pendingCountStats,
+        foreignScriptFixes: contaminatedStats,
+        untranslatedFixes: untranslatedStats,
+      },
+    },
   };
 }

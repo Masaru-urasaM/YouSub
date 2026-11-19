@@ -328,12 +328,14 @@ export function renderSingleRow(keyData, index, healthStats = {}, ctx) {
   });
 
   connectOllamaBtn.addEventListener('click', () => {
-    browser.permissions.request({ origins: ['http://localhost/*'] }).then((granted) => {
-      if (granted) {
-        updateOllamaUI();
-        alert('Permission granted! YouSub can now connect to your local Ollama instance.');
-      }
-    });
+    Promise.resolve(browser.permissions.request({ origins: ['http://localhost/*'] }))
+      .then((granted) => {
+        if (granted) {
+          updateOllamaUI();
+          alert('Permission granted! YouSub can now connect to your local Ollama instance.');
+        }
+      })
+      .catch(() => {});
   });
 
   fetchOllamaBtn.addEventListener('click', () => {

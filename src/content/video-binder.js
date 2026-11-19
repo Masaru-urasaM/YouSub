@@ -106,10 +106,13 @@ function startObserver() {
     }
   });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
+  const observeTarget = document.body || document.documentElement;
+  if (observeTarget) {
+    observer.observe(observeTarget, {
+      childList: true,
+      subtree: true,
+    });
+  }
 
   timeoutId = setTimeout(function () {
     if (observer) {

@@ -21,6 +21,7 @@ async function mountPopup(
 ) {
   jest.resetModules();
   chrome.storage.local.store = { ...storageSeed };
+  chrome.storage.session.store = {};
   chrome.storage.onChanged._listeners.length = 0;
 
   chrome.tabs.query.mockResolvedValue([{ id: 1, url: tabUrl, title: tabTitle }]);
@@ -182,7 +183,9 @@ describe('popup.js UI & interactions (T10)', () => {
       type: 'YOUSUB_TOGGLE_TRANSLATION',
       enabled: true,
       targetLang: 'fr',
+      videoId: 'abc123',
     });
+    expect(document.getElementById('pipeline-visualizer').classList.contains('hidden')).toBe(false);
 
     const dual = document.getElementById('dual-mode-toggle');
     dual.checked = true;
@@ -237,6 +240,91 @@ describe('popup.js UI & interactions (T10)', () => {
       videoId: 'abc123',
     });
     expect(clearBtn.textContent).toBe('Cache Cleared!');
+    jest.advanceTimersByTime(2000);
+    expect(clearBtn.disabled).toBe(false);
+    expect(clearBtn.textContent).toBe('Clear Page Cache');
+  });
+
+  test('renders Sparrow-style mini pipeline visualizer and updates live on storage.onChanged', async () => {
+    const initialSnap = {
+      videoId: 'abc123',
+      mode: 'transcript',
+      stage: 'ROUTE',
+      extraction: { source: 'dom-transcript', sourceLang: 'en', targetLang: 'vi' },
+      coalescer: { rawCount: 100, coalescedCount: 40, mergedCues: 60 },
+      router: {
+        activeProvider: 'google',
+        activeModel: 'gemini-2.5-flash',
+        keyMask: '...1234',
+        routes: [
+          { provider: 'google', model: 'gemini-2.5-flash', keyMask: '...1234', status: 'active' },
+          { provider: 'groq', model: 'openai/gpt-oss-120b', keyMask: '...5678', status: 'standby' },
+        ],
+        failovers: [],
+      },
+      verification: { mergeFixes: 0, foreignScriptFixes: 0, untranslatedFixes: 0 },
+      batches: [
+        { batchIndex: 0, startLine: 1, endLine: 40, startMs: 0, endMs: 90000, status: 'IN_FLIGHT' },
+      ],
+      playheadBatchIndex: 0,
+      sink: { syncedCues: 0, totalCues: 40, cached: false },
+      horizons: {
+        past: 'Source: dom-transcript · 100→40 cues',
+        present: 'google · gemini-2.5-flash [...1234] · Batch #1/1',
+        future: 'Queued: Route -> Verify -> Sync',
+      },
+    };
+
+    await mountPopup({ yousub_pipeline_abc123: initialSnap });
+
+    const viz = document.getElementById('pipeline-visualizer');
+    expect(viz.classList.contains('hidden')).toBe(false);
+    expect(viz.querySelector('.sparrow-flow-svg')).not.toBeNull();
+    expect(viz.textContent).toContain('100→40 cues');
+    expect(viz.textContent).toContain('gemini-2.5-fl');
+
+    // Live storage update switches stage to COMPLETE
+    const completedSnap = {
+      ...initialSnap,
+      stage: 'COMPLETE',
+      batches: [{ batchIndex: 0, startLine: 1, endLine: 40, status: 'DONE' }],
+      sink: { syncedCues: 40, totalCues: 40, cached: true },
+      horizons: {
+        past: '100→40 cues · 1/1 batches done',
+        present: 'Complete · 40 cues synced',
+        future: 'Saved in LRU Cache · Ready',
+      },
+    };
+    const onChanged = chrome.storage.onChanged._listeners[0];
+    onChanged({ yousub_pipeline_abc123: { newValue: completedSnap } }, 'session');
+    expect(viz.textContent).toContain('Complete · 40 cues synced');
+    expect(viz.textContent).toContain('Saved in LRU Cache');
+  });
+
+  test('reloads stale YouTube tab and schedules autostart when sendMessage fails on translate click', async () => {
+    await mountPopup({ targetLang: 'vi' });
+    chrome.tabs.sendMessage.mockRejectedValueOnce(new Error('Could not establish connection'));
+
+    document.getElementById('get-sub-btn').click();
+    await flushAsync(8);
+
+    expect(chrome.storage.local.store.yousub_translation_enabled).toBe(true);
+    expect(chrome.storage.local.store.yousub_autostart_video).toBe('abc123');
+    expect(chrome.tabs.reload).toHaveBeenCalledWith(1);
+  });
+
+  test('clear-page-cache handles rejected YOUSUB_CLEAR_VIDEO_CACHE without leaving button stuck', async () => {
+    jest.useFakeTimers();
+    await mountPopup({ yousub_stats_abc123: { source: 'cache' } });
+    chrome.runtime.sendMessage.mockRejectedValueOnce(new Error('Service worker unavailable'));
+
+    const clearBtn = document.getElementById('clear-page-cache-btn');
+    clearBtn.click();
+    await flushAsync();
+    document.getElementById('modal-confirm-btn').click();
+    await flushAsync(8);
+
+    expect(clearBtn.textContent).toBe('Error clearing');
     jest.advanceTimersByTime(2000);
     expect(clearBtn.disabled).toBe(false);
     expect(clearBtn.textContent).toBe('Clear Page Cache');

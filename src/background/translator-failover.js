@@ -1,4 +1,5 @@
 import { Logger } from '../shared/logger.js';
+import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { Providers } from './providers.js';
 import { HealthManager } from './health.js';
 import '../shared/libs/browser-polyfill.js';
@@ -18,6 +19,7 @@ import { saveDebugBatch, finalizeSuccessfulBatch } from './translator-quality.js
 
 export const RETRY_ATTEMPTS = 2;
 export const RETRY_DELAYS_MS = [1000, 3000];
+export const BATCH_REQUEST_TIMEOUT_MS = 35000;
 export const SWEEP_MAX_WAIT_MS = 15000; // cap on waiting for key cooldowns before a sweep retry
 export const MAX_RECURSION_DEPTH = 3; // Stop infinite 413 splits
 export const KEY_COOLDOWN_MS = 10000; // 10s per-key cooldown after 429
@@ -126,6 +128,7 @@ export async function callProviderWithRetry({
           systemPrompt: effectiveSystemPrompt,
           temperature: 0.1,
           maxTokens: estimatedOutputTokens,
+          timeoutMs: BATCH_REQUEST_TIMEOUT_MS,
           signal,
         },
         (chunk) => {
@@ -137,6 +140,7 @@ export async function callProviderWithRetry({
         systemPrompt: effectiveSystemPrompt,
         temperature: 0.1,
         maxTokens: estimatedOutputTokens,
+        timeoutMs: BATCH_REQUEST_TIMEOUT_MS,
         signal,
         ...jsonApiOptions,
       });
@@ -167,8 +171,12 @@ export async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, ta
 
   Logger.trace('Translator', `Trying key: ${key.provider} (${key.model})`);
 
-  // Phase 58: Detect JSON mode support for this provider
-  const jsonConfig = getProviderJsonConfig(key.provider, segments.length);
+  // Phase 58: Detect JSON mode support for this provider (resolving 'auto' keys first)
+  const effectiveProvider =
+    key.provider === 'auto'
+      ? YOUSUB_PROVIDERS.detectProviderFromKey(key.apiKey) || key.provider
+      : key.provider;
+  const jsonConfig = getProviderJsonConfig(effectiveProvider, segments.length);
   const useJsonMode = !!jsonConfig;
 
   let effectiveSystemPrompt = systemPrompt;
@@ -234,7 +242,7 @@ export async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, ta
               segments,
               key,
               tabId,
-              options,
+              { ...options, _isIndexedJson: true },
               jsonResult.hadMismatch || jsonResult.validCount < segments.length,
               result,
               tryKeyForBatch
@@ -281,7 +289,7 @@ export async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, ta
           segments,
           key,
           tabId,
-          options,
+          { ...options, _isIndexedJson: false },
           validLinesCount < segments.length,
           result,
           tryKeyForBatch
@@ -313,7 +321,12 @@ export async function tryKeyForBatch(key, segments, systemPrompt, userPrompt, ta
       return { status: 'error', message: result.message };
     }
   } catch (err) {
-    Logger.error('Translator', `Exception with ${key.provider}: ${err.message}`);
+    Logger.error('Translator', `Exception with ${key.provider}: ${err.message}`, {
+      provider: key.provider,
+      model: key.model,
+      segmentCount: segments?.length,
+      stack: err?.stack ? String(err.stack).split('\n').slice(0, 3).join(' | ') : undefined,
+    });
     return { status: 'exception', message: err.message };
   }
 }
@@ -598,6 +611,7 @@ export async function translateBatchWithFailover(
             hadFallback: result.hadFallback,
             hadRateLimit: false,
             stats: result.stats,
+            ...(failures.length > 0 ? { failures: [...failures] } : {}),
           },
         };
       case '429':

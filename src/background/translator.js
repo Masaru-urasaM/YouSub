@@ -1,4 +1,6 @@
 import { Logger } from '../shared/logger.js';
+import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
+import { PipelineTelemetry, maskApiKey } from '../shared/pipeline-telemetry.js';
 import { APIManager } from './api-manager.js';
 import { Providers } from './providers.js';
 import '../shared/libs/browser-polyfill.js';
@@ -78,6 +80,95 @@ function computeForceTimeoutMs(segmentCount) {
 }
 
 /**
+ * Partition segments into fixed-size batches carrying timestamp bounds so
+ * playhead seek events can prioritize arbitrary regions cleanly.
+ */
+export function buildBatchQueue(segments, batchSize = MAX_LINES_PER_BATCH) {
+  const safeSize = Math.max(1, Number.isInteger(batchSize) ? batchSize : MAX_LINES_PER_BATCH);
+  const batches = [];
+  let cursor = 0;
+  let batchIndex = 0;
+
+  while (cursor < segments.length) {
+    const slice = segments.slice(cursor, cursor + safeSize);
+    const nextSeg = segments[cursor + slice.length];
+    const startMs = slice[0]?.startMs ?? 0;
+    const lastSeg = slice[slice.length - 1];
+    const endMs =
+      typeof lastSeg?.endMs === 'number'
+        ? lastSeg.endMs
+        : typeof nextSeg?.startMs === 'number'
+          ? nextSeg.startMs
+          : (lastSeg?.startMs ?? startMs) + 5000;
+
+    batches.push({
+      batchIndex,
+      start: cursor,
+      end: cursor + slice.length,
+      length: slice.length,
+      startMs,
+      endMs,
+      segments: slice,
+      status: 'PENDING',
+      provider: '',
+      model: '',
+      keyMask: '',
+      durationMs: 0,
+      isSeekTarget: false,
+    });
+    cursor += slice.length;
+    batchIndex++;
+  }
+
+  return batches;
+}
+
+/**
+ * Map a playback position in milliseconds to the batch index covering it.
+ */
+export function findBatchIndexForPlayhead(batches, playheadMs) {
+  if (!Array.isArray(batches) || batches.length === 0) return 0;
+  const targetMs =
+    typeof playheadMs === 'number' && Number.isFinite(playheadMs) ? Math.max(0, playheadMs) : 0;
+  if (targetMs === 0) return 0;
+
+  let anchor = 0;
+  for (let i = 0; i < batches.length; i++) {
+    const b = batches[i];
+    if (b.startMs <= targetMs) {
+      anchor = i;
+    }
+    if (targetMs >= b.startMs && targetMs < b.endMs) {
+      return i;
+    }
+  }
+  return anchor;
+}
+
+/**
+ * Select the next PENDING batch according to Seek-Aware Priority:
+ * 1) Current playhead batch, 2) 1-batch lookahead, 3) forward batches, 4) earlier backfill.
+ */
+export function selectNextPendingBatchIndex(batches, playheadMs = 0) {
+  if (!Array.isArray(batches) || batches.length === 0) return -1;
+  const anchorIdx = findBatchIndexForPlayhead(batches, playheadMs);
+
+  if (batches[anchorIdx] && batches[anchorIdx].status === 'PENDING') {
+    return anchorIdx;
+  }
+  if (anchorIdx + 1 < batches.length && batches[anchorIdx + 1].status === 'PENDING') {
+    return anchorIdx + 1;
+  }
+  for (let i = anchorIdx + 2; i < batches.length; i++) {
+    if (batches[i].status === 'PENDING') return i;
+  }
+  for (let i = 0; i < anchorIdx; i++) {
+    if (batches[i].status === 'PENDING') return i;
+  }
+  return -1;
+}
+
+/**
  * Main translation entry point.
  * @param {Array} segments - Array of { text, startMs }
  */
@@ -88,7 +179,8 @@ export async function translate(
   tabId = null,
   onBatchComplete = null,
   externalSignal = null,
-  onProgress = null
+  onProgress = null,
+  options = {}
 ) {
   if (!segments || segments.length === 0) return { translated: [], hadFallback: false };
 
@@ -99,8 +191,8 @@ export async function translate(
   const src = sourceLang || 'auto';
   const tgt = targetLang || 'vi';
 
-  // Phase 54.2: Dedup — return existing Promise if same video+lang is already translating
-  const dedupKey = `${tabId}_${src}_${tgt}`;
+  // Phase 54.2: Dedup — return existing Promise if same tab+video+lang is already translating
+  const dedupKey = `${tabId}_${options?.videoId || ''}_${src}_${tgt}`;
   if (inFlightRequests.has(dedupKey)) {
     Logger.info('Translator', `[DEDUP] Returning existing in-flight request for ${dedupKey}`);
     return inFlightRequests.get(dedupKey);
@@ -113,7 +205,8 @@ export async function translate(
     tabId,
     onBatchComplete,
     externalSignal,
-    onProgress
+    onProgress,
+    options
   );
   inFlightRequests.set(dedupKey, translatePromise);
   try {
@@ -150,6 +243,25 @@ async function runBatchWithTimeout(batch, src, tgt, activeKeys, tabId, context, 
   return { result, timedOut };
 }
 
+function buildTelemetryBatches(batches, currentPlayheadMs) {
+  const anchorIdx = findBatchIndexForPlayhead(batches, currentPlayheadMs);
+  const nextLookahead = selectNextPendingBatchIndex(batches, currentPlayheadMs);
+  return batches.map((b, idx) => ({
+    batchIndex: b.batchIndex,
+    startLine: b.start + 1,
+    endLine: b.end,
+    startMs: b.startMs,
+    endMs: b.endMs,
+    status: b.status === 'PENDING' && idx === nextLookahead ? 'PREFETCH' : b.status,
+    provider: b.provider || '',
+    model: b.model || '',
+    keyMask: b.keyMask || '',
+    durationMs: b.durationMs || 0,
+    isSeekTarget:
+      b.isSeekTarget || (idx === anchorIdx && b.status !== 'DONE' && currentPlayheadMs > 0),
+  }));
+}
+
 async function _translateInternal(
   segments,
   src,
@@ -157,8 +269,15 @@ async function _translateInternal(
   tabId,
   onBatchComplete,
   externalSignal,
-  onProgress
+  onProgress,
+  options = {}
 ) {
+  const videoId = options.videoId || '';
+  const getPlayheadMs =
+    typeof options.getPlayheadMs === 'function'
+      ? options.getPlayheadMs
+      : () => options.initialPlayheadMs || 0;
+
   Logger.trace('Translator', `[CHECKPOINT 1] Starting translation: ${segments.length} segments`);
   sendDebugLog(
     tabId,
@@ -185,6 +304,12 @@ async function _translateInternal(
 
         if (!activeKeys || activeKeys.length === 0) {
           Logger.warn('Translator', '[CHECKPOINT 2.E] No valid API keys found.');
+          if (videoId) {
+            PipelineTelemetry.update(videoId, {
+              stage: 'ERROR',
+              error: { failureReason: 'NO_API_KEYS', message: 'No active API keys configured' },
+            });
+          }
           return { success: false, failureReason: 'NO_API_KEYS' };
         }
         Logger.trace('Translator', `[CHECKPOINT 2.S] ${activeKeys.length} keys loaded.`);
@@ -197,6 +322,7 @@ async function _translateInternal(
           completionTokens: 0,
           durationMs: 0,
           model: 'unknown',
+          provider: '',
           batchCount: 0,
         };
 
@@ -229,31 +355,125 @@ async function _translateInternal(
 
         const startTimeFull = performance.now();
         const totalLines = segments.length;
-        let cursor = 0;
-        let batchIndex = 0;
+        let dispatchSeq = 0;
         let anyBatchSucceeded = false;
+        let completedCueCount = 0;
         const allFailures = [];
+        const recordedFailovers = [];
+        const verificationTotals = {
+          status: 'clean',
+          mergeFixes: 0,
+          cascadeShifts: 0,
+          retranslatedLines: 0,
+          foreignScriptFixes: 0,
+          untranslatedFixes: 0,
+        };
         let failedRanges = [];
 
         const keyGroups = groupByPhysicalKey(activeKeys);
         sortGroupsByHealth(keyGroups);
+        const queueBatchSize = activeKeys[0]?.maxLinesPerBatch || MAX_LINES_PER_BATCH;
+        const batches = buildBatchQueue(segments, queueBatchSize);
+
         Logger.trace(
           'Translator',
-          `[CHECKPOINT 4] Starting batch processing (${totalLines} lines, ${keyGroups.length} key groups)...`
+          `[CHECKPOINT 4] Starting seek-aware batch processing (${totalLines} lines, ${batches.length} batches, ${keyGroups.length} key groups)...`
         );
 
-        while (cursor < totalLines) {
-          if (globalAbort.signal.aborted) break;
-          const selected = selectGroupForBatch(keyGroups, batchIndex);
-          const primarySlot = selected ? selected.slots[0] : activeKeys[0];
-          const batchSize = primarySlot.maxLinesPerBatch || MAX_LINES_PER_BATCH;
-          const batch = segments.slice(cursor, cursor + batchSize);
+        const initialRoutes = activeKeys.map((k, idx) => {
+          const prov =
+            k.provider === 'auto'
+              ? YOUSUB_PROVIDERS.detectProviderFromKey(k.apiKey) || k.provider
+              : k.provider;
+          return {
+            provider: prov,
+            model: YOUSUB_PROVIDERS.resolveModel(prov, k.model),
+            keyMask: maskApiKey(k.apiKey),
+            score: k.score ?? 0.5,
+            status: idx === 0 ? 'active' : 'standby',
+          };
+        });
 
-          batchIndex++;
+        const emitTelemetry = (stage, extra = {}) => {
+          if (!videoId) return;
+          const phMs = getPlayheadMs();
+          PipelineTelemetry.update(videoId, (snap) => ({
+            ...snap,
+            stage,
+            playheadMs: phMs,
+            playheadBatchIndex: findBatchIndexForPlayhead(batches, phMs),
+            router: {
+              ...snap.router,
+              activeProvider: stats.provider || initialRoutes[0]?.provider || '',
+              activeModel:
+                stats.model && stats.model !== 'unknown'
+                  ? stats.model
+                  : initialRoutes[0]?.model || '',
+              routes: initialRoutes.map((r) => ({
+                ...r,
+                status:
+                  r.provider === stats.provider && r.model === stats.model
+                    ? 'active'
+                    : recordedFailovers.some(
+                          (f) => f.fromProvider === r.provider && f.fromModel === r.model
+                        )
+                      ? 'failover'
+                      : r.status,
+              })),
+              failovers: recordedFailovers.slice(-20),
+              ...(extra.router || {}),
+            },
+            verification: { ...verificationTotals },
+            batches: buildTelemetryBatches(batches, phMs),
+            sink: {
+              ...snap.sink,
+              syncedCues: completedCueCount,
+              totalCues: totalLines,
+              ...(extra.sink || {}),
+            },
+            metrics: {
+              ...stats,
+              durationMs: Math.round(performance.now() - startTimeFull),
+              completedBatches: batches.filter((b) => b.status === 'DONE').length,
+            },
+            ...(extra.error ? { error: extra.error } : {}),
+          }));
+        };
+
+        emitTelemetry('ROUTE');
+
+        while (true) {
+          if (globalAbort.signal.aborted) break;
+
+          const currentPlayheadMs = getPlayheadMs();
+          const nextIdx = selectNextPendingBatchIndex(batches, currentPlayheadMs);
+          if (nextIdx === -1) break;
+
+          const anchorIdx = findBatchIndexForPlayhead(batches, currentPlayheadMs);
+          const batchDesc = batches[nextIdx];
+          const cursor = batchDesc.start;
+          const batch = batchDesc.segments;
+
+          const selected = selectGroupForBatch(keyGroups, dispatchSeq);
+          const isSeekPriorityJump =
+            nextIdx !== dispatchSeq && (nextIdx === anchorIdx || nextIdx === anchorIdx + 1);
+          batchDesc.status = 'IN_FLIGHT';
+          batchDesc.isSeekTarget = currentPlayheadMs > 0 && nextIdx === anchorIdx;
+          dispatchSeq++;
+
+          if (isSeekPriorityJump) {
+            Logger.info(
+              'Translator',
+              `[SEEK_PRIORITY] Jumping to batch #${batchDesc.batchIndex + 1} (lines ${cursor + 1}-${cursor + batch.length}) for playhead ${currentPlayheadMs}ms`
+            );
+          }
+
+          emitTelemetry('ROUTE');
+
           const batchStartTime = performance.now();
           Logger.trace(
             'Translator',
-            `[CHECKPOINT 5] Batch ${batchIndex}: lines ${cursor + 1}-${cursor + batch.length}/${totalLines} (size=${batchSize}, startGroup=${selected?.groupIndex || 0})...`
+            `[CHECKPOINT 5] Batch ${batchDesc.batchIndex + 1}/${batches.length}: lines ${cursor + 1}-${cursor + batch.length}/${totalLines} (size=${batch.length}, startGroup=${selected?.groupIndex || 0})...`
           );
           sendDebugLog(
             tabId,
@@ -274,21 +494,40 @@ async function _translateInternal(
           if (timedOut) {
             Logger.warn(
               'Translator',
-              `[BATCH_TIMEOUT] Batch ${batchIndex} exceeded ${BATCH_TIMEOUT_MS}ms — marking failed for the completeness sweep.`
+              `[BATCH_TIMEOUT] Batch ${batchDesc.batchIndex + 1} exceeded ${BATCH_TIMEOUT_MS}ms — marking failed for the completeness sweep.`
             );
           }
 
-          const elapsed = ((performance.now() - batchStartTime) / 1000).toFixed(1);
+          const elapsedMs = Math.round(performance.now() - batchStartTime);
+          const elapsed = (elapsedMs / 1000).toFixed(1);
           Logger.trace(
             'Translator',
             `[BATCH_RESULT] success=${result.success}, hadFallback=${result.hadFallback}, translatedCount=${result.translated?.length}, sample=${result.translated?.[0]?.substring?.(0, 50)}`
           );
 
+          if (result.failures && result.failures.length > 0) {
+            const toProv = result.stats?.provider || '';
+            const toModel = result.stats?.model || '';
+            for (const f of result.failures) {
+              recordedFailovers.push({
+                ts: Date.now(),
+                fromProvider: f.provider,
+                fromModel: f.model,
+                toProvider: toProv,
+                toModel: toModel,
+                reason: f.status ? `HTTP ${f.status}` : f.message || 'error',
+              });
+            }
+          }
+
           if (result.success) {
             anyBatchSucceeded = true;
+            batchDesc.status = 'DONE';
+            batchDesc.durationMs = elapsedMs;
+            completedCueCount += batch.length;
             Logger.trace(
               'Translator',
-              `[CHECKPOINT 5.S] Batch ${batchIndex} DONE in ${elapsed}s (lines ${cursor + 1}-${cursor + batch.length})`
+              `[CHECKPOINT 5.S] Batch ${batchDesc.batchIndex + 1} DONE in ${elapsed}s (lines ${cursor + 1}-${cursor + batch.length})`
             );
             sendDebugLog(
               tabId,
@@ -304,14 +543,39 @@ async function _translateInternal(
               stats.totalTokens += result.stats.usage?.totalTokens || 0;
               stats.promptTokens += result.stats.usage?.promptTokens || 0;
               stats.completionTokens += result.stats.usage?.completionTokens || 0;
-              stats.model = result.stats.model;
+              stats.model = result.stats.model || stats.model;
+              stats.provider = result.stats.provider || stats.provider;
+              batchDesc.model = result.stats.model || '';
+              batchDesc.provider = result.stats.provider || '';
+              batchDesc.keyMask = result.stats.keyMask || '';
+
+              if (result.stats.verification) {
+                verificationTotals.mergeFixes += result.stats.verification.mergeFixes || 0;
+                verificationTotals.foreignScriptFixes +=
+                  result.stats.verification.foreignScriptFixes || 0;
+                verificationTotals.untranslatedFixes +=
+                  result.stats.verification.untranslatedFixes || 0;
+                if (
+                  verificationTotals.mergeFixes > 0 ||
+                  verificationTotals.foreignScriptFixes > 0 ||
+                  verificationTotals.untranslatedFixes > 0
+                ) {
+                  verificationTotals.status = 'fixed';
+                }
+              }
             }
           } else {
+            batchDesc.status = 'FAILED';
+            batchDesc.durationMs = elapsedMs;
             Logger.warn(
               'Translator',
-              `[CHECKPOINT 5.E] Batch ${batchIndex} FAILED (lines ${cursor + 1}-${cursor + batch.length}).`
+              `[CHECKPOINT 5.E] Batch ${batchDesc.batchIndex + 1} FAILED (lines ${cursor + 1}-${cursor + batch.length}).`
             );
-            failedRanges.push({ start: cursor, segments: batch });
+            failedRanges.push({
+              start: cursor,
+              batchIndex: batchDesc.batchIndex,
+              segments: batch,
+            });
             batch.forEach((s, j) => {
               if (cursor + j < finalResults.length) finalResults[cursor + j] = s.text;
             });
@@ -339,14 +603,28 @@ async function _translateInternal(
           stats.batchCount++;
           if (result.hadFallback) globalHadFallback = true;
 
+          if (typeof options.onStatsUpdate === 'function') {
+            options.onStatsUpdate({
+              ...stats,
+              durationMs: performance.now() - startTimeFull,
+            });
+          }
+
+          emitTelemetry('VERIFY', {
+            router: {
+              keyMask: result.stats?.keyMask || '',
+              latencyMs: elapsedMs,
+            },
+          });
+
           if (typeof onBatchComplete === 'function' && result.success) {
             onBatchComplete(cursor, result.translated);
           }
 
           if (typeof onProgress === 'function') onProgress();
-          cursor += batch.length;
 
-          if (cursor < totalLines) {
+          const remainingPending = selectNextPendingBatchIndex(batches, getPlayheadMs());
+          if (remainingPending !== -1) {
             const delay = result.hadRateLimit ? ELEVATED_BATCH_DELAY_MS : INITIAL_BATCH_DELAY_MS;
             await wait(delay);
           }
@@ -388,6 +666,9 @@ async function _translateInternal(
               continue;
             }
 
+            if (batches[range.batchIndex]) batches[range.batchIndex].status = 'IN_FLIGHT';
+            emitTelemetry('ROUTE');
+
             const { result: r } = await runBatchWithTimeout(
               range.segments,
               src,
@@ -401,6 +682,12 @@ async function _translateInternal(
 
             if (r.success) {
               anyBatchSucceeded = true;
+              if (batches[range.batchIndex]) {
+                batches[range.batchIndex].status = 'DONE';
+                batches[range.batchIndex].model = r.stats?.model || '';
+                batches[range.batchIndex].provider = r.stats?.provider || '';
+              }
+              completedCueCount += range.segments.length;
               r.translated.forEach((t, j) => {
                 if (range.start + j < finalResults.length) finalResults[range.start + j] = t;
               });
@@ -409,6 +696,8 @@ async function _translateInternal(
                 stats.totalTokens += r.stats.usage?.totalTokens || 0;
                 stats.promptTokens += r.stats.usage?.promptTokens || 0;
                 stats.completionTokens += r.stats.usage?.completionTokens || 0;
+                stats.model = r.stats.model || stats.model;
+                stats.provider = r.stats.provider || stats.provider;
               }
               if (typeof onBatchComplete === 'function') onBatchComplete(range.start, r.translated);
               sendDebugLog(
@@ -417,9 +706,11 @@ async function _translateInternal(
                 '#10b981'
               );
             } else {
+              if (batches[range.batchIndex]) batches[range.batchIndex].status = 'FAILED';
               if (r.failures) allFailures.push(...r.failures);
               stillFailed.push(range);
             }
+            emitTelemetry('VERIFY');
             if (typeof onProgress === 'function') onProgress();
           }
           failedRanges = stillFailed;
@@ -442,22 +733,36 @@ async function _translateInternal(
         Logger.info('Translator', '[CHECKPOINT 6] Translation pipeline complete.');
 
         const succeeded = anyBatchSucceeded && !incompleteAfterSweep;
+        const failureReason = succeeded
+          ? undefined
+          : incompleteAfterSweep
+            ? 'INCOMPLETE_AFTER_SWEEP'
+            : 'ALL_BATCHES_FAILED';
+
+        emitTelemetry(succeeded ? 'COMPLETE' : 'ERROR', {
+          sink: { syncedCues: completedCueCount, totalCues: totalLines },
+          ...(failureReason ? { error: { failureReason } } : {}),
+        });
+
         return {
           success: succeeded,
           translated: finalResults,
           hadFallback: globalHadFallback,
           stats,
           failures: allFailures,
-          ...(succeeded
-            ? {}
-            : {
-                failureReason: incompleteAfterSweep
-                  ? 'INCOMPLETE_AFTER_SWEEP'
-                  : 'ALL_BATCHES_FAILED',
-              }),
+          ...(failureReason ? { failureReason } : {}),
         };
       } catch (err) {
-        Logger.error('Translator', 'Fatal translation error', { error: err.message });
+        Logger.error('Translator', 'Fatal translation error', {
+          error: err.message,
+          stack: err.stack?.split('\n').slice(0, 3).join(' | '),
+        });
+        if (videoId) {
+          PipelineTelemetry.update(videoId, {
+            stage: 'ERROR',
+            error: { failureReason: 'TRANSLATOR_CRASH', message: err.message },
+          });
+        }
         return { success: false, failureReason: 'TRANSLATOR_CRASH', error: err.message };
       }
     })(),
@@ -465,6 +770,12 @@ async function _translateInternal(
       setTimeout(() => {
         Logger.error('Translator', `Force timeout after ${forceTimeoutMs / 1000}s`);
         globalAbort.abort();
+        if (videoId) {
+          PipelineTelemetry.update(videoId, {
+            stage: 'ERROR',
+            error: { failureReason: 'TRANSLATOR_FORCE_TIMEOUT' },
+          });
+        }
         resolve({ success: false, failureReason: 'TRANSLATOR_FORCE_TIMEOUT' });
       }, forceTimeoutMs)
     ),
@@ -561,4 +872,7 @@ export const _internals = {
   MAX_PAYLOAD_BYTES,
   buildRoughTranslateDelegate,
   ROUGH_DELEGATE_TIMEOUT_MS,
+  buildBatchQueue,
+  findBatchIndexForPlayhead,
+  selectNextPendingBatchIndex,
 };

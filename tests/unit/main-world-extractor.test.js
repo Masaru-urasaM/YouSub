@@ -1,8 +1,8 @@
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 
 /**
- * Unit tests for src/content/main-world-extractor.js (TODO T11).
- * Drives the IIFE against realistic YouTube watch & Shorts DOM fixtures + XHR Innertube mock.
+ * Unit tests for src/content/main-world-extractor.js (TODO T11 + silent Innertube & auto-close).
+ * Drives the declarative MAIN-world listener against realistic YouTube watch & Shorts DOM fixtures + XHR Innertube mock.
  */
 
 let xhrInstances = [];
@@ -33,13 +33,32 @@ const flushMicrotasks = async (turns = 6) => {
   for (let i = 0; i < turns; i++) await Promise.resolve();
 };
 
-describe('main-world-extractor IIFE (T11)', () => {
+async function loadExtractor() {
+  let captured;
+  jest.resetModules();
+  delete window.__yousubMainExtractorReady;
+  const spy = jest.spyOn(window, 'addEventListener').mockImplementation((type, fn) => {
+    if (type === 'message') captured = fn;
+  });
+  await import('../../src/content/main-world-extractor.js');
+  spy.mockRestore();
+  return captured;
+}
+
+function triggerExtract(handler, requestId = 'req-1') {
+  handler({
+    source: window,
+    data: { type: 'YOUSUB_EXTRACT_CAPTIONS', requestId },
+  });
+}
+
+describe('main-world-extractor MAIN-world listener (T11)', () => {
   const origXHR = global.XMLHttpRequest;
   let postSpy;
 
   beforeEach(() => {
-    jest.resetModules();
     xhrInstances = [];
+    delete window.__yousubMainExtractorReady;
     global.XMLHttpRequest = MockExtractorXHR;
     document.body.innerHTML = '';
     delete window.ytInitialPlayerResponse;
@@ -50,6 +69,7 @@ describe('main-world-extractor IIFE (T11)', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+    delete window.__yousubMainExtractorReady;
     global.XMLHttpRequest = origXHR;
     delete window.ytInitialPlayerResponse;
     delete window.ytcfg;
@@ -62,12 +82,16 @@ describe('main-world-extractor IIFE (T11)', () => {
       .filter((m) => m && m.type === 'YOUSUB_CAPTION_TRACKS');
   }
 
-  test('reports error when URL has no watch or Shorts video ID', async () => {
+  test('reports error when URL has no watch or Shorts video ID and echoes requestId', async () => {
     window.history.pushState({}, '', '/results?search_query=test');
-    await import('../../src/content/main-world-extractor.js');
+    const handler = await loadExtractor();
+    triggerExtract(handler, 'req-no-vid');
+    await flushMicrotasks();
+
     expect(results()).toEqual([
       {
         type: 'YOUSUB_CAPTION_TRACKS',
+        requestId: 'req-no-vid',
         tracks: null,
         parsedEntries: null,
         error: 'No video ID found in URL/Path',
@@ -92,12 +116,14 @@ describe('main-world-extractor IIFE (T11)', () => {
     });
     document.body.appendChild(player);
 
-    await import('../../src/content/main-world-extractor.js');
+    const handler = await loadExtractor();
+    triggerExtract(handler, 'req-live');
     await flushMicrotasks();
 
     expect(results()).toEqual([
       {
         type: 'YOUSUB_CAPTION_TRACKS',
+        requestId: 'req-live',
         tracks: [
           {
             languageCode: 'en',
@@ -112,7 +138,7 @@ describe('main-world-extractor IIFE (T11)', () => {
     ]);
   });
 
-  test('scrapes already-open transcript-segment-view-model segments and cleans accessibility prefixes', async () => {
+  test('scrapes already-open transcript-segment-view-model segments without closing user-opened panel', async () => {
     jest.useFakeTimers();
     window.history.pushState({}, '', '/watch?v=vidOpen1');
     window.ytInitialPlayerResponse = {
@@ -123,20 +149,28 @@ describe('main-world-extractor IIFE (T11)', () => {
       },
     };
 
+    const userCloseSpy = jest.fn();
     document.body.innerHTML = `
-      <transcript-segment-view-model>
-        <div class="segment-timestamp">0:05</div>
-        <div class="segment-text">5 seconds Hello world</div>
-      </transcript-segment-view-model>
-      <transcript-segment-view-model>
-        <div class="segment-timestamp">1:01:02</div>
-        <div class="segment-text">1 hour, 1 minute, 2 seconds Second\nline</div>
-      </transcript-segment-view-model>
+      <ytd-engagement-panel-section-list-renderer target-id="PAmodern_transcript_view" visibility="ENGAGEMENT_PANEL_VISIBILITY_EXPANDED">
+        <div id="visibility-button"><button aria-label="Close">X</button></div>
+        <transcript-segment-view-model>
+          <div class="segment-timestamp">0:05</div>
+          <div class="segment-text">5 seconds Hello world</div>
+        </transcript-segment-view-model>
+        <transcript-segment-view-model>
+          <div class="segment-timestamp">1:01:02</div>
+          <div class="segment-text">1 hour, 1 minute, 2 seconds Second\nline</div>
+        </transcript-segment-view-model>
+      </ytd-engagement-panel-section-list-renderer>
     `;
+    document.querySelector('#visibility-button button').addEventListener('click', userCloseSpy);
 
-    await import('../../src/content/main-world-extractor.js');
+    const handler = await loadExtractor();
+    triggerExtract(handler);
     await flushMicrotasks();
 
+    expect(xhrInstances).toHaveLength(0);
+    expect(userCloseSpy).not.toHaveBeenCalled();
     const res = results();
     expect(res).toHaveLength(1);
     expect(res[0].error).toBeNull();
@@ -146,7 +180,114 @@ describe('main-world-extractor IIFE (T11)', () => {
     ]);
   });
 
-  test('expands description, finds Japanese transcript button, clicks it, and parses segments', async () => {
+  test('extracts Watch subtitles silently via Innertube get_panel first without expanding description or opening Transcript UI', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/watch?v=watchSilent1');
+    window.ytInitialPlayerResponse = {
+      videoDetails: { videoId: 'watchSilent1' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            { languageCode: 'en', name: { simpleText: 'English' }, baseUrl: 'https://yt/en' },
+          ],
+        },
+      },
+    };
+    const expandSpy = jest.fn();
+    document.body.innerHTML = `<tp-yt-paper-button id="expand">...more</tp-yt-paper-button>`;
+    document.getElementById('expand').addEventListener('click', expandSpy);
+
+    const handler = await loadExtractor();
+    triggerExtract(handler, 'req-silent');
+    await flushMicrotasks();
+
+    expect(xhrInstances).toHaveLength(1);
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      content: {
+        items: [
+          { transcriptSegmentViewModel: { timestamp: '0:02', simpleText: 'Silent line 1' } },
+          { transcriptSegmentViewModel: { timestamp: '0:06', simpleText: 'Silent line 2' } },
+        ],
+      },
+    });
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    expect(expandSpy).not.toHaveBeenCalled();
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].requestId).toBe('req-silent');
+    expect(res[0].parsedEntries).toEqual([
+      { startMs: 2000, endMs: 6000, text: 'Silent line 1' },
+      { startMs: 6000, endMs: 11000, text: 'Silent line 2' },
+    ]);
+  });
+
+  test('discovers classic getTranscriptEndpoint via /next and extracts via /youtubei/v1/get_transcript silently', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/watch?v=classicWatch1');
+    window.ytInitialPlayerResponse = {
+      videoDetails: { videoId: 'classicWatch1' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ languageCode: 'en', baseUrl: 'https://yt/en' }],
+        },
+      },
+    };
+
+    const handler = await loadExtractor();
+    triggerExtract(handler);
+    await flushMicrotasks();
+
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = '{}';
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    expect(xhrInstances[1].url).toContain('/youtubei/v1/next');
+    xhrInstances[1].status = 200;
+    xhrInstances[1].responseText = JSON.stringify({
+      engagementPanels: [
+        {
+          button: {
+            commandExecutorCommand: {
+              commands: [{ getTranscriptEndpoint: { params: 'CLASSIC_TRANSCRIPT_PARAMS' } }],
+            },
+          },
+        },
+      ],
+    });
+    xhrInstances[1].onload();
+    await flushMicrotasks();
+
+    expect(xhrInstances[2].url).toContain('/youtubei/v1/get_transcript');
+    expect(JSON.parse(xhrInstances[2].sentBody).params).toBe('CLASSIC_TRANSCRIPT_PARAMS');
+    xhrInstances[2].status = 200;
+    xhrInstances[2].responseText = JSON.stringify({
+      actions: [
+        {
+          transcriptSegmentRenderer: {
+            startMs: '1500',
+            endMs: '4000',
+            snippet: { runs: [{ text: 'Classic silent cue' }] },
+          },
+        },
+      ],
+    });
+    xhrInstances[2].onload();
+    await flushMicrotasks();
+
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].parsedEntries).toEqual([
+      { startMs: 1500, endMs: 4000, text: 'Classic silent cue' },
+    ]);
+  });
+
+  test('falls back to Watch DOM transcript scraping when silent Innertube returns empty, then auto-closes panel and collapses description', async () => {
     jest.useFakeTimers();
     window.history.pushState({}, '', '/watch?v=vidJa');
     window.ytInitialPlayerResponse = {
@@ -159,43 +300,78 @@ describe('main-world-extractor IIFE (T11)', () => {
       },
     };
 
+    const panelCloseSpy = jest.fn();
+    const collapseSpy = jest.fn();
     document.body.innerHTML = `<tp-yt-paper-button id="expand">...more</tp-yt-paper-button>`;
     const expandBtn = document.getElementById('expand');
     expandBtn.addEventListener('click', () => {
+      const collapseBtn = document.createElement('tp-yt-paper-button');
+      collapseBtn.id = 'collapse';
+      collapseBtn.addEventListener('click', collapseSpy);
+      document.body.appendChild(collapseBtn);
+
       const btn = document.createElement('button');
       btn.setAttribute('aria-label', '文字起こしを表示');
       btn.addEventListener('click', () => {
-        const seg = document.createElement('ytd-transcript-segment-renderer');
-        seg.innerHTML = `<div class="segment-timestamp">0:12</div><div class="segment-text">こんにちは</div>`;
-        document.body.appendChild(seg);
+        const panel = document.createElement('ytd-engagement-panel-section-list-renderer');
+        panel.setAttribute('target-id', 'engagement-panel-searchable-transcript');
+        panel.setAttribute('visibility', 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED');
+        panel.innerHTML = `
+          <div id="visibility-button"><button aria-label="Close">✕</button></div>
+          <ytd-transcript-segment-renderer>
+            <div class="segment-timestamp">0:12</div>
+            <div class="segment-text">こんにちは</div>
+          </ytd-transcript-segment-renderer>
+        `;
+        panel.querySelector('#visibility-button button').addEventListener('click', panelCloseSpy);
+        document.body.appendChild(panel);
       });
       document.body.appendChild(btn);
     });
 
-    await import('../../src/content/main-world-extractor.js');
-    // Wait for initial 500ms waitForSegments + 800ms after expandDescription + segment poll
-    await jest.advanceTimersByTimeAsync(2000);
+    const handler = await loadExtractor();
+    triggerExtract(handler);
+    await flushMicrotasks();
+
+    // 1. Silent get_panel returns empty -> /next returns empty -> falls back to DOM
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = '{}';
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    expect(xhrInstances[1].url).toContain('/youtubei/v1/next');
+    xhrInstances[1].status = 200;
+    xhrInstances[1].responseText = '{}';
+    xhrInstances[1].onload();
+
+    await jest.advanceTimersByTimeAsync(1500);
     await flushMicrotasks();
 
     const res = results();
     expect(res).toHaveLength(1);
     expect(res[0].parsedEntries).toEqual([{ startMs: 12000, endMs: 17000, text: 'こんにちは' }]);
+    expect(panelCloseSpy).toHaveBeenCalledTimes(1);
+    expect(collapseSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('falls back to Innertube XHR for Shorts without usable tracks and returns track metadata when panel and get_panel fail', async () => {
+  test('falls back to Innertube XHR for Shorts without usable tracks and returns track metadata when get_panel and /next fail', async () => {
     jest.useFakeTimers();
     window.history.pushState({}, '', '/shorts/sh999');
     window.ytcfg = {
       get: (k) => (k === 'INNERTUBE_API_KEY' ? 'yt-key' : '2.2026'),
     };
+    const moreSpy = jest.fn();
     document.body.innerHTML = `
       <ytd-reel-video-renderer is-active>
         <div id="menu" class="ytd-reel-video-renderer"><button>More</button></div>
       </ytd-reel-video-renderer>
       <ytd-menu-service-item-renderer>Description</ytd-menu-service-item-renderer>
     `;
+    document.querySelector('#menu button').addEventListener('click', moreSpy);
 
-    await import('../../src/content/main-world-extractor.js');
+    const handler = await loadExtractor();
+    triggerExtract(handler);
     await flushMicrotasks();
 
     // 1. Innertube /player XHR fired because no metadata tracks existed
@@ -210,11 +386,10 @@ describe('main-world-extractor IIFE (T11)', () => {
       },
     });
     xhrInstances[0].onload();
-
-    await jest.advanceTimersByTimeAsync(2000);
     await flushMicrotasks();
 
-    // 2. get_panel XHR fires after Shorts UI lacks transcript segments
+    // 2. get_panel XHR fires directly without clicking Shorts menu
+    expect(moreSpy).not.toHaveBeenCalled();
     expect(xhrInstances).toHaveLength(2);
     expect(xhrInstances[1].url).toContain('/youtubei/v1/get_panel');
     xhrInstances[1].status = 200;
@@ -254,7 +429,6 @@ describe('main-world-extractor IIFE (T11)', () => {
         return '2.2026';
       },
     };
-    // Stale window.ytInitialPlayerResponse from a previous Short should be ignored
     window.ytInitialPlayerResponse = {
       videoDetails: { videoId: 'OLD_SHORT_ID' },
       captions: {
@@ -276,8 +450,8 @@ describe('main-world-extractor IIFE (T11)', () => {
     });
     document.body.appendChild(sp);
 
-    await import('../../src/content/main-world-extractor.js');
-    await jest.advanceTimersByTimeAsync(600);
+    const handler = await loadExtractor();
+    triggerExtract(handler);
     await flushMicrotasks();
 
     expect(xhrInstances).toHaveLength(1);
@@ -320,18 +494,16 @@ describe('main-world-extractor IIFE (T11)', () => {
       },
     };
 
-    await import('../../src/content/main-world-extractor.js');
-    await jest.advanceTimersByTimeAsync(600);
+    const handler = await loadExtractor();
+    triggerExtract(handler);
     await flushMicrotasks();
 
-    // 1. Initial get_panel returns empty
     expect(xhrInstances[0].url).toContain('/youtubei/v1/get_panel');
     xhrInstances[0].status = 200;
     xhrInstances[0].responseText = '{}';
     xhrInstances[0].onload();
     await flushMicrotasks();
 
-    // 2. /next supplies updated PAmodern_transcript_view params
     expect(xhrInstances[1].url).toContain('/youtubei/v1/next');
     xhrInstances[1].status = 200;
     xhrInstances[1].responseText = JSON.stringify({
@@ -345,7 +517,6 @@ describe('main-world-extractor IIFE (T11)', () => {
     xhrInstances[1].onload();
     await flushMicrotasks();
 
-    // 3. Retry get_panel with discovered params returns classic renderer segment
     expect(xhrInstances[2].url).toContain('/youtubei/v1/get_panel');
     expect(JSON.parse(xhrInstances[2].sentBody).params).toBe('DISCOVERED_PARAMS');
     xhrInstances[2].status = 200;
@@ -367,5 +538,108 @@ describe('main-world-extractor IIFE (T11)', () => {
     expect(res).toHaveLength(1);
     expect(res[0].error).toBeNull();
     expect(res[0].parsedEntries).toEqual([{ startMs: 1000, endMs: 4500, text: 'Discovered!' }]);
+  });
+
+  test('ignores hidden stale DOM segments/buttons and exits fast on trackless watch video without expanding description', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/watch?v=noCaps123');
+    window.ytcfg = {
+      get: (k) => (k === 'INNERTUBE_API_KEY' ? 'yt-key' : '2.2026'),
+    };
+    const expandSpy = jest.fn();
+    document.body.innerHTML = `
+      <ytd-engagement-panel-section-list-renderer visibility="ENGAGEMENT_PANEL_VISIBILITY_HIDDEN">
+        <transcript-segment-view-model>
+          <div class="segment-timestamp">0:01</div>
+          <div class="segment-text">Stale hidden segment</div>
+        </transcript-segment-view-model>
+      </ytd-engagement-panel-section-list-renderer>
+      <div hidden><button aria-label="Show transcript">Show transcript</button></div>
+      <tp-yt-paper-button id="expand">...more</tp-yt-paper-button>
+    `;
+    document.getElementById('expand').addEventListener('click', expandSpy);
+
+    const handler = await loadExtractor();
+    triggerExtract(handler);
+    await flushMicrotasks();
+
+    expect(xhrInstances).toHaveLength(1);
+    expect(xhrInstances[0].url).toContain('/youtubei/v1/player');
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({ videoDetails: { videoId: 'noCaps123' } });
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    expect(expandSpy).not.toHaveBeenCalled();
+    expect(xhrInstances).toHaveLength(1);
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].parsedEntries).toBeNull();
+    expect(res[0].error).toBe('No transcript button and no caption tracks found.');
+  });
+
+  test('guards against duplicate listener registration on repeated execution', async () => {
+    await loadExtractor();
+    expect(window.__yousubMainExtractorReady).toBe(true);
+    const spy = jest.spyOn(window, 'addEventListener');
+    jest.resetModules();
+    await import('../../src/content/main-world-extractor.js');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test('parses object timestamp / millisecond startMs in get_panel and ignores collapsed stale DOM panels', async () => {
+    jest.useFakeTimers();
+    window.history.pushState({}, '', '/watch?v=objTs123');
+    window.ytInitialPlayerResponse = {
+      videoDetails: { videoId: 'objTs123' },
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [{ languageCode: 'en', baseUrl: 'https://yt/en' }],
+        },
+      },
+    };
+    document.body.innerHTML = `
+      <ytd-engagement-panel-section-list-renderer visibility="ENGAGEMENT_PANEL_VISIBILITY_COLLAPSED">
+        <transcript-segment-view-model>
+          <div class="segment-timestamp">0:01</div>
+          <div class="segment-text">Collapsed stale cue</div>
+        </transcript-segment-view-model>
+      </ytd-engagement-panel-section-list-renderer>
+    `;
+
+    const handler = await loadExtractor();
+    triggerExtract(handler, 'req-obj');
+    await flushMicrotasks();
+
+    expect(xhrInstances).toHaveLength(1);
+    xhrInstances[0].status = 200;
+    xhrInstances[0].responseText = JSON.stringify({
+      content: {
+        items: [
+          {
+            transcriptSegmentViewModel: {
+              timestamp: { elementsAttributedString: { content: '0:07' } },
+              snippet: { elementsAttributedString: { content: 'Object timestamp cue' } },
+            },
+          },
+          {
+            transcriptSegmentViewModel: {
+              startMs: '10500',
+              endMs: '14200',
+              snippet: { simpleText: 'Exact ms cue' },
+            },
+          },
+        ],
+      },
+    });
+    xhrInstances[0].onload();
+    await flushMicrotasks();
+
+    const res = results();
+    expect(res).toHaveLength(1);
+    expect(res[0].parsedEntries).toEqual([
+      { startMs: 7000, endMs: 10500, text: 'Object timestamp cue' },
+      { startMs: 10500, endMs: 14200, text: 'Exact ms cue' },
+    ]);
   });
 });
