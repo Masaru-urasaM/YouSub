@@ -1,4 +1,11 @@
-import { Constants, devLog, devWarn } from '../shared/constants.js';
+import {
+  Constants,
+  TRANSLATION_ACTIVATION_KEY,
+  SKIP_MUSIC_VIDEOS_KEY,
+  devLog,
+  devWarn,
+} from '../shared/constants.js';
+import { evaluateSmartAutoEnable } from '../shared/video-context.js';
 import { PageDetector } from './page-detector.js';
 import { VideoBinder } from './video-binder.js';
 import { SubtitleExtractor } from './subtitle-extractor.js';
@@ -15,7 +22,9 @@ import {
 import { TrustedTypes } from '../shared/trusted-types.js';
 import { escapeHtml as esc } from '../shared/utils.js';
 import { PipelineTelemetry, PIPELINE_KEY_PREFIX } from '../shared/pipeline-telemetry.js';
+import { SLEEP_TIMER_PRESETS } from '../shared/playback-resume-store.js';
 import { PlaybackResume } from './playback-resume.js';
+import { MobileDrawer } from './mobile-drawer.js';
 
 // Init Security Policy
 TrustedTypes.init();
@@ -34,6 +43,152 @@ let activeStreamPort = null;
 let isPipelineActive = false;
 let pipelineStorageListener = null;
 let pipelineRunCounter = 0;
+let metaProbeSeq = 0;
+const manuallyStoppedVideos = new Set();
+let activeVideoMeta = { videoId: null, videoTitle: '', channelName: '' };
+
+function readDomVideoMetadata() {
+  if (typeof document === 'undefined') return { title: '', channelName: '' };
+  const rawTitle = String(document.title || '')
+    .replace(/\s*-\s*YouTube$/, '')
+    .trim();
+  const chanEl =
+    document.querySelector('#owner #channel-name a, #upload-info #channel-name a') ||
+    document.querySelector(
+      'ytm-slim-owner-renderer .slim-owner-channel-name, ytm-slim-owner-renderer a'
+    );
+  const channelName = String(chanEl?.textContent || '').trim();
+  return { title: rawTitle, channelName };
+}
+
+function probePageVideoMetadata(videoId, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const domFallback = readDomVideoMetadata();
+    const fallback = {
+      title: domFallback.title,
+      channelName: domFallback.channelName,
+      category: '',
+      captionLanguages: [],
+      defaultCaptionLang: '',
+    };
+    if (!videoId || typeof window === 'undefined') {
+      resolve(fallback);
+      return;
+    }
+
+    const requestId = `yousub_meta_${++metaProbeSeq}`;
+    let settled = false;
+    let timer = null;
+
+    const cleanup = () => {
+      window.removeEventListener('message', onMsg);
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const finish = (data) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(data || fallback);
+    };
+
+    function onMsg(event) {
+      if (event.source !== window || !event.data) return;
+      if (event.data.type !== 'YOUSUB_RESUME_PLAYER_DATA' || event.data.requestId !== requestId) {
+        return;
+      }
+      finish({
+        title: String(event.data.title || domFallback.title || '').replace(/\s*-\s*YouTube$/, ''),
+        channelName: String(event.data.channelName || domFallback.channelName || ''),
+        category: String(event.data.category || ''),
+        captionLanguages: Array.isArray(event.data.captionLanguages)
+          ? event.data.captionLanguages
+          : [],
+        defaultCaptionLang: String(event.data.defaultCaptionLang || ''),
+      });
+    }
+
+    window.addEventListener('message', onMsg);
+    timer = setTimeout(() => finish(fallback), timeoutMs);
+    try {
+      window.postMessage({ type: 'YOUSUB_RESUME_PROBE_PLAYER', videoId, requestId }, '*');
+    } catch {
+      finish(fallback);
+    }
+  });
+}
+
+async function trySmartAutoEnable(videoId, settingsRes) {
+  const activationMode = settingsRes?.[TRANSLATION_ACTIVATION_KEY] || 'manual';
+  if (activationMode !== 'smart_auto' && activationMode !== 'always_auto') return false;
+
+  const keys = Array.isArray(settingsRes?.yousub_api_keys) ? settingsRes.yousub_api_keys : [];
+  const hasApiKeys = keys.some((k) => k && k.apiKey && k.apiKey.trim() !== '' && !k.disabled);
+  const targetLang = settingsRes?.targetLang || 'vi';
+  const skipMusicVideos = settingsRes?.[SKIP_MUSIC_VIDEOS_KEY] !== false;
+
+  const meta = await probePageVideoMetadata(videoId);
+  if (PageDetector.getCurrentVideoId() !== videoId) return false;
+  if (getTranslationRuntimeState().isTranslationActive) return false;
+
+  activeVideoMeta = {
+    videoId,
+    videoTitle: meta.title || '',
+    channelName: meta.channelName || '',
+  };
+
+  const decision = evaluateSmartAutoEnable({
+    activationMode,
+    skipMusicVideos,
+    targetLang,
+    defaultCaptionLang: meta.defaultCaptionLang,
+    captionLanguages: meta.captionLanguages,
+    category: meta.category,
+    title: meta.title,
+    videoId,
+    manuallyStoppedVideos,
+    hasApiKeys,
+  });
+
+  if (decision.shouldStart) {
+    devLog('[YouSub] Main: Smart Auto-Enable triggered pipeline:', decision);
+    startSubtitlePipeline(videoId, targetLang);
+    return true;
+  }
+  devLog('[YouSub] Main: Smart Auto-Enable skipped:', decision.reason);
+  return false;
+}
+
+function getTranslationRuntimeState() {
+  return {
+    isTranslationActive: isPipelineActive || SyncEngine.isActive() || Boolean(activeGeminiFallback),
+    isDualMode: SyncEngine.isDualModeActive(),
+  };
+}
+
+function syncMobileDrawerState() {
+  const state = getTranslationRuntimeState();
+  if (typeof MobileDrawer?.setTranslationActive === 'function') {
+    MobileDrawer.setTranslationActive(state.isTranslationActive);
+  }
+  if (typeof MobileDrawer?.setDualMode === 'function') {
+    MobileDrawer.setDualMode(state.isDualMode);
+  }
+}
+
+function stopTranslationSession() {
+  pipelineSessionGen++;
+  isPipelineActive = false;
+  stopActiveStreamPort();
+  stopPipelineTelemetryListener();
+  stopActiveGeminiFallback();
+  SyncEngine.stop();
+  Overlay.destroy();
+  syncMobileDrawerState();
+}
 
 function stopActiveStreamPort() {
   if (!activeStreamPort) return;
@@ -265,6 +420,16 @@ function requestTranslationStreaming(
           : 0;
       lastSentSeekMs = initialPlayheadMs;
 
+      const domMeta = readDomVideoMetadata();
+      const videoTitle =
+        activeVideoMeta.videoId === videoId && activeVideoMeta.videoTitle
+          ? activeVideoMeta.videoTitle
+          : domMeta.title;
+      const channelName =
+        activeVideoMeta.videoId === videoId && activeVideoMeta.channelName
+          ? activeVideoMeta.channelName
+          : domMeta.channelName;
+
       port.postMessage({
         type: 'YOUSUB_TRANSLATE_STREAM',
         videoId: videoId,
@@ -272,6 +437,8 @@ function requestTranslationStreaming(
         sourceLang: sourceLang || 'auto',
         targetLang: targetLang,
         playheadMs: initialPlayheadMs,
+        videoTitle,
+        channelName,
         coalesceStats: streamOptions.coalesceStats || null,
         extractionSource: streamOptions.extractionSource || 'dom-transcript',
         mode: streamOptions.mode || 'transcript',
@@ -468,6 +635,7 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto',
       if (partialCount > 0) {
         devWarn('[YouSub] Main: Preserving', partialCount, 'partial translations despite error');
         Overlay.setLoading(false);
+        syncMobileDrawerState();
         const reason = response.failureReason || 'Error';
         const notice = `<strong>Translation incomplete:</strong> ${partialCount}/${effectiveEntries.length} lines translated. (${reason})`;
         Overlay.showStatus(TrustedTypes.toSafeHTML(notice), 'warning', 8000);
@@ -517,6 +685,7 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto',
 
       Overlay.showStatus(TrustedTypes.toSafeHTML(msg), 'error', 20000);
       Overlay.setLoading(false);
+      syncMobileDrawerState();
       return;
     }
 
@@ -548,6 +717,7 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto',
     }
     Overlay.setLoading(false);
     isPipelineActive = false;
+    syncMobileDrawerState();
   } catch (err) {
     isPipelineActive = false;
     if (typeof Overlay.clearStagePill === 'function') {
@@ -555,6 +725,7 @@ async function processEntries(entries, videoId, targetLang, sourceLang = 'auto',
     }
     console.error('[YouSub] Main: processEntries CRITICAL ERROR:', err);
     Overlay.setLoading(false);
+    syncMobileDrawerState();
   }
 }
 
@@ -589,6 +760,7 @@ function showNoSubtitlesPrompt({
   failureReason = 'NO_SUBTITLES',
 }) {
   isPipelineActive = false;
+  syncMobileDrawerState();
   if (videoId) {
     PipelineTelemetry.update(videoId, {
       stage: 'ERROR',
@@ -749,6 +921,7 @@ async function startSubtitlePipeline(videoId, targetLang) {
   try {
     devLog('[YouSub] Main: startSubtitlePipeline triggered for:', videoId);
     isPipelineActive = true;
+    syncMobileDrawerState();
     stopActiveGeminiFallback();
     Overlay.setLoading(true);
     Overlay.show();
@@ -919,6 +1092,7 @@ async function startSubtitlePipeline(videoId, targetLang) {
         }
         console.error('[YouSub] Main: startSubtitlePipeline callback error:', innerErr);
         Overlay.setLoading(false);
+        syncMobileDrawerState();
       }
     });
   } catch (outerErr) {
@@ -928,10 +1102,154 @@ async function startSubtitlePipeline(videoId, targetLang) {
     }
     console.error('[YouSub] Main: startSubtitlePipeline critical error:', outerErr);
     Overlay.setLoading(false);
+    syncMobileDrawerState();
   }
 }
 
-// Init PageDetector
+// Init Mobile In-Page Drawer + PageDetector
+MobileDrawer.init({
+  getTranslationState: getTranslationRuntimeState,
+  onToggleTranslation: (enabled, lang, videoId) => {
+    const targetId = videoId || PageDetector.getCurrentVideoId();
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      Promise.resolve(
+        chrome.storage.local.set({ yousub_translation_enabled: Boolean(enabled) })
+      ).catch(() => {});
+    }
+    if (!enabled) {
+      if (targetId) manuallyStoppedVideos.add(targetId);
+      stopTranslationSession();
+    } else if (targetId) {
+      manuallyStoppedVideos.delete(targetId);
+      startSubtitlePipeline(targetId, lang || 'vi');
+    }
+  },
+  onToggleDualMode: (enabled) => {
+    SyncEngine.setDualMode(Boolean(enabled));
+    syncMobileDrawerState();
+  },
+  onChangeTargetLang: (newLang) => {
+    if (getTranslationRuntimeState().isTranslationActive) {
+      const targetId = PageDetector.getCurrentVideoId();
+      if (targetId) startSubtitlePipeline(targetId, newLang || 'vi');
+    }
+  },
+  onOpenSettings: () => {
+    sendRuntimeMessage({ type: 'YOUSUB_OPEN_SETTINGS' });
+  },
+});
+
+if (typeof PlaybackResume?.onSleepTimerChange === 'function') {
+  PlaybackResume.onSleepTimerChange((sleepState) => {
+    if (typeof MobileDrawer?.setBadgeText === 'function') {
+      MobileDrawer.setBadgeText(sleepState?.badgeText || '');
+    }
+    if (typeof MobileDrawer?.refresh === 'function') {
+      MobileDrawer.refresh();
+    }
+  });
+}
+
+if (typeof MobileDrawer?.registerAddon === 'function') {
+  MobileDrawer.registerAddon('sleep-timer', (host, ctx) => {
+    if (!ctx?.videoId || window.location.pathname.startsWith('/shorts/')) return;
+    const sleep =
+      typeof PlaybackResume?.getSleepTimerState === 'function'
+        ? PlaybackResume.getSleepTimerState()
+        : { active: false };
+    const wrap = document.createElement('div');
+    wrap.id = 'ys-drawer-sleep-addon';
+    wrap.className = 'yousub-drawer-chips';
+
+    const label = document.createElement('span');
+    label.textContent = sleep.active ? `Sleep: ${sleep.badgeText || 'ON'}` : 'Sleep Timer:';
+    wrap.appendChild(label);
+
+    for (const mins of SLEEP_TIMER_PRESETS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `yousub-drawer-btn${
+        sleep.active && Math.round((sleep.totalSec || 0) / 60) === mins ? ' yousub-btn-on' : ''
+      }`;
+      btn.textContent = `${mins}m`;
+      btn.addEventListener('click', () => {
+        PlaybackResume.setSleepTimer(mins);
+        ctx.refresh();
+      });
+      wrap.appendChild(btn);
+    }
+
+    if (sleep.active) {
+      const offBtn = document.createElement('button');
+      offBtn.type = 'button';
+      offBtn.className = 'yousub-drawer-btn';
+      offBtn.textContent = 'Off';
+      offBtn.addEventListener('click', () => {
+        PlaybackResume.cancelSleepTimer();
+        ctx.refresh();
+      });
+      wrap.appendChild(offBtn);
+    }
+
+    host.appendChild(wrap);
+  });
+
+  MobileDrawer.registerAddon('ab-loop', (host, ctx) => {
+    if (!ctx?.videoId || window.location.pathname.startsWith('/shorts/')) return;
+    const loop =
+      typeof PlaybackResume?.getLoopState === 'function'
+        ? PlaybackResume.getLoopState()
+        : { active: false, pointA: null, pointB: null };
+    const wrap = document.createElement('div');
+    wrap.id = 'ys-drawer-ab-addon';
+    wrap.className = 'yousub-drawer-chips';
+
+    const label = document.createElement('span');
+    if (loop.active) {
+      label.textContent = `A-B: ${Math.floor(loop.pointA)}s-${Math.floor(loop.pointB)}s`;
+    } else if (loop.pointA !== null) {
+      label.textContent = `A: ${Math.floor(loop.pointA)}s`;
+    } else {
+      label.textContent = 'A-B Loop:';
+    }
+    wrap.appendChild(label);
+
+    const setABtn = document.createElement('button');
+    setABtn.type = 'button';
+    setABtn.className = 'yousub-drawer-btn';
+    setABtn.textContent = 'Set A';
+    setABtn.addEventListener('click', () => {
+      PlaybackResume.setLoopPointA();
+      ctx.refresh();
+    });
+    wrap.appendChild(setABtn);
+
+    const setBBtn = document.createElement('button');
+    setBBtn.type = 'button';
+    setBBtn.className = `yousub-drawer-btn${loop.active ? ' yousub-btn-on' : ''}`;
+    setBBtn.textContent = 'Set B';
+    setBBtn.addEventListener('click', () => {
+      PlaybackResume.setLoopPointB();
+      ctx.refresh();
+    });
+    wrap.appendChild(setBBtn);
+
+    if (loop.active || loop.pointA !== null) {
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'yousub-drawer-btn';
+      clearBtn.textContent = 'Clear';
+      clearBtn.addEventListener('click', () => {
+        PlaybackResume.clearLoop();
+        ctx.refresh();
+      });
+      wrap.appendChild(clearBtn);
+    }
+
+    host.appendChild(wrap);
+  });
+}
+
 devLog('[YouSub] Main: Registering PageDetector callbacks...');
 PageDetector.init(
   function onEnter(videoId) {
@@ -940,12 +1258,20 @@ PageDetector.init(
     stopActiveGeminiFallback();
     Overlay.destroy();
     PlaybackResume.onEnter(videoId);
+    MobileDrawer.onEnter(videoId);
 
     VideoBinder.bind(function (_videoEl) {
       devLog('[YouSub] Main: Video element bound properly. Checking storage...');
 
       chrome.storage.local.get(
-        ['yousub_translation_enabled', 'targetLang', 'yousub_autostart_video'],
+        [
+          'yousub_translation_enabled',
+          'targetLang',
+          'yousub_autostart_video',
+          TRANSLATION_ACTIVATION_KEY,
+          SKIP_MUSIC_VIDEOS_KEY,
+          'yousub_api_keys',
+        ],
         function (res) {
           if (chrome.runtime.lastError) {
             console.error('[YouSub] Main: Storage error:', chrome.runtime.lastError);
@@ -999,6 +1325,7 @@ PageDetector.init(
                     startSubtitlePipeline(videoId, targetLang);
                   } else {
                     devLog('[YouSub] Main: Cache miss or no cache found.');
+                    trySmartAutoEnable(videoId, res).catch(() => {});
                   }
                 }
               );
@@ -1011,6 +1338,7 @@ PageDetector.init(
             }
           } else {
             devLog('[YouSub] Main: Auto-translation is DISABLED.');
+            trySmartAutoEnable(videoId, res).catch(() => {});
           }
         }
       );
@@ -1018,14 +1346,10 @@ PageDetector.init(
   },
   function onLeave() {
     devLog('[YouSub] Main: ON_LEAVE fired.');
-    pipelineSessionGen++;
-    isPipelineActive = false;
-    stopActiveStreamPort();
-    stopPipelineTelemetryListener();
-    stopActiveGeminiFallback();
+    activeVideoMeta = { videoId: null, videoTitle: '', channelName: '' };
+    stopTranslationSession();
     PlaybackResume.onLeave();
-    SyncEngine.stop();
-    Overlay.destroy();
+    MobileDrawer.onLeave();
   }
 );
 
@@ -1054,16 +1378,12 @@ if (!_messageListenerRegistered) {
 
       if (request.enabled === false) {
         devLog('[YouSub] Main: Disabling translation.');
-        pipelineSessionGen++;
-        isPipelineActive = false;
-        stopActiveStreamPort();
-        stopPipelineTelemetryListener();
-        stopActiveGeminiFallback();
-        SyncEngine.stop();
-        Overlay.destroy();
+        if (currentVideoId) manuallyStoppedVideos.add(currentVideoId);
+        stopTranslationSession();
       } else {
         const videoId = request.videoId || currentVideoId;
         if (videoId) {
+          manuallyStoppedVideos.delete(videoId);
           devLog('[YouSub] Main: Starting pipeline for', videoId);
           startSubtitlePipeline(videoId, request.targetLang || 'vi');
         } else {
@@ -1075,25 +1395,16 @@ if (!_messageListenerRegistered) {
     if (request.type === 'YOUSUB_TOGGLE_DUAL_MODE') {
       devLog('[YouSub] Main: Dual mode toggle received:', request.enabled);
       SyncEngine.setDualMode(request.enabled);
+      syncMobileDrawerState();
     }
 
     if (request.type === 'YOUSUB_CACHE_CLEARED' || request.type === 'YOUSUB_CLEAR_VIDEO_CACHE') {
       devLog('[YouSub] Main: Cache cleared message received.');
-      pipelineSessionGen++;
-      isPipelineActive = false;
-      stopActiveStreamPort();
-      stopPipelineTelemetryListener();
-      stopActiveGeminiFallback();
-      SyncEngine.stop();
-      Overlay.destroy();
+      stopTranslationSession();
     }
 
     if (request.type === 'YOUSUB_GET_STATE') {
-      const state = {
-        isTranslationActive:
-          isPipelineActive || SyncEngine.isActive() || Boolean(activeGeminiFallback),
-        isDualMode: SyncEngine.isDualModeActive(),
-      };
+      const state = getTranslationRuntimeState();
       devLog('[YouSub] Main: Reporting state to popup:', state);
       sendResponse(state);
       return false; // Sync response
@@ -1120,6 +1431,28 @@ if (!_messageListenerRegistered) {
         .then((record) => sendResponse({ ok: !!record, record }))
         .catch(() => sendResponse({ ok: false, record: null }));
       return true;
+    }
+
+    if (request.type === 'YOUSUB_RESUME_SET_SLEEP_TIMER') {
+      const sleepTimer =
+        typeof PlaybackResume?.setSleepTimer === 'function'
+          ? PlaybackResume.setSleepTimer(request.minutes)
+          : { active: false };
+      sendResponse({ ok: true, sleepTimer });
+      return false;
+    }
+
+    if (request.type === 'YOUSUB_RESUME_SET_AB_LOOP') {
+      let abLoop = { active: false, pointA: null, pointB: null };
+      if (request.action === 'setA' && typeof PlaybackResume?.setLoopPointA === 'function') {
+        abLoop = PlaybackResume.setLoopPointA(request.timeSec);
+      } else if (request.action === 'setB' && typeof PlaybackResume?.setLoopPointB === 'function') {
+        abLoop = PlaybackResume.setLoopPointB(request.timeSec);
+      } else if (request.action === 'clear' && typeof PlaybackResume?.clearLoop === 'function') {
+        abLoop = PlaybackResume.clearLoop();
+      }
+      sendResponse({ ok: true, abLoop });
+      return false;
     }
 
     // Return true if we want to send a response asynchronously (though not needed here)

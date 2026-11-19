@@ -1,6 +1,12 @@
 import { Logger } from '../shared/logger.js';
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
 import { PipelineTelemetry, maskApiKey } from '../shared/pipeline-telemetry.js';
+import {
+  TRANSLATION_STYLE_KEY,
+  CUSTOM_PROMPT_KEY,
+  CUSTOM_GLOSSARY_KEY,
+} from '../shared/constants.js';
+import { buildTranslationGuidanceBlock } from '../shared/video-context.js';
 import { APIManager } from './api-manager.js';
 import { Providers } from './providers.js';
 import '../shared/libs/browser-polyfill.js';
@@ -329,6 +335,30 @@ async function _translateInternal(
         Logger.trace('Translator', '[CHECKPOINT 3] Analyzing video context...');
         sendDebugLog(tabId, `Analyzing video context (Max 10s)...`, '#3b82f6');
 
+        let guidance = '';
+        try {
+          let styleId = options.styleId;
+          let customPrompt = options.customPrompt;
+          let glossary = options.glossary;
+          if (styleId === undefined && customPrompt === undefined && glossary === undefined) {
+            const storedStyle = await browser.storage.local
+              .get([TRANSLATION_STYLE_KEY, CUSTOM_PROMPT_KEY, CUSTOM_GLOSSARY_KEY])
+              .catch(() => ({}));
+            styleId = storedStyle?.[TRANSLATION_STYLE_KEY] || 'natural';
+            customPrompt = storedStyle?.[CUSTOM_PROMPT_KEY] || '';
+            glossary = storedStyle?.[CUSTOM_GLOSSARY_KEY] || {};
+          }
+          guidance = buildTranslationGuidanceBlock({
+            styleId: styleId || 'natural',
+            customPrompt: customPrompt || '',
+            glossary: glossary || {},
+            videoTitle: options.videoTitle || '',
+            channelName: options.channelName || '',
+          });
+        } catch {
+          guidance = '';
+        }
+
         let context = '';
         try {
           context = await Promise.race([
@@ -337,7 +367,8 @@ async function _translateInternal(
               activeKeys,
               tabId,
               src,
-              tgt
+              tgt,
+              { videoTitle: options.videoTitle || '', channelName: options.channelName || '' }
             ),
             new Promise((_, reject) =>
               setTimeout(() => reject(new Error('ContextTimeout')), 10000)
@@ -351,6 +382,9 @@ async function _translateInternal(
 
         if (context.length > MAX_CONTEXT_CHARS) {
           context = context.substring(0, MAX_CONTEXT_CHARS) + '...';
+        }
+        if (guidance) {
+          context = `${guidance}\n${context}`.slice(0, 1200);
         }
 
         const startTimeFull = performance.now();
@@ -785,11 +819,15 @@ async function _translateInternal(
 /**
  * Generate a context summary of the video based on the full transcript.
  */
-async function generateContextSummary(texts, apiKeys, tabId, src, _tgt) {
+async function generateContextSummary(texts, apiKeys, tabId, src, _tgt, meta = {}) {
   const sampleTexts = texts.slice(0, 100);
+  const metaHeader =
+    meta.videoTitle || meta.channelName
+      ? `Video title: "${meta.videoTitle || ''}". Channel: "${meta.channelName || ''}".\n`
+      : '';
   const fullTranscript = sampleTexts.join('\n');
   const summaryPrompt = `You are a professional content analyzer.
-Below is the FULL transcript of a video in ${src}. 
+${metaHeader}Below is the FULL transcript of a video in ${src}. 
 Provide a about 200 words summary in English of the video's topic, context, and key terms to help a translator keep consistency (especially for pronouns and specialized vocabulary). 
 Return ONLY the summary.`;
 

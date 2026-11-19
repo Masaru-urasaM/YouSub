@@ -2,7 +2,7 @@ import '../shared/libs/browser-polyfill.js';
 
 export const Constants = {
   APP_NAME: 'YouSub',
-  VERSION: '0.2.5',
+  VERSION: '0.2.6',
   IS_PRODUCTION: false, // Auto-switched to true during packaging
   BUILD_DATE: null, // Injected during packaging
   BUILD_HASH: null, // Injected during packaging (git short hash)
@@ -13,12 +13,21 @@ export const Constants = {
 export const RESUME_STORAGE_KEY = 'yousub_playback_resume_v1';
 export const RESUME_SYNC_KEY = 'yousub_resume_sync_v1';
 export const RESUME_SETTINGS_KEY = 'yousub_resume_settings';
+export const RESUME_CHANNEL_SPEEDS_KEY = 'yousub_channel_speeds_v1';
+export const TRANSLATION_ACTIVATION_KEY = 'yousub_activation_mode';
+export const SKIP_MUSIC_VIDEOS_KEY = 'yousub_skip_music_videos';
+export const TRANSLATION_STYLE_KEY = 'yousub_translation_style';
+export const CUSTOM_PROMPT_KEY = 'yousub_custom_prompt';
+export const CUSTOM_GLOSSARY_KEY = 'yousub_custom_glossary';
+export const USAGE_STATS_KEY = 'yousub_usage_stats_v1';
+export const ONBOARDING_DISMISSED_KEY = 'yousub_onboarding_dismissed';
 export const DEFAULT_RESUME_SETTINGS = Object.freeze({
   enabled: true,
   rewindSec: 3,
   minDurationSec: 60,
   syncEnabled: true,
   preventCompletionReset: true,
+  rememberPlaybackSpeed: true,
 });
 
 // Message types for chrome.runtime.sendMessage between content ↔ background

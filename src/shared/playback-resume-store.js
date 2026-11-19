@@ -4,6 +4,7 @@ import {
   RESUME_STORAGE_KEY,
   RESUME_SYNC_KEY,
   RESUME_SETTINGS_KEY,
+  RESUME_CHANNEL_SPEEDS_KEY,
   DEFAULT_RESUME_SETTINGS,
 } from './constants.js';
 import { Logger } from './logger.js';
@@ -14,7 +15,36 @@ export const MAX_SYNC_BYTES = 7500;
 export const MAX_CHECKPOINTS = 6;
 export const CHECKPOINT_INTERVAL_SEC = 1800;
 export const MAX_BOOKMARKS_PER_VIDEO = 20;
+export const MAX_CHANNEL_SPEEDS = 200;
 export const SYNC_FLUSH_MIN_INTERVAL_MS = 60000;
+export const SLEEP_TIMER_PRESETS = Object.freeze([15, 30, 45, 60]);
+
+function sanitizePlaybackRate(val) {
+  const n = Number(val);
+  if (!Number.isFinite(n) || n < 0.25 || n > 4.0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function normalizeChannelKey(name) {
+  if (typeof name !== 'string') return '';
+  return name.trim().toLowerCase().slice(0, 80);
+}
+
+/**
+ * Format remaining countdown seconds as MM:SS or H:MM:SS.
+ * @param {number} totalSeconds
+ * @returns {string}
+ */
+export function formatCountdown(totalSeconds) {
+  const sec = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 let writeQueue = Promise.resolve();
 let lastSyncFlushAt = 0;
@@ -66,6 +96,47 @@ export function formatTimestamp(totalSeconds) {
 }
 
 /**
+ * Build deduplicated quick-jump pill descriptors (Last, Last Active, Furthest) for a record.
+ * Shared across Desktop Popup and Mobile In-Page Drawer.
+ * @param {object | null} record
+ * @param {(key: string, fallback?: string) => string} [msgFn]
+ * @returns {Array<{ id: string, label: string, timeSec: number, primary: boolean }>}
+ */
+export function buildQuickJumpPills(record, msgFn = (_k, fb) => fb || '') {
+  if (!record || typeof record !== 'object') return [];
+  const pills = [];
+  const lastSec = Math.floor(Number(record.lastTimeSec) || 0);
+  const activeSec = Math.floor(Number(record.lastInteractionTimeSec) || 0);
+  const furthestSec = Math.floor(Number(record.furthestTimeSec) || 0);
+
+  if (lastSec > 0) {
+    pills.push({
+      id: 'last',
+      label: msgFn('popupResumeLastLabel', 'Last'),
+      timeSec: lastSec,
+      primary: true,
+    });
+  }
+  if (activeSec > 0 && Math.abs(activeSec - lastSec) >= 3) {
+    pills.push({
+      id: 'active',
+      label: msgFn('popupResumeActiveLabel', 'Last Active'),
+      timeSec: activeSec,
+      primary: false,
+    });
+  }
+  if (furthestSec > 0 && Math.abs(furthestSec - lastSec) >= 3) {
+    pills.push({
+      id: 'furthest',
+      label: msgFn('popupResumeFurthestLabel', 'Furthest'),
+      timeSec: furthestSec,
+      primary: false,
+    });
+  }
+  return pills;
+}
+
+/**
  * Normalize either a full local record or compact sync record ({t, f, i, ia, d, u, n})
  * into the canonical local record schema.
  * @param {Object|null} raw
@@ -93,6 +164,8 @@ export function normalizeVideoRecord(raw, videoId) {
   const createdAt = toFiniteNonNegative(raw.createdAt, updatedAt);
   const rawTitle = isCompact ? raw.n : raw.title;
   const title = typeof rawTitle === 'string' ? rawTitle.slice(0, 120) : '';
+  const channelName = typeof raw.channelName === 'string' ? raw.channelName.slice(0, 100) : '';
+  const playbackRate = sanitizePlaybackRate(isCompact ? raw.r : raw.playbackRate);
 
   const checkpoints = Array.isArray(raw.checkpoints)
     ? raw.checkpoints
@@ -106,19 +179,36 @@ export function normalizeVideoRecord(raw, videoId) {
 
   const bookmarks = Array.isArray(raw.bookmarks)
     ? raw.bookmarks
-        .filter((b) => b && Number.isFinite(Number(b.timeSec)) && Number(b.timeSec) >= 0)
-        .map((b, idx) => ({
-          id: String(b.id || `bm_${Math.round(Number(b.timeSec))}_${idx}`),
-          timeSec: Math.round(Number(b.timeSec)),
-          label: typeof b.label === 'string' ? b.label.slice(0, 80) : '',
-          createdAt: toFiniteNonNegative(b.createdAt, updatedAt),
-        }))
+        .map((b, idx) => {
+          if (typeof b === 'number' && Number.isFinite(b) && b >= 0) {
+            const safeSec = Math.round(b);
+            return {
+              id: `bm_${safeSec}_${idx}`,
+              timeSec: safeSec,
+              label: '',
+              createdAt: updatedAt,
+            };
+          }
+          if (b && Number.isFinite(Number(b.timeSec)) && Number(b.timeSec) >= 0) {
+            const safeSec = Math.round(Number(b.timeSec));
+            return {
+              id: String(b.id || `bm_${safeSec}_${idx}`),
+              timeSec: safeSec,
+              label: typeof b.label === 'string' ? b.label.slice(0, 80) : '',
+              createdAt: toFiniteNonNegative(b.createdAt, updatedAt),
+            };
+          }
+          return null;
+        })
+        .filter(Boolean)
         .slice(-MAX_BOOKMARKS_PER_VIDEO)
     : [];
 
   return {
     videoId: resolvedId,
     title,
+    channelName,
+    playbackRate,
     durationSec,
     lastTimeSec,
     furthestTimeSec,
@@ -175,6 +265,8 @@ export function mergeRecords(localRec, syncRec, videoId = '') {
   return {
     videoId: primary.videoId,
     title: primary.title || secondary.title || '',
+    channelName: primary.channelName || secondary.channelName || '',
+    playbackRate: primary.playbackRate ?? secondary.playbackRate ?? null,
     durationSec: Math.max(a.durationSec, b.durationSec),
     lastTimeSec: primary.lastTimeSec,
     furthestTimeSec: Math.max(a.furthestTimeSec, b.furthestTimeSec),
@@ -345,6 +437,7 @@ export function buildCompactSyncMap(localMap, maxEntries = MAX_SYNC_VIDEOS) {
       d: Math.round(rec.durationSec),
       u: Math.round(rec.updatedAt),
       n: (rec.title || '').slice(0, 50),
+      ...(rec.playbackRate && rec.playbackRate !== 1 ? { r: rec.playbackRate } : {}),
     };
   }
 
@@ -457,6 +550,7 @@ export const PlaybackResumeStore = {
     next.enabled = next.enabled !== false;
     next.syncEnabled = next.syncEnabled !== false;
     next.preventCompletionReset = next.preventCompletionReset !== false;
+    next.rememberPlaybackSpeed = next.rememberPlaybackSpeed !== false;
     next.rewindSec = toFiniteNonNegative(next.rewindSec, DEFAULT_RESUME_SETTINGS.rewindSec);
     next.minDurationSec = toFiniteNonNegative(
       next.minDurationSec,
@@ -485,6 +579,7 @@ export const PlaybackResumeStore = {
       currentTimeSec = 0,
       durationSec = 0,
       title = '',
+      channelName = '',
       isUserInteraction = false,
       allowResetToZero = false,
       forceSyncFlush = false,
@@ -517,6 +612,8 @@ export const PlaybackResumeStore = {
       const base = prev || {
         videoId,
         title: '',
+        channelName: '',
+        playbackRate: null,
         durationSec: 0,
         lastTimeSec: 0,
         furthestTimeSec: 0,
@@ -530,6 +627,10 @@ export const PlaybackResumeStore = {
 
       const nextTitle =
         typeof title === 'string' && title.trim() ? title.trim().slice(0, 120) : base.title;
+      const nextChannel =
+        typeof channelName === 'string' && channelName.trim()
+          ? channelName.trim().slice(0, 100)
+          : base.channelName || '';
       const nextDuration = Math.max(base.durationSec || 0, safeDuration);
       const nextFurthest = Math.max(base.furthestTimeSec || 0, safeCurrent);
 
@@ -556,6 +657,7 @@ export const PlaybackResumeStore = {
         ...base,
         videoId,
         title: nextTitle,
+        channelName: nextChannel,
         durationSec: nextDuration,
         lastTimeSec: safeCurrent,
         furthestTimeSec: nextFurthest,
@@ -573,7 +675,10 @@ export const PlaybackResumeStore = {
     });
   },
 
-  async addBookmark(videoId, { timeSec = 0, label = '', title = '', durationSec = 0 } = {}) {
+  async addBookmark(
+    videoId,
+    { timeSec = 0, label = '', title = '', channelName = '', durationSec = 0 } = {}
+  ) {
     if (!videoId) return null;
 
     return enqueueWrite(async () => {
@@ -593,6 +698,8 @@ export const PlaybackResumeStore = {
       const base = prev || {
         videoId,
         title: typeof title === 'string' ? title.trim().slice(0, 120) : '',
+        channelName: typeof channelName === 'string' ? channelName.trim().slice(0, 100) : '',
+        playbackRate: null,
         durationSec: toFiniteNonNegative(durationSec, 0),
         lastTimeSec: safeTime,
         furthestTimeSec: safeTime,
@@ -659,6 +766,133 @@ export const PlaybackResumeStore = {
     });
   },
 
+  async updateBookmarkLabel(videoId, bookmarkId, label = '') {
+    if (!videoId || !bookmarkId) return null;
+
+    return enqueueWrite(async () => {
+      const { localMap, syncMap } = await readMaps();
+      const prev = mergeRecords(
+        normalizeVideoRecord(localMap[videoId], videoId),
+        normalizeVideoRecord(syncMap[videoId], videoId)
+      );
+      if (!prev) return null;
+
+      let changed = false;
+      const bookmarks = prev.bookmarks.map((bm) => {
+        if (bm.id !== bookmarkId) return bm;
+        changed = true;
+        const clean =
+          typeof label === 'string' && label.trim()
+            ? label.trim().slice(0, 80)
+            : `Bookmark ${formatTimestamp(bm.timeSec)}`;
+        return { ...bm, label: clean };
+      });
+      if (!changed) return prev;
+
+      const updated = {
+        ...prev,
+        bookmarks,
+        updatedAt: Date.now(),
+      };
+      localMap[videoId] = updated;
+      await persistMaps(localMap, syncMap, { forceSyncFlush: false, syncEnabled: true });
+      return updated;
+    });
+  },
+
+  async savePlaybackSpeed(
+    videoId,
+    playbackRate,
+    { channelName = '', title = '', durationSec = 0 } = {}
+  ) {
+    const safeRate = sanitizePlaybackRate(playbackRate);
+    if (!videoId || safeRate === null) return null;
+
+    return enqueueWrite(async () => {
+      const { localMap, syncMap } = await readMaps();
+      const prev = mergeRecords(
+        normalizeVideoRecord(localMap[videoId], videoId),
+        normalizeVideoRecord(syncMap[videoId], videoId)
+      );
+      const now = Date.now();
+      const cleanChannel =
+        typeof channelName === 'string' && channelName.trim()
+          ? channelName.trim().slice(0, 100)
+          : prev?.channelName || '';
+      const cleanTitle =
+        typeof title === 'string' && title.trim() ? title.trim().slice(0, 120) : prev?.title || '';
+
+      const base = prev || {
+        videoId,
+        title: cleanTitle,
+        channelName: cleanChannel,
+        durationSec: toFiniteNonNegative(durationSec, 0),
+        lastTimeSec: 0,
+        furthestTimeSec: 0,
+        lastInteractionTimeSec: 0,
+        lastInteractionAt: 0,
+        checkpoints: [],
+        bookmarks: [],
+        createdAt: now,
+      };
+
+      const updated = {
+        ...base,
+        videoId,
+        title: cleanTitle,
+        channelName: cleanChannel,
+        playbackRate: safeRate,
+        updatedAt: now,
+      };
+      localMap[videoId] = updated;
+      await persistMaps(localMap, syncMap, { forceSyncFlush: false, syncEnabled: true });
+
+      const chKey = normalizeChannelKey(cleanChannel);
+      const { local } = getStorageRoots();
+      if (chKey && local) {
+        try {
+          const res = await local.get([RESUME_CHANNEL_SPEEDS_KEY]);
+          const channelMap =
+            res?.[RESUME_CHANNEL_SPEEDS_KEY] && typeof res[RESUME_CHANNEL_SPEEDS_KEY] === 'object'
+              ? { ...res[RESUME_CHANNEL_SPEEDS_KEY] }
+              : {};
+          channelMap[chKey] = { rate: safeRate, updatedAt: now };
+          const sorted = Object.entries(channelMap).sort(
+            (a, b) => (b[1]?.updatedAt || 0) - (a[1]?.updatedAt || 0)
+          );
+          const bounded = {};
+          for (const [k, v] of sorted.slice(0, MAX_CHANNEL_SPEEDS)) {
+            bounded[k] = v;
+          }
+          await local.set({ [RESUME_CHANNEL_SPEEDS_KEY]: bounded });
+        } catch {
+          /* ignore channel speed persistence errors */
+        }
+      }
+
+      return updated;
+    });
+  },
+
+  async resolvePreferredSpeed(videoId, channelName = '') {
+    if (!videoId) return null;
+    const { mergedRecord } = await this.getVideoRecord(videoId);
+    if (mergedRecord && mergedRecord.playbackRate !== null) {
+      return mergedRecord.playbackRate;
+    }
+
+    const chKey = normalizeChannelKey(channelName || mergedRecord?.channelName || '');
+    const { local } = getStorageRoots();
+    if (!chKey || !local) return null;
+    try {
+      const res = await local.get([RESUME_CHANNEL_SPEEDS_KEY]);
+      const entry = res?.[RESUME_CHANNEL_SPEEDS_KEY]?.[chKey];
+      return sanitizePlaybackRate(entry?.rate);
+    } catch {
+      return null;
+    }
+  },
+
   async listRecentVideos(limit = 20) {
     const { localMap, syncMap } = await readMaps();
     const allIds = new Set([...Object.keys(localMap), ...Object.keys(syncMap)]);
@@ -693,14 +927,18 @@ export const PlaybackResumeStore = {
   async clearAllRecords() {
     return enqueueWrite(async () => {
       const { local, sync } = getStorageRoots();
-      if (local) await local.remove([RESUME_STORAGE_KEY]).catch(() => {});
+      if (local)
+        await local.remove([RESUME_STORAGE_KEY, RESUME_CHANNEL_SPEEDS_KEY]).catch(() => {});
       if (sync) await sync.remove([RESUME_SYNC_KEY]).catch(() => {});
       lastSyncFlushAt = 0;
     });
   },
 
   resolveResumeTarget,
+  buildQuickJumpPills,
   formatTimestamp,
+  formatCountdown,
+  SLEEP_TIMER_PRESETS,
 
   _resetInternalForTests() {
     writeQueue = Promise.resolve();

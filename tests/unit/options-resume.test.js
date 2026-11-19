@@ -129,6 +129,11 @@ describe('tab-resume.js & Options Playback Tab (Phase 85)', () => {
     preventEl.dispatchEvent(new Event('change'));
     await flushMicrotasks();
 
+    const speedEl = document.getElementById('resume-remember-speed');
+    speedEl.checked = false;
+    speedEl.dispatchEvent(new Event('change'));
+    await flushMicrotasks();
+
     const rewindEl = document.getElementById('resume-rewind-sec');
     rewindEl.value = '10';
     rewindEl.dispatchEvent(new Event('change'));
@@ -139,12 +144,13 @@ describe('tab-resume.js & Options Playback Tab (Phase 85)', () => {
     minDurEl.dispatchEvent(new Event('change'));
     await flushMicrotasks();
 
-    expect(saveIndicator).toHaveBeenCalledTimes(5);
+    expect(saveIndicator).toHaveBeenCalledTimes(6);
     const saved = await PlaybackResumeStore.getSettings();
     expect(saved).toEqual({
       enabled: false,
       syncEnabled: false,
       preventCompletionReset: false,
+      rememberPlaybackSpeed: false,
       rewindSec: 10,
       minDurationSec: 600,
     });

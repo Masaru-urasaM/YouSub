@@ -14,17 +14,23 @@ const MAX_ENTRIES = 100;
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const CACHE_SCHEMA_VERSION = 2;
 
+function buildCacheKey(videoId, sl, tl, variant = '') {
+  const base = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
+  return variant ? `${base}_${variant}` : base;
+}
+
 export const Cache = {
   /**
    * Retrieve translated entries from cache.
    * @param {string} videoId
    * @param {string} sl Source Language
    * @param {string} tl Target Language
+   * @param {string} [variant=''] Style/glossary hash suffix
    * @returns {Promise<Array|null>}
    */
-  async get(videoId, sl, tl) {
+  async get(videoId, sl, tl, variant = '') {
     if (!videoId) return null;
-    const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
+    const key = buildCacheKey(videoId, sl, tl, variant);
 
     try {
       const res = await browser.storage.local.get([key, META_KEY]);
@@ -37,7 +43,7 @@ export const Cache = {
       const now = Date.now();
       if (now - data.timestamp > TTL_MS) {
         Logger.info('Cache', `Cache EXPIRED for ${videoId} (${sl}->${tl})`);
-        await this.remove(videoId, sl, tl);
+        await this.remove(videoId, sl, tl, variant);
         return null;
       }
 
@@ -47,7 +53,7 @@ export const Cache = {
           'Cache',
           `Cache STALE schema (v${data.version || 1} < v${CACHE_SCHEMA_VERSION}) for ${videoId} (${sl}->${tl})`
         );
-        await this.remove(videoId, sl, tl);
+        await this.remove(videoId, sl, tl, variant);
         return null;
       }
 
@@ -104,10 +110,10 @@ export const Cache = {
    * @param {string} tl
    * @param {Array} translated
    */
-  async set(videoId, sl, tl, translated) {
+  async set(videoId, sl, tl, translated, variant = '') {
     if (!videoId || !translated || translated.length === 0) return;
 
-    const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
+    const key = buildCacheKey(videoId, sl, tl, variant);
     const now = Date.now();
     const entry = {
       videoId,
@@ -144,8 +150,8 @@ export const Cache = {
   /**
    * Remove specific entry.
    */
-  async remove(videoId, sl, tl) {
-    const key = `${CACHE_PREFIX}${videoId}_${sl}_${tl}`;
+  async remove(videoId, sl, tl, variant = '') {
+    const key = buildCacheKey(videoId, sl, tl, variant);
     await browser.storage.local.remove(key);
 
     const res = await browser.storage.local.get([META_KEY]);

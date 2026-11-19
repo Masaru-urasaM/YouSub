@@ -396,5 +396,200 @@
   },
   "optionsResumeClearConfirmMsg": {
     "message": "Delete all saved playback timestamps, checkpoints, and bookmarks across local and synced storage?"
+  },
+  "optionsShowDesktopFab": {
+    "message": "Always show floating control pill on Desktop"
+  },
+  "optionsShowDesktopFabDesc": {
+    "message": "Appears automatically on mobile / touch screens (m.youtube.com). Enable to also show the in-page control drawer pill on Desktop browsers."
+  },
+  "mobileDrawerOpen": {
+    "message": "Open YouSub controls"
+  },
+  "mobileDrawerClose": {
+    "message": "Close controls"
+  },
+  "mobileDrawerAriaLabel": {
+    "message": "YouSub Mobile Controls"
+  },
+  "mobileDrawerSubtitlesTitle": {
+    "message": "Subtitles"
+  },
+  "mobileDrawerStopTranslation": {
+    "message": "Stop Subtitles"
+  },
+  "mobileDrawerPosition": {
+    "message": "Position"
+  },
+  "mobileDrawerDragHandles": {
+    "message": "Drag Handles"
+  },
+  "mobileDrawerResetPos": {
+    "message": "Reset Position"
+  },
+  "mobileDrawerHidePill": {
+    "message": "Hide Floating Pill"
+  },
+  "mobileDrawerOpenOptions": {
+    "message": "Full Settings"
+  },
+  "popupResumeSleepLabel": {
+    "message": "Sleep Timer"
+  },
+  "popupResumeSleepOff": {
+    "message": "Off"
+  },
+  "popupResumeSleepFading": {
+    "message": "Fading..."
+  },
+  "popupResumeSleepCustomPlaceholder": {
+    "message": "Min"
+  },
+  "popupResumeSleepSet": {
+    "message": "Set"
+  },
+  "popupResumeBookmarkNotePlaceholder": {
+    "message": "Bookmark note (optional)..."
+  },
+  "popupResumeSpeedLabel": {
+    "message": "Speed"
+  },
+  "popupResumeAbLabel": {
+    "message": "A–B Loop"
+  },
+  "popupResumeAbSetA": {
+    "message": "Set A"
+  },
+  "popupResumeAbSetB": {
+    "message": "Set B"
+  },
+  "popupResumeAbClear": {
+    "message": "Clear"
+  },
+  "optionsResumeRememberSpeed": {
+    "message": "Remember playback speed per video and channel"
+  },
+  "optionsActivationMode": {
+    "message": "Auto-Enable Mode"
+  },
+  "optionsActivationManual": {
+    "message": "Manual Only (Default — safest for BYOK quota)"
+  },
+  "optionsActivationSmartAuto": {
+    "message": "Smart Auto-Enable (Foreign-language videos only)"
+  },
+  "optionsActivationAlwaysAuto": {
+    "message": "Always Auto-Enable on watch pages"
+  },
+  "optionsSkipMusicVideos": {
+    "message": "Skip music & MV videos in Smart Auto-Enable"
+  },
+  "popupStyleAriaLabel": {
+    "message": "Translation Style"
+  },
+  "stylePresetNatural": {
+    "message": "Natural / Conversational"
+  },
+  "stylePresetTechnical": {
+    "message": "Technical / IT"
+  },
+  "stylePresetAcademic": {
+    "message": "Academic / Lecture"
+  },
+  "stylePresetAnime": {
+    "message": "Anime / Slang"
+  },
+  "stylePresetCustom": {
+    "message": "Custom Prompt"
+  },
+  "optionsTranslationStyleCard": {
+    "message": "Translation Style & Glossary"
+  },
+  "optionsTranslationStyleCardDesc": {
+    "message": "Tailor the subtitle tone and lock domain terms, character names, or pronouns. Video title and channel context are included automatically for higher accuracy."
+  },
+  "optionsTranslationStyleLabel": {
+    "message": "Style Preset"
+  },
+  "optionsCustomPromptLabel": {
+    "message": "Custom Style Instruction"
+  },
+  "optionsCustomPromptPlaceholder": {
+    "message": "e.g., Translate concisely with warm mentor tone and keep English code identifiers."
+  },
+  "optionsGlossaryKeepTerms": {
+    "message": "Keep Terms Untranslated"
+  },
+  "optionsGlossaryKeepTermsPlaceholder": {
+    "message": "Comma or newline separated (e.g., React, Kubernetes, YouSub)"
+  },
+  "optionsGlossaryPairs": {
+    "message": "Custom Term Glossary (Source => Target)"
+  },
+  "optionsGlossaryPairsPlaceholder": {
+    "message": "One per line (e.g., transformer => kiến trúc Transformer)"
+  },
+  "optionsGlossaryPronoun": {
+    "message": "Pronoun / Addressing Rule"
+  },
+  "optionsGlossaryPronounPlaceholder": {
+    "message": "e.g., Host addresses viewers as 'các bạn' / 'mọi người'"
+  },
+  "optionsOnboardingTitle": {
+    "message": "30-Second Quick Setup (Free BYOK)"
+  },
+  "optionsOnboardingDesc": {
+    "message": "Get a free personal API key in 30 seconds — your key stays 100% locally in your browser."
+  },
+  "optionsOnboardingDismiss": {
+    "message": "Hide Guide"
+  },
+  "optionsOnboardingStep1Title": {
+    "message": "Get a Free Key"
+  },
+  "optionsOnboardingGeminiLink": {
+    "message": "Google AI Studio (Gemini — free quota + audio fallback)"
+  },
+  "optionsOnboardingGroqLink": {
+    "message": "Groq Console (Ultra-fast Llama / GPT-OSS)"
+  },
+  "optionsOnboardingStep2Title": {
+    "message": "Paste & Auto-Detect Key"
+  },
+  "optionsOnboardingKeyPlaceholder": {
+    "message": "Paste AIza... (Gemini) or gsk_... (Groq) key"
+  },
+  "optionsOnboardingTestSaveBtn": {
+    "message": "Test & Activate"
+  },
+  "optionsOpenOnboardingBtn": {
+    "message": "30s Setup Guide"
+  },
+  "optionsUsageStatsTitle": {
+    "message": "Token & 30-Day Cache Savings"
+  },
+  "optionsUsageStatsDesc": {
+    "message": "100% local counters showing API calls & tokens saved by YouSub's 30-day subtitle cache."
+  },
+  "optionsUsageStatsResetBtn": {
+    "message": "Reset Stats"
+  },
+  "optionsUsageVideosLabel": {
+    "message": "Videos Translated"
+  },
+  "optionsUsageCacheHitsLabel": {
+    "message": "30-Day Cache Hits"
+  },
+  "optionsUsageRequestsSavedLabel": {
+    "message": "Est. API Calls Saved"
+  },
+  "optionsUsageTokensSavedLabel": {
+    "message": "Est. Tokens Saved"
+  },
+  "popupQuickSetupCta": {
+    "message": "30s Free API Setup Guide →"
+  },
+  "popupUsageSavingsSummary": {
+    "message": "30d Cache: {hits} hits · ~{tokens} tokens saved"
   }
 }

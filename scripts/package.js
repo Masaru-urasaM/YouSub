@@ -25,6 +25,19 @@ const excludeList = [
 
 const assetExcludePatterns = [/\.zip$/i, /-original\./i, /\.docx$/i, /\.doc$/i, /^logo_618\.png$/i];
 
+function shouldExcludeAsset(filePath) {
+  const norm = filePath.replace(/\\/g, '/');
+  if (
+    norm === 'assets/store' ||
+    norm.startsWith('assets/store/') ||
+    norm.includes('/assets/store/')
+  ) {
+    return true;
+  }
+  const basename = path.basename(filePath);
+  return assetExcludePatterns.some((p) => p.test(basename));
+}
+
 // ---------------------------------------------------------------------------
 // Pre-build validation
 // ---------------------------------------------------------------------------
@@ -119,17 +132,13 @@ function cleanDist(distDir, name) {
 // Recursive file addition with transforms
 // ---------------------------------------------------------------------------
 
-function shouldExcludeAsset(filePath) {
-  const basename = path.basename(filePath);
-  return assetExcludePatterns.some((p) => p.test(basename));
-}
-
 function addRecursive(zip, srcPath, manifestTransform, constantsTransform) {
   const stat = fs.statSync(srcPath);
   if (stat.isDirectory()) {
     fs.readdirSync(srcPath).forEach((file) => {
-      if (!excludeList.includes(file)) {
-        addRecursive(zip, path.join(srcPath, file), manifestTransform, constantsTransform);
+      const childPath = path.join(srcPath, file);
+      if (!excludeList.includes(file) && !shouldExcludeAsset(childPath)) {
+        addRecursive(zip, childPath, manifestTransform, constantsTransform);
       }
     });
     return;

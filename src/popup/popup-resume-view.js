@@ -1,7 +1,15 @@
 import '../shared/libs/browser-polyfill.js';
 import { RESUME_STORAGE_KEY, RESUME_SYNC_KEY, RESUME_SETTINGS_KEY } from '../shared/constants.js';
-import { PlaybackResumeStore, formatTimestamp } from '../shared/playback-resume-store.js';
+import {
+  PlaybackResumeStore,
+  buildQuickJumpPills,
+  formatTimestamp,
+  formatCountdown,
+  SLEEP_TIMER_PRESETS,
+} from '../shared/playback-resume-store.js';
 import { Logger } from '../shared/logger.js';
+
+export { buildQuickJumpPills };
 
 const RESUME_CHANGE_KEYS = new Set([RESUME_STORAGE_KEY, RESUME_SYNC_KEY, RESUME_SETTINGS_KEY]);
 
@@ -34,46 +42,6 @@ export function parseWatchUrl(urlStr) {
     // Ignore malformed URLs
   }
   return { videoId: null, isWatch: false, isShorts: false };
-}
-
-/**
- * Build deduplicated quick-jump pill descriptors for the current video record.
- * @param {object | null} record
- * @param {(key: string, fallback?: string) => string} msgFn
- * @returns {Array<{ id: string, label: string, timeSec: number, primary: boolean }>}
- */
-export function buildQuickJumpPills(record, msgFn = (_k, fb) => fb || '') {
-  if (!record || typeof record !== 'object') return [];
-  const pills = [];
-  const lastSec = Math.floor(Number(record.lastTimeSec) || 0);
-  const activeSec = Math.floor(Number(record.lastInteractionTimeSec) || 0);
-  const furthestSec = Math.floor(Number(record.furthestTimeSec) || 0);
-
-  if (lastSec > 0) {
-    pills.push({
-      id: 'last',
-      label: msgFn('popupResumeLastLabel', 'Last'),
-      timeSec: lastSec,
-      primary: true,
-    });
-  }
-  if (activeSec > 0 && Math.abs(activeSec - lastSec) >= 3) {
-    pills.push({
-      id: 'active',
-      label: msgFn('popupResumeActiveLabel', 'Last Active'),
-      timeSec: activeSec,
-      primary: false,
-    });
-  }
-  if (furthestSec > 0 && Math.abs(furthestSec - lastSec) >= 3) {
-    pills.push({
-      id: 'furthest',
-      label: msgFn('popupResumeFurthestLabel', 'Furthest'),
-      timeSec: furthestSec,
-      primary: false,
-    });
-  }
-  return pills;
 }
 
 function defaultMsgFn(i18nFn) {
@@ -117,10 +85,21 @@ export const PopupResumeView = {
       autoToggle: document.getElementById('resume-auto-toggle'),
       addBookmarkBtn: document.getElementById('resume-add-bookmark-btn'),
       activePanel: document.getElementById('resume-active-panel'),
+      bookmarkNoteInput: document.getElementById('resume-bookmark-note'),
+      speedBadge: document.getElementById('resume-speed-badge'),
       quickPills: document.getElementById('resume-quick-pills'),
       bookmarksList: document.getElementById('resume-bookmarks-list'),
       checkpointsWrap: document.getElementById('resume-checkpoints-wrap'),
       checkpointsList: document.getElementById('resume-checkpoints-list'),
+      abBadge: document.getElementById('resume-ab-badge'),
+      abSetABtn: document.getElementById('resume-ab-set-a-btn'),
+      abSetBBtn: document.getElementById('resume-ab-set-b-btn'),
+      abClearBtn: document.getElementById('resume-ab-clear-btn'),
+      sleepBadge: document.getElementById('resume-sleep-badge'),
+      sleepPresets: document.getElementById('resume-sleep-presets'),
+      sleepCustomInput: document.getElementById('resume-sleep-custom-min'),
+      sleepCustomBtn: document.getElementById('resume-sleep-custom-btn'),
+      sleepOffBtn: document.getElementById('resume-sleep-off-btn'),
       recentToggle: document.getElementById('resume-recent-toggle'),
       recentCount: document.getElementById('resume-recent-count'),
       recentList: document.getElementById('resume-recent-list'),
@@ -138,6 +117,134 @@ export const PopupResumeView = {
 
     const tabInfo = parseWatchUrl(activeTab?.url || '');
     let liveState = null;
+    let sleepCountdownInterval = null;
+
+    function stopSleepCountdown() {
+      if (sleepCountdownInterval) {
+        clearInterval(sleepCountdownInterval);
+        sleepCountdownInterval = null;
+      }
+    }
+
+    function renderSleepTimerState(sleepState) {
+      if (!els.sleepBadge) return;
+      const st = sleepState || {};
+      const active = Boolean(st.active);
+      if (active) {
+        const rem =
+          st.endAt && st.endAt > Date.now()
+            ? Math.max(0, Math.ceil((st.endAt - Date.now()) / 1000))
+            : Math.max(0, Number(st.remainingSec) || 0);
+        els.sleepBadge.textContent = st.isFading
+          ? msg('popupResumeSleepFading', 'Fading...')
+          : formatCountdown(rem);
+        els.sleepBadge.classList.add('is-active');
+        if (els.sleepOffBtn) els.sleepOffBtn.classList.remove('hidden');
+      } else {
+        els.sleepBadge.textContent = msg('popupResumeSleepOff', 'Off');
+        els.sleepBadge.classList.remove('is-active');
+        if (els.sleepOffBtn) els.sleepOffBtn.classList.add('hidden');
+      }
+
+      if (els.sleepPresets) {
+        const activeMins = active ? Math.round((Number(st.totalSec) || 0) / 60) : 0;
+        els.sleepPresets.querySelectorAll('button[data-minutes]').forEach((btn) => {
+          btn.classList.toggle(
+            'resume-pill-primary',
+            active && Number(btn.dataset.minutes) === activeMins
+          );
+        });
+      }
+    }
+
+    function syncSleepTicker(sleepState) {
+      stopSleepCountdown();
+      renderSleepTimerState(sleepState);
+      if (sleepState?.active && !sleepState.isFading) {
+        sleepCountdownInterval = setInterval(() => {
+          if (!liveState?.sleepTimer?.active) {
+            stopSleepCountdown();
+            return;
+          }
+          renderSleepTimerState(liveState.sleepTimer);
+        }, 1000);
+      }
+    }
+
+    async function setSleepMinutes(minutes) {
+      if (!tabInfo.isWatch || !tabInfo.videoId) return;
+      const res = await sendToActiveTab({
+        type: 'YOUSUB_RESUME_SET_SLEEP_TIMER',
+        minutes,
+      });
+      if (res && res.sleepTimer) {
+        liveState = { ...(liveState || {}), sleepTimer: res.sleepTimer };
+        syncSleepTicker(res.sleepTimer);
+      }
+    }
+
+    if (els.sleepPresets) {
+      els.sleepPresets.replaceChildren();
+      for (const mins of SLEEP_TIMER_PRESETS) {
+        const btn = createEl('button', 'resume-pill', `${mins}m`);
+        btn.type = 'button';
+        btn.dataset.minutes = String(mins);
+        btn.addEventListener('click', () => {
+          setSleepMinutes(mins);
+        });
+        els.sleepPresets.appendChild(btn);
+      }
+    }
+    if (els.sleepCustomBtn && els.sleepCustomInput) {
+      els.sleepCustomBtn.addEventListener('click', () => {
+        const mins = Number(els.sleepCustomInput.value);
+        if (Number.isFinite(mins) && mins > 0) {
+          setSleepMinutes(mins);
+        }
+      });
+    }
+    if (els.sleepOffBtn) {
+      els.sleepOffBtn.addEventListener('click', () => {
+        setSleepMinutes(0);
+      });
+    }
+
+    function renderAbLoopState(loopState) {
+      if (!els.abBadge) return;
+      const st = loopState || {};
+      if (st.active && st.pointA !== null && st.pointB !== null) {
+        els.abBadge.textContent = `${formatTimestamp(st.pointA)} - ${formatTimestamp(st.pointB)}`;
+        els.abBadge.classList.add('is-active');
+        if (els.abClearBtn) els.abClearBtn.classList.remove('hidden');
+      } else if (st.pointA !== null) {
+        els.abBadge.textContent = `A: ${formatTimestamp(st.pointA)}`;
+        els.abBadge.classList.add('is-active');
+        if (els.abClearBtn) els.abClearBtn.classList.remove('hidden');
+      } else {
+        els.abBadge.textContent = msg('popupResumeSleepOff', 'Off');
+        els.abBadge.classList.remove('is-active');
+        if (els.abClearBtn) els.abClearBtn.classList.add('hidden');
+      }
+    }
+
+    async function sendAbLoopAction(action) {
+      if (!tabInfo.isWatch || !tabInfo.videoId) return;
+      const res = await sendToActiveTab({ type: 'YOUSUB_RESUME_SET_AB_LOOP', action });
+      if (res && res.abLoop) {
+        liveState = { ...(liveState || {}), abLoop: res.abLoop };
+        renderAbLoopState(res.abLoop);
+      }
+    }
+
+    if (els.abSetABtn) {
+      els.abSetABtn.addEventListener('click', () => sendAbLoopAction('setA'));
+    }
+    if (els.abSetBBtn) {
+      els.abSetBBtn.addEventListener('click', () => sendAbLoopAction('setB'));
+    }
+    if (els.abClearBtn) {
+      els.abClearBtn.addEventListener('click', () => sendAbLoopAction('clear'));
+    }
 
     async function sendToActiveTab(payload) {
       if (!activeTab || activeTab.id == null) return null;
@@ -193,6 +300,7 @@ export const PopupResumeView = {
 
       if (els.quickPills) {
         els.quickPills.replaceChildren();
+        els.quickPills.classList.toggle('hidden', pills.length === 0);
         for (const pill of pills) {
           const btn = createEl(
             'button',
@@ -225,6 +333,29 @@ export const PopupResumeView = {
               seekCurrentOrOpen(tabInfo.videoId, bm.timeSec);
             });
 
+            const editBtn = createEl('button', 'resume-bookmark-edit', '✎');
+            editBtn.type = 'button';
+            editBtn.setAttribute('aria-label', `Edit bookmark ${bm.label || ''}`.trim());
+            editBtn.addEventListener('click', () => {
+              const inp = document.createElement('input');
+              inp.type = 'text';
+              inp.className = 'resume-bookmark-edit-input';
+              inp.maxLength = 80;
+              inp.value = bm.label || '';
+              const commitEdit = async () => {
+                await PlaybackResumeStore.updateBookmarkLabel(tabInfo.videoId, bm.id, inp.value);
+                await refresh();
+              };
+              inp.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') commitEdit();
+              });
+              const saveBtn = createEl('button', 'resume-bookmark-del', '✓');
+              saveBtn.type = 'button';
+              saveBtn.addEventListener('click', commitEdit);
+              chip.replaceChildren(inp, saveBtn);
+              inp.focus();
+            });
+
             const delBtn = createEl('button', 'resume-bookmark-del', '×');
             delBtn.type = 'button';
             delBtn.setAttribute('aria-label', `Remove bookmark ${bm.label || ''}`.trim());
@@ -234,6 +365,7 @@ export const PopupResumeView = {
             });
 
             chip.appendChild(jumpBtn);
+            chip.appendChild(editBtn);
             chip.appendChild(delBtn);
             els.bookmarksList.appendChild(chip);
           }
@@ -259,8 +391,20 @@ export const PopupResumeView = {
         }
       }
 
-      const hasContent = pills.length > 0 || bookmarks.length > 0 || checkpoints.length > 0;
-      els.activePanel.classList.toggle('hidden', !hasContent);
+      if (els.speedBadge) {
+        const rate = Number(liveState?.playbackRate || record?.playbackRate || 1);
+        if (rate && Math.abs(rate - 1) >= 0.01) {
+          els.speedBadge.textContent = `${rate}x`;
+          els.speedBadge.classList.remove('hidden');
+          els.speedBadge.classList.add('is-active');
+        } else {
+          els.speedBadge.classList.add('hidden');
+        }
+      }
+
+      els.activePanel.classList.remove('hidden');
+      renderAbLoopState(liveState?.abLoop || null);
+      syncSleepTicker(liveState?.sleepTimer || null);
     }
 
     function renderRecentVideos(recents) {
@@ -354,20 +498,22 @@ export const PopupResumeView = {
     if (els.addBookmarkBtn) {
       els.addBookmarkBtn.addEventListener('click', async () => {
         if (!tabInfo.isWatch || !tabInfo.videoId) return;
+        const customLabel = (els.bookmarkNoteInput?.value || '').trim();
         els.addBookmarkBtn.disabled = true;
         try {
           const tabRes = await sendToActiveTab({
             type: 'YOUSUB_RESUME_ADD_BOOKMARK',
-            label: '',
+            label: customLabel,
           });
           if (!tabRes || !tabRes.ok) {
             await PlaybackResumeStore.addBookmark(tabInfo.videoId, {
               timeSec: Number(liveState?.currentTimeSec) || 0,
-              label: '',
+              label: customLabel,
               title: liveState?.title || '',
               durationSec: Number(liveState?.durationSec) || 0,
             });
           }
+          if (els.bookmarkNoteInput) els.bookmarkNoteInput.value = '';
           await refresh();
         } finally {
           els.addBookmarkBtn.disabled = false;
@@ -407,6 +553,7 @@ export const PopupResumeView = {
     return {
       refresh,
       destroy() {
+        stopSleepCountdown();
         if (activeStorageListener && browser.storage?.onChanged?.removeListener) {
           try {
             browser.storage.onChanged.removeListener(activeStorageListener);

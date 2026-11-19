@@ -1,30 +1,31 @@
 # YouSub — Active TODO
 
-> **Updated**: 2026-11-19 · **Status**: **Firefox AMO `v0.2.5` LIVE · Chrome Web Store `v0.2.5` Pending Review** · **Verified**: 743/743 tests green (48 suites, `88.59%` stmts / `91.03%` lines) · ESLint `0` · Prettier clean · Chrome & Firefox ZIPs `[VERIFY OK]`
-> Completed engineering phases (`0–85` + Post-85 Release Automation) are archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md), [`CHANGELOG.md`](CHANGELOG.md), and [`YOUSUB_DESIGN_DECISIONS.md`](YOUSUB_DESIGN_DECISIONS.md).
+> **Updated**: 2026-11-19 · **Status**: **Milestone 9 COMPLETE (`v0.2.6`) — Firefox AMO `v0.2.5` LIVE / `v0.2.6` Submitted (`6731209`) · Chrome Web Store `v0.2.0` Live / `v0.2.5` Pending Review** · **Verified**: **773/773** tests green (**51** suites, `87.29%` stmts / `89.85%` lines) · ESLint `0` · Prettier clean · `addons-linter` 0 errors · Chrome & Firefox `v0.2.6` ZIPs `[VERIFY OK]`
+> Completed engineering phases (`0–91` + Post-91 Store Visual Media Kit) are archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md), [`CHANGELOG.md`](CHANGELOG.md), and [`YOUSUB_DESIGN_DECISIONS.md`](YOUSUB_DESIGN_DECISIONS.md).
 > **Architecture & Mission**: [`CONTEXT.md`](CONTEXT.md) · [`YOUSUB_PROJECT_SPEC.md`](YOUSUB_PROJECT_SPEC.md) · [`ROADMAP.md`](ROADMAP.md).
 
 ---
 
-## Completed Recently (Milestone 8 & Store Submissions — 2026-11-18)
+## Completed Recently (Milestone 9 & `v0.2.6` Release — 2026-11-19)
 
-All 5 Milestone 8 engineering phases (Firefox Mobile `m.youtube.com` + 3-tier Audio/Video Auto-Resume Suite), dark-theme UI contrast polish, automated release tooling (`scripts/publish.js`, `.github/workflows/release.yml`), Privacy Policy Gist sync, and Store submissions for `v0.2.5` are complete:
-- **Privacy Policy Gist**: Synced `15f9846972ccb68a120d29e988f42847` (`November 18, 2026`).
-- **Firefox Add-ons AMO (`yousub@xinh.tools`)**: **APPROVED & LIVE `v0.2.5`** (`https://addons.mozilla.org/addon/yousub/`, Version ID `6728292`, Desktop `>= 128.0` + Android `>= 128.0`). `.env` `FIREFOX_AMO` updated.
-- **Chrome Web Store (`jlpgmjpekhnlncfdkmddoienleiljehk`)**: Draft Privacy justifications updated; initial `0.2.5` rejected by automated check for `Yellow Argon` (*Keyword Spam* on stacked LLM provider names in `en` & `ja` descriptions) → cleaned both `en` & `ja` descriptions to brand-free wording and **resubmitted `v0.2.5`** (`Pending review`; `v0.2.0` currently live).
-- **GitHub repository sync (`Masaru-urasaM/YouSub`)**: Pushed Milestone 7/8 + release automation changes to `origin/master` and configured GitHub Actions secrets for `.github/workflows/release.yml`.
-
-*(Details archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md#milestone-8--firefox-mobile--cross-platform-audiovideo-auto-resume-suite-phases-8185).)*
+All Milestone 9 phases (`86–91` + `Post-91` Store Visual Media Kit), `v0.2.6` version bump, and Firefox AMO submission are complete:
+- **Phases 86–91**: Mobile in-page floating pill & Glassmorphism Bottom Sheet drawer (`mobile-drawer.js`), Smart Sleep Timer (5s smooth volume fade-out + auto-pause + `"Sleep stop"` bookmark), Labeled Bookmark Notes + Per-Channel Speed Memory + A–B Repeat Loop, Opt-In Smart Auto-Enable (`manual` default | `smart_auto` | `always_auto`), Translation Style Presets + Custom Glossary + Video/Channel Metadata Context, and 30-Second BYOK Onboarding Wizard + Token/30-Day Cache Savings Dashboard (`usage-stats.js`).
+- **Post-91 Store Visual Media Kit (`assets/store/`)**: 5 crisp `1280x800` screenshots (`01–05-*.png`), 20-frame looping walkthrough `yousub-demo.gif` (`960x600`), and reproducible `showcase.html` (excluded cleanly from distribution ZIPs in `scripts/package.js`).
+- **Store Status (`2026-11-19`)**:
+  - **Firefox Add-ons AMO (`yousub@xinh.tools`)**: `v0.2.5` live (`https://addons.mozilla.org/addon/yousub/`); **`v0.2.6` submitted** via `npm run publish:firefox` (`Version ID 6731209`, `listed`, Desktop + Android `>= 128.0`, awaiting automated/review signing).
+  - **Chrome Web Store (`jlpgmjpekhnlncfdkmddoienleiljehk`)**: Live `v0.2.0`; **`v0.2.5` currently `PENDING_REVIEW`** — kept `dist/yousub-v0.2.6-chrome.zip` ready locally without overwriting the active `v0.2.5` review queue.
 
 ---
 
 ## Remaining Actions (Developer / Post-Approval)
 
-- [ ] **Post-approval Chrome Web Store doc sync** *(once Chrome Web Store approves `v0.2.5` `Pending review` live)*:
-  - Flip Chrome Web Store status `"pending review"` → `"live v0.2.5"` in [`CLAUDE.md`](CLAUDE.md), [`README.md`](README.md), [`YOUSUB_PROJECT_SPEC.md`](YOUSUB_PROJECT_SPEC.md), and [`MEMORY.md`](MEMORY.md).
-  - *(Optional)* Verify AMO listing screenshots under **Edit Listing** (`https://addons.mozilla.org/en-US/developers/addon/yousub/versions/6728292`), and remove the extra `yousub-publisher@...` entry from CWS Settings → *Trusted tester accounts* (keep it in *Service account*).
-- [ ] **Manual real-browser smoke verification**: Install/update from Firefox AMO on Firefox Desktop + Firefox for Android (`https://addons.mozilla.org/addon/yousub/`) and test cross-device Audio/Video Auto-Resume (`www.youtube.com` ↔ `m.youtube.com`, Chrome Desktop ↔ Firefox Desktop/Android).
-- [ ] **Local disk hygiene**: Move personal résumé `assets/icons/グエンバンフアン履歴書.docx` (and optional backup files `icons.zip`, `icon128-original.png`) outside the workspace (already excluded from git and release ZIPs).
+- [ ] **Publish `v0.2.6` to Chrome Web Store** *(once CWS finishes reviewing `v0.2.5`)*:
+  - Run `npm run publish:chrome` to upload & publish `dist/yousub-v0.2.6-chrome.zip` via CWS API v2, then sync Chrome Web Store status in docs.
+- [ ] **Upload Store Listing Visual Media Kit (`assets/store/`)**:
+  - Upload `assets/store/01-dual-subtitles.png` through `05-byok-presets-glossary.png` in **Chrome Web Store Developer Console → Store listing → Screenshots** and **Firefox AMO → Manage Listing → Images** (plus `assets/store/yousub-demo.gif` on AMO).
+  - *(Optional)* Remove extra `yousub-publisher@...` entry from CWS *Trusted tester accounts* (keep it in *Service account*).
+- [ ] **Manual real-browser smoke verification (`v0.2.6`)**: Verify Android in-page Bottom Sheet, 5s Sleep Timer fade-out, Labeled Bookmarks, A–B Loop, and Smart Auto-Enable live across Desktop + Firefox Android (`m.youtube.com`).
+- [ ] **Local disk hygiene**: Personal résumé `assets/icons/グエンバンフアン履歴書.docx` remains intentionally untouched on local disk (excluded from git and release ZIPs). Move it outside the workspace whenever convenient.
 
 ---
 

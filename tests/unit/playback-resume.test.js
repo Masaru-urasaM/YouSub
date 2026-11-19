@@ -23,6 +23,8 @@ const mockStore = {
   getVideoRecord: jest.fn(),
   updateProgress: jest.fn(() => Promise.resolve({})),
   addBookmark: jest.fn(() => Promise.resolve({ bookmarks: [{ id: 'b1', timeSec: 120 }] })),
+  savePlaybackSpeed: jest.fn(() => Promise.resolve({})),
+  resolvePreferredSpeed: jest.fn(() => Promise.resolve(null)),
 };
 
 const mockResolveResumeTarget = jest.fn();
@@ -44,6 +46,12 @@ jest.unstable_mockModule('../../src/shared/playback-resume-store.js', () => ({
     return h > 0
       ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
       : `${m}:${String(r).padStart(2, '0')}`;
+  },
+  formatCountdown: (sec) => {
+    const s = Math.max(0, Math.ceil(Number(sec) || 0));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
   },
 }));
 
@@ -353,5 +361,147 @@ describe('PlaybackResume content controller (Phase 84)', () => {
     video.dispatchEvent(new Event('pause'));
     expect(mockStore.updateProgress).not.toHaveBeenCalled();
     expect(await PlaybackResume.seekTo(100)).toBe(false);
+  });
+
+  test('Sleep Timer counts down, fades volume over 5s, pauses, restores volume, and drops "Sleep stop" bookmark (Phase 87)', async () => {
+    jest.useFakeTimers();
+    const video = makeVisibleVideo({ currentTime: 1850, duration: 7200, paused: false });
+    let vol = 0.8;
+    Object.defineProperty(video, 'volume', {
+      configurable: true,
+      get: () => vol,
+      set: (v) => {
+        vol = v;
+      },
+    });
+    video.pause = jest.fn();
+
+    await PlaybackResume.onEnter('sleepVid1');
+    // Flush initial async setup under fake timers cleanly
+    for (let i = 0; i < 15; i++) await Promise.resolve();
+
+    const changes = [];
+    const unsub = PlaybackResume.onSleepTimerChange((st) => changes.push(st));
+
+    const armed = PlaybackResume.setSleepTimer(1); // 60 seconds
+    expect(armed.active).toBe(true);
+    expect(armed.remainingSec).toBe(60);
+    expect(armed.badgeText).toBe('01:00');
+
+    // Advance 59s -> still active, not fading
+    jest.advanceTimersByTime(59000);
+    expect(PlaybackResume.getSleepTimerState().isFading).toBe(false);
+    expect(vol).toBe(0.8);
+
+    // Advance 1s -> hits 60s -> begins 5s fade
+    jest.advanceTimersByTime(1000);
+    expect(PlaybackResume.getSleepTimerState().isFading).toBe(true);
+
+    // Mid-fade after 2.5s (5 steps of 500ms) -> volume halved smoothly
+    jest.advanceTimersByTime(2500);
+    expect(vol).toBeCloseTo(0.4, 2);
+    expect(video.pause).not.toHaveBeenCalled();
+
+    // Finish fade (remaining 2.5s) -> paused, volume restored, flushed & Sleep stop bookmark added
+    jest.advanceTimersByTime(2500);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    expect(video.pause).toHaveBeenCalledTimes(1);
+    expect(vol).toBeCloseTo(0.8, 2);
+    expect(mockStore.addBookmark).toHaveBeenCalledWith(
+      'sleepVid1',
+      expect.objectContaining({ timeSec: 1850, label: 'Sleep stop' })
+    );
+    expect(mockOverlay.showStatus).toHaveBeenCalledWith(
+      expect.stringContaining('Sleep stop'),
+      'info',
+      7000,
+      expect.objectContaining({ id: 'sleep-timer-stop' })
+    );
+    expect(PlaybackResume.getSleepTimerState().active).toBe(false);
+    unsub();
+    jest.useRealTimers();
+  });
+
+  test('Sleep Timer aborts fade and restores volume when user interacts or cancels (Phase 87)', async () => {
+    jest.useFakeTimers();
+    const video = makeVisibleVideo({ currentTime: 900, duration: 7200, paused: false });
+    let vol = 0.7;
+    Object.defineProperty(video, 'volume', {
+      configurable: true,
+      get: () => vol,
+      set: (v) => {
+        vol = v;
+      },
+    });
+    video.pause = jest.fn();
+
+    await PlaybackResume.onEnter('sleepAbort1');
+    for (let i = 0; i < 15; i++) await Promise.resolve();
+
+    PlaybackResume.setSleepTimer(1);
+    jest.advanceTimersByTime(60000); // enter fade
+    jest.advanceTimersByTime(1500); // 3 fade steps -> volume drops below 0.7
+    expect(vol).toBeLessThan(0.7);
+
+    // User taps screen during fade -> cancels fade immediately & restores original volume
+    document.dispatchEvent(new Event('pointerdown'));
+    expect(PlaybackResume.getSleepTimerState().active).toBe(false);
+    expect(vol).toBeCloseTo(0.7, 2);
+    jest.advanceTimersByTime(5000);
+    expect(video.pause).not.toHaveBeenCalled();
+
+    jest.useRealTimers();
+  });
+
+  test('restores saved playback speed, persists manual ratechange, and enforces A-B Repeat Loop (Phase 88)', async () => {
+    window.__testProbeOverride = {
+      accountStartSec: 0,
+      watchtimeBaseUrl: 'https://www.youtube.com/api/stats/watchtime?docid=abVid1',
+      durationSec: 3600,
+      isLive: false,
+      title: 'Shadowing Practice',
+      channelName: 'Podcast Channel',
+    };
+    mockStore.resolvePreferredSpeed.mockResolvedValueOnce(1.25);
+
+    const video = makeVisibleVideo({ currentTime: 50, duration: 3600, paused: false });
+    let rate = 1.0;
+    Object.defineProperty(video, 'playbackRate', {
+      configurable: true,
+      get: () => rate,
+      set: (v) => {
+        rate = v;
+      },
+    });
+
+    await PlaybackResume.onEnter('abVid1');
+    await flushAsync();
+
+    // Restored channel speed without triggering savePlaybackSpeed
+    expect(rate).toBe(1.25);
+    expect(mockStore.savePlaybackSpeed).not.toHaveBeenCalled();
+
+    // User manually changes speed -> saved
+    rate = 1.5;
+    video.dispatchEvent(new Event('ratechange'));
+    expect(mockStore.savePlaybackSpeed).toHaveBeenCalledWith('abVid1', 1.5, {
+      channelName: 'Podcast Channel',
+      title: 'Shadowing Practice',
+      durationSec: 3600,
+    });
+
+    // A-B Repeat Loop: set A=20s, B=30s -> timeupdate at 31s jumps back to 20s
+    PlaybackResume.setLoopPointA(20);
+    PlaybackResume.setLoopPointB(30);
+    expect(PlaybackResume.getLoopState()).toEqual({ active: true, pointA: 20, pointB: 30 });
+
+    video.currentTime = 31;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(video.currentTime).toBe(20);
+
+    PlaybackResume.clearLoop();
+    expect(PlaybackResume.getLoopState()).toEqual({ active: false, pointA: null, pointB: null });
+    delete window.__testProbeOverride;
   });
 });

@@ -2,9 +2,9 @@
 
 > **Document purpose**: This is the single source of truth for the YouSub project. It is written as an AI-readable prompt/specification so that any AI coding assistant (Gemini, Claude, etc.) can read this document and understand the full scope, architecture, decisions, and constraints of the project. It is also readable by human developers.
 >
-> **Document version**: 2.9
+> **Document version**: 2.10
 > **Last updated**: 2026-11-19
-> **Status**: **Milestone 8 COMPLETE** — **v0.2.5 LIVE** on [Firefox Add-ons (AMO)](https://addons.mozilla.org/addon/yousub/) (`yousub@xinh.tools`, Desktop + Android); **v0.2.0 live / v0.2.5 Pending review** on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (`jlpgmjpekhnlncfdkmddoienleiljehk`; **743/743 tests**, 48 suites)
+> **Status**: **Milestone 9 COMPLETE (`v0.2.6`)** — **v0.2.5 live / v0.2.6 submitted (`6731209`)** on [Firefox Add-ons (AMO)](https://addons.mozilla.org/addon/yousub/) (`yousub@xinh.tools`, Desktop + Android); **v0.2.0 live / v0.2.5 Pending review (`v0.2.6` ZIP staged locally)** on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (`jlpgmjpekhnlncfdkmddoienleiljehk`; **773/773 tests**, 51 suites)
 >
 > **Structure**: This file is the navigation hub and architecture reference. For active/pending development phases, see [ROADMAP.md](ROADMAP.md). For completed phases, see [ROADMAP_DONE.md](ROADMAP_DONE.md).
 
@@ -154,7 +154,8 @@ YouSub/
 |   |   +-- main-world-fetcher.js       # MAIN world XHR fetch helper (manifest world: "MAIN")
 |   |   +-- main-world-translator.js    # MAIN world on-device Translator IIFE (manifest world: "MAIN")
 |   |   +-- main-world-resume.js        # MAIN world YouTube watchtime guard & startSeconds bridge (manifest world: "MAIN")
-|   |   +-- playback-resume.js          # Content auto-resume controller, standalone toast & bookmark/seek bridge
+|   |   +-- playback-resume.js          # Content auto-resume controller, sleep timer, A-B loop & bookmark/seek bridge
+|   |   +-- mobile-drawer.js            # Mobile in-page floating pill & Glassmorphism bottom sheet control drawer (Phase 86)
 |   +-- background/                     # Background service worker
 |   |   +-- service-worker.js           # Entry point — message & streaming port router
 |   |   +-- translator.js               # Seek-aware translation orchestrator & completeness sweep
@@ -192,7 +193,9 @@ YouSub/
 |   |   +-- logger.js                   # Structured JSONL logging
 |   |   +-- trusted-types.js            # Trusted Types policy (safe innerHTML sinks)
 |   |   +-- utils.js                    # Shared helpers (escapeHtml)
-|   |   +-- playback-resume-store.js    # 3-tier LRU + sync-quota playback resume store & conflict resolver
+|   |   +-- playback-resume-store.js    # 3-tier LRU + sync playback resume, labeled bookmarks, speed memory & sleep presets
+|   |   +-- video-context.js            # Smart Auto-Enable heuristics, style presets, glossary & variant hashing (Phases 89-90)
+|   |   +-- usage-stats.js              # Local-only token & 30-day cache savings tracker (Phase 91)
 |   |   +-- libs/
 |   |       +-- browser-polyfill.js     # Vendored webextension-polyfill (cross-browser)
 |   +-- debug/                          # Advanced diagnostics & interactive DAG panel (opened from popup)
@@ -203,6 +206,7 @@ YouSub/
 +-- assets/
 |   +-- icons/                          # Extension icons (icon16/19/32/38/48/128/618.png)
 |   +-- preview_bg.jpg                  # Options appearance live-preview backdrop
+|   +-- store/                          # Store media kit (5x 1280x800 PNGs + animated demo GIF; excluded from ZIPs)
 +-- scripts/
 |   +-- package.js                      # Zero-build-step Chrome & Firefox ZIP packager + manifest verifier
 |   +-- publish.js                      # Automated CWS API v2 (Service Account/OAuth2) & AMO API v5 publisher
@@ -211,7 +215,7 @@ YouSub/
 +-- .github/workflows/
 |   +-- test.yml                        # CI quality gates (lint, format, test coverage, package)
 |   +-- release.yml                     # Automated Store publish & artifact release workflow
-+-- tests/                              # Test files (Phase 21+, 48 unit suites / 743 tests)
++-- tests/                              # Test files (Phase 21+, 51 unit suites / 773 tests)
 |   +-- unit/
 |   +-- integration/
 +-- logs/                               # Debug log output (gitignored)
@@ -280,9 +284,12 @@ manifest.json
   |       +-- import src/content/rough-translate-bridge.js
   |       +-- import src/content/overlay.js
   |       +-- import src/content/sync-engine.js
+  |       +-- import src/content/playback-resume.js
+  |       +-- import src/content/mobile-drawer.js
+  |       +-- import src/shared/video-context.js
   |       +-- import src/content/gemini-fallback-scheduler.js
   |     (each module also self-registers on the window.YouSub shim)
-  |     web_accessible_resources exposes the 19 isolated ESM modules so loader.js can import() them.
+  |     web_accessible_resources exposes the 21 isolated ESM modules + polyfill so loader.js can import() them.
   |
   +-- background.service_worker (ES modules, import/export):
   |     src/background/service-worker.js  <- Entry point (message + stream port router)
@@ -336,7 +343,14 @@ manifest.json
 **Summary**: Versioned LRU/TTL translation cache (`cache.js`, `CACHE_SCHEMA_VERSION = 2`, 30-day TTL, source-language-agnostic auto-start existence probe, plus `sl='gen'` incremental Gemini cache) stored in `chrome.storage.local`. Unified cross-context `PipelineTelemetry` (`storage.session` + `storage.local` with monotonic stage guards), Sparrow-style SVG DAG visualizer (`pipeline-flow-view.js`), structured JSONL session logging (`logger.js` + `YOUSUB_LOG_BATCH` content-to-SW relay when `storage.session` is unavailable), popup-launched Batch Debugger (`src/debug/`), full EN/JA UI localization (`_locales/`, `i18n.js`), and cross-browser Chrome/Firefox/Edge/Firefox-Android compatibility via `webextension-polyfill`.
 
 ### 3.6 Playback Auto-Resume & Firefox Mobile Support
-**Summary**: Cross-platform (`www.youtube.com` + `m.youtube.com`, Chrome Desktop, Firefox Desktop, Firefox for Android >= 128.0) audio/long-video auto-resume completely decoupled from subtitle translation (`PlaybackResume` + `PlaybackResumeStore` + declarative MAIN-world `main-world-resume.js`, Decision 23). Combines a 3-tier store (`storage.local` 500 LRU + `storage.sync` compact <= 40 LRU / <= 7500 UTF-8 bytes + first-party YouTube account `startSeconds` & hardened `/api/stats/watchtime` sync) with zero-overwrite protection, sleep-protection (`>=95%` reset guard on videos `>=600s`), 4-timestamp recovery (`lastTimeSec`, `furthestTimeSec`, `lastInteractionTimeSec`, rolling 30m `checkpoints`, manual `bookmarks`), standalone resume toast + popup quick-jump/history UI (`popup-resume-view.js`), and Options Playback settings tab (`tab-resume.js`).
+**Summary**: Cross-platform (`www.youtube.com` + `m.youtube.com`, Chrome Desktop, Firefox Desktop, Firefox for Android >= 128.0) audio/long-video auto-resume completely decoupled from subtitle translation (`PlaybackResume` + `PlaybackResumeStore` + declarative MAIN-world `main-world-resume.js`, Decision 23). Combines a 3-tier store (`storage.local` 500 LRU + `storage.sync` compact <= 40 LRU / <= 7500 UTF-8 bytes + first-party YouTube account `startSeconds` & hardened `/api/stats/watchtime` sync) with zero-overwrite protection, sleep-protection (`>=95%` reset guard on videos `>=600s`), 4-timestamp recovery (`lastTimeSec`, `furthestTimeSec`, `lastInteractionTimeSec`, rolling 30m `checkpoints`, labeled `bookmarks`), standalone resume toast + popup quick-jump/history UI (`popup-resume-view.js`), and Options Playback settings tab (`tab-resume.js`).
+
+### 3.7 Milestone 9 Mobile UX, Audiobook Power Suite, Smart AI Context & Onboarding (`v0.2.6`, Decision 24)
+**Summary**:
+- **Mobile In-Page Floating Pill & Drawer (`mobile-drawer.js`)**: Auto-shown on `m.youtube.com` / `(hover: none) and (pointer: coarse)` (optional desktop toggle `showDesktopFab`, default `false`); auto-dimming edge pill + Trusted-Types-safe Bottom Sheet with subtitle, layout, resume, sleep timer, and A–B loop quick controls.
+- **Smart Sleep Timer & Audiobook Suite (`playback-resume.js`, `playback-resume-store.js`)**: Countdown presets (`15/30/45/60m` + custom), 5s linear volume fade-out → pause → restore volume → sync flush → `"Sleep stop"` bookmark (with user-interaction fade rescue), labeled bookmark notes (`{ timeSec, label, createdAt }`), per-video/channel speed memory (`yousub_channel_speeds_v1` LRU 200), and A–B repeat loop.
+- **Opt-In Smart Auto-Enable & Style/Glossary Context (`video-context.js`, `translator.js`, `cache.js`)**: Safe `manual` default with opt-in `smart_auto` (skips native-language, music, uncaptioned, or session-stopped videos) & `always_auto`; 5 style presets + custom prompt, custom glossary/pronoun rules, `{ videoTitle, channelName }` metadata context injection (`MAX_LINES_PER_BATCH` untouched), and FNV-1a style cache variants (`computeStyleCacheVariant`).
+- **30-Second BYOK Wizard & Local Usage Dashboard (`usage-stats.js`, `tab-translation.js`, `popup.js`)**: Guided setup wizard (provider auto-detect + 1-click Test & Activate), local-only `yousub_usage_stats_v1` token & 30-day cache savings metrics, and Store listing visual media kit (`assets/store/`).
 
 ---
 
@@ -556,3 +570,4 @@ self.YouSub_Health && self.YouSub_Health.getStats()
 | 2.7 | 2026-11-18 | Synced to local `v0.2.5` + Phases 78–80 + post-80 stabilization hotfixes: declarative `world: "MAIN"` + silent Innertube transcript, `SubtitleCoalescer` monotonic interval normalization, Seek-Aware priority, Sparrow telemetry, overlay auto-fit/bar-dodge, JSON-mode `MergeFixer` isolation & `CACHE_SCHEMA_VERSION = 2`. |
 | 2.8 | 2026-11-18 | Completed Milestone 8 (Phases 81–85, Decision 23): added Firefox for Android (`gecko_android >= 128.0`, `m.youtube.com` SPA & mobile UI compat), 3-tier Playback Resume Store & conflict resolution, MAIN-world watchtime guard & `startSeconds` bridge, independent `PlaybackResume` controller & SW log relay, and Popup/Options Playback Resume UI (`popup-resume-view.js`, `tab-resume.js`). |
 | 2.9 | 2026-11-19 | Added Post-85 dark-theme UI polish, Store release automation (`scripts/publish.js`, `scripts/amo-metadata.json`, `.github/workflows/release.yml`, `.env.example`, `tests/unit/publish.test.js`), Privacy Gist sync, **Firefox AMO `v0.2.5` live approval** (`https://addons.mozilla.org/addon/yousub/`), and Chrome Web Store `v0.2.5` resubmission (`Pending review` after `Yellow Argon` `en`+`ja` listing description fix). |
+| 2.10 | 2026-11-19 | Completed Milestone 9 (`v0.2.6`, Phases 86–91 + Post-91 Visual Media Kit, Decision 24): mobile in-page pill & Bottom Sheet (`mobile-drawer.js`), Smart Sleep Timer, labeled bookmarks / channel speed memory / A–B loop, opt-in Smart Auto-Enable & Style/Glossary/Metadata context (`video-context.js`), 30s BYOK wizard & local cache savings (`usage-stats.js`), and `assets/store/` (`1280x800` PNGs + demo GIF). **773/773** tests across **51** suites; Firefox AMO `v0.2.6` submitted (`6731209`). |

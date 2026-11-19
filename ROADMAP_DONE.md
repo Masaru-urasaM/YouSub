@@ -627,3 +627,43 @@
   - Audited `dist/yousub-v0.2.5-firefox.zip` with `addons-linter` (**0 errors**), submitted `v0.2.5` (`listed`, Version ID `6728292`, Firefox `>= 128.0` + Android `>= 128.0`), and received **automated screening approval** (`https://addons.mozilla.org/addon/yousub/`, `.env` `FIREFOX_AMO` updated).
   - Resolved real Chrome Web Store Item ID (`jlpgmjpekhnlncfdkmddoienleiljehk` live at `0.2.0`), updated Draft *Privacy* disclosures & *Store listing* descriptions, resolved initial `Yellow Argon` (*Keyword Spam* rejection on stacked LLM provider names in both `en` and `ja` descriptions) with brand-free copy, and **resubmitted `v0.2.5`** (`Pending review`).
 - **Verify**: Added [`tests/unit/publish.test.js`](tests/unit/publish.test.js) (+7 tests). Suite **736 → 743 tests** across **48 suites**, ESLint `0`, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
+---
+
+## Milestone 9 — Mobile In-Page UX, Smart AI Context & Audiobook Power Suite (`v0.2.6`, Phases 86–91 + Post-91)
+
+### Phase 86 — Mobile In-Page Floating Pill & Bottom Sheet Control Drawer (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Med · **Group**: mobile-ux
+- Created `src/content/mobile-drawer.js` (`MobileDrawer`, `#yousub-mobile-fab`, Glassmorphism `#yousub-mobile-drawer` built cleanly without `innerHTML`, 3.5s auto-dimming, edge drag persistence `yousub_mobile_fab_pos`, fullscreen reparenting, quick subtitle/appearance/resume controls + `registerAddon`), registered in `manifest.json` WAR (`web_accessible_resources`), extracted shared `buildQuickJumpPills()`, exposed `Overlay.resetLayout()` / `Overlay.setTouchHandlesVisible()`, and added Options → Appearance `showDesktopFab` toggle (`false` default).
+- **Verify**: 743 → **748 tests** across **49 suites** (`tests/unit/mobile-drawer.test.js`), ESLint `0`, Prettier clean, `[VERIFY OK]`.
+
+### Phase 87 — Smart Sleep Timer with 5s Fade-Out & `"Sleep stop"` Bookmark (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Low-Med · **Group**: audiobook-ux
+- Added `SLEEP_TIMER_PRESETS` & `formatCountdown()` in `playback-resume-store.js`; implemented countdown timer, 5s linear volume fade-out (`SLEEP_FADE_DURATION_MS = 5000`), pre-fade volume restore, auto-pause, sync/watchtime flush, `"Sleep stop"` bookmark drop, and user-interaction fade-abort rescue in `playback-resume.js`; wired `YOUSUB_RESUME_SET_SLEEP_TIMER`, Popup timer presets + countdown badge, Mobile Drawer `'sleep-timer'` addon, and pill badge.
+- **Verify**: Expanded `playback-resume.test.js`, `popup-resume.test.js`, `main.test.js`.
+
+### Phase 88 — Labeled Bookmark Notes, Per-Video/Channel Speed Memory & A–B Repeat Loop (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Med · **Group**: audiobook-ux
+- Extended bookmarks cleanly to `{ timeSec, label, createdAt }` (backward-compatible with legacy numeric arrays & compact `storage.sync` byte caps), added inline bookmark notes + `✎` rename, added per-video & channel speed memory (`yousub_channel_speeds_v1` LRU 200 channels + compact sync `r` + `rememberPlaybackSpeed` toggle), and added `A–B Repeat Loop` (`Set A`, `Set B`, `Clear` across Popup, Mobile Drawer, and `playback-resume.js`).
+- **Verify**: Targeted suites 84/84 passed; ESLint `0`; Prettier clean.
+
+### Phase 89 — Smart Auto-Enable Translation with Music & Native-Language Bypass (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Med · **Group**: ai-automation
+- Created `src/shared/video-context.js` (`normalizeBaseLang`, `isLikelyMusicVideo`, `evaluateSmartAutoEnable`) registered in `manifest.json` WAR, extended `main-world-resume.js` with `defaultCaptionLang`, added `yousub_activation_mode` (`manual` safe default | `smart_auto` | `always_auto`), `yousub_skip_music_videos`, per-session `manuallyStoppedVideos` override, and Options controls (`tab-translation.js`).
+- **Verify**: New `tests/unit/video-context.test.js` + `main.test.js` + `options-ui.test.js`.
+
+### Phase 90 — Translation Style Presets, Custom Glossary & Video/Channel Metadata Context (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Med · **Group**: translation-quality
+- Added `TRANSLATION_STYLE_PRESETS` (`natural`, `technical`, `academic`, `anime`, `custom`), `computeStyleCacheVariant()` (FNV-1a hash keeping `'natural'` cache keys backward-compatible), variant cache isolation in `cache.js`, and bounded style/glossary/`{ videoTitle, channelName }` metadata context injection inside `translator.js` & `service-worker.js` (`MAX_LINES_PER_BATCH` untouched per Rule 12). Wired `main.js`, Popup `#style-selector`, Options `#translation-style-card`, and EN/JA `_locales`.
+- **Verify**: Targeted 9 suites 104/104 passed; ESLint `0`; Prettier clean.
+
+### Phase 91 — 30-Second BYOK Onboarding Wizard & Token / 30-Day Cache Savings Dashboard (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Low · **Group**: onboarding-ux
+- Created `src/shared/usage-stats.js` (`yousub_usage_stats_v1` serialized queue tracker), wired `service-worker.js` stats recording across stream, request, and Gemini video paths, built the auto-showing/reopenable 30-Second Quick Setup wizard (Gemini AI Studio / Groq links, key auto-detection, 1-click Test & Activate), Token & 30-Day Cache Savings 4-metric dashboard in Options + Popup summary line, and EN/JA localization.
+- **Verify**: New `tests/unit/usage-stats.test.js` + expanded `service-worker.test.js`, `options-ui.test.js`, `popup-ui.test.js` (targeted 6 suites 50/50 passed).
+
+### Post-91 — Store Listing Visual Media Kit & `v0.2.6` Verification / AMO Submission (2026-11-19)
+**Status**: DONE (2026-11-19) · **Risk**: Low · **Group**: distribution
+- Created `assets/store/` visual media kit (`01-dual-subtitles.png` .. `05-byok-presets-glossary.png` rendered pixel-exact `1280x800` via Chromium headless, `yousub-demo.gif` `960x600` 20-frame looping walkthrough, reproducible `showcase.html`, and `README.md`) and excluded `assets/store/` cleanly inside `scripts/package.js`.
+- Bumped `v0.2.5` → `v0.2.6` across `manifest.json`, `package.json`, `package-lock.json`, `src/shared/constants.js`, `src/options/options.html`, and `scripts/amo-metadata.json`.
+- **Final Release Gate**: **773/773 tests** across **51 suites** (`87.29%` stmts / `72.82%` branches / `84.11%` funcs / `89.85%` lines), ESLint `0`, Prettier clean, `addons-linter` **0 errors / 0 notices**, Chrome & Firefox `v0.2.6` ZIPs (`68` files, `0.71 MB`) `[VERIFY OK]`, and Firefox AMO `v0.2.6` submitted (`Version ID 6731209`, Desktop + Android `>= 128.0`); Chrome Web Store `v0.2.5` still `PENDING_REVIEW` (`v0.2.0` live) so `v0.2.6` Chrome ZIP is staged locally without cancelling the active CWS review.

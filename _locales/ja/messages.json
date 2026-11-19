@@ -396,5 +396,200 @@
   },
   "optionsResumeClearConfirmMsg": {
     "message": "ローカルおよび同期ストレージに保存されたすべての再生位置・チェックポイント・ブックマークを削除しますか？"
+  },
+  "optionsShowDesktopFab": {
+    "message": "デスクトップでもページ内コントロールボタンを常時表示"
+  },
+  "optionsShowDesktopFabDesc": {
+    "message": "モバイル・タッチ端末（m.youtube.com）では自動的に表示されます。有効にすると PC ブラウザでもページ内ドロワーボタンを表示します。"
+  },
+  "mobileDrawerOpen": {
+    "message": "YouSub コントロールを開く"
+  },
+  "mobileDrawerClose": {
+    "message": "コントロールを閉じる"
+  },
+  "mobileDrawerAriaLabel": {
+    "message": "YouSub モバイルコントロール"
+  },
+  "mobileDrawerSubtitlesTitle": {
+    "message": "字幕コントロール"
+  },
+  "mobileDrawerStopTranslation": {
+    "message": "字幕を停止"
+  },
+  "mobileDrawerPosition": {
+    "message": "表示位置"
+  },
+  "mobileDrawerDragHandles": {
+    "message": "ドラッグ操作を表示"
+  },
+  "mobileDrawerResetPos": {
+    "message": "位置をリセット"
+  },
+  "mobileDrawerHidePill": {
+    "message": "フローティングボタンを隠す"
+  },
+  "mobileDrawerOpenOptions": {
+    "message": "詳細設定を開く"
+  },
+  "popupResumeSleepLabel": {
+    "message": "スリープタイマー"
+  },
+  "popupResumeSleepOff": {
+    "message": "オフ"
+  },
+  "popupResumeSleepFading": {
+    "message": "フェードアウト中..."
+  },
+  "popupResumeSleepCustomPlaceholder": {
+    "message": "分"
+  },
+  "popupResumeSleepSet": {
+    "message": "設定"
+  },
+  "popupResumeBookmarkNotePlaceholder": {
+    "message": "ブックマークメモ（任意）..."
+  },
+  "popupResumeSpeedLabel": {
+    "message": "再生速度"
+  },
+  "popupResumeAbLabel": {
+    "message": "A–B リピート"
+  },
+  "popupResumeAbSetA": {
+    "message": "A 地点"
+  },
+  "popupResumeAbSetB": {
+    "message": "B 地点"
+  },
+  "popupResumeAbClear": {
+    "message": "解除"
+  },
+  "optionsResumeRememberSpeed": {
+    "message": "動画およびチャンネルごとの再生速度を自動記憶する"
+  },
+  "optionsActivationMode": {
+    "message": "自動翻訳モード"
+  },
+  "optionsActivationManual": {
+    "message": "手動のみ（デフォルト — API クォータに安全）"
+  },
+  "optionsActivationSmartAuto": {
+    "message": "スマート自動開始（外国語動画のみ自動翻訳）"
+  },
+  "optionsActivationAlwaysAuto": {
+    "message": "視聴ページで常に自動翻訳"
+  },
+  "optionsSkipMusicVideos": {
+    "message": "スマート自動開始で音楽・MV動画をスキップ"
+  },
+  "popupStyleAriaLabel": {
+    "message": "翻訳スタイル"
+  },
+  "stylePresetNatural": {
+    "message": "自然・会話調"
+  },
+  "stylePresetTechnical": {
+    "message": "技術・IT"
+  },
+  "stylePresetAcademic": {
+    "message": "学術・講義"
+  },
+  "stylePresetAnime": {
+    "message": "アニメ・スラング"
+  },
+  "stylePresetCustom": {
+    "message": "カスタムプロンプト"
+  },
+  "optionsTranslationStyleCard": {
+    "message": "翻訳スタイルと用語集"
+  },
+  "optionsTranslationStyleCardDesc": {
+    "message": "字幕のトーンを調整し、専門用語・固有名詞・人称を固定できます。動画タイトルとチャンネル名も文脈として自動的に渡されます。"
+  },
+  "optionsTranslationStyleLabel": {
+    "message": "スタイルプリセット"
+  },
+  "optionsCustomPromptLabel": {
+    "message": "カスタムスタイル指示"
+  },
+  "optionsCustomPromptPlaceholder": {
+    "message": "例: 簡潔で親しみやすい口調で翻訳し、英語のコード識別子はそのまま残す。"
+  },
+  "optionsGlossaryKeepTerms": {
+    "message": "翻訳せずに保持する用語"
+  },
+  "optionsGlossaryKeepTermsPlaceholder": {
+    "message": "カンマまたは改行区切り（例: React, Kubernetes, YouSub）"
+  },
+  "optionsGlossaryPairs": {
+    "message": "カスタム用語集（原語 => 訳語）"
+  },
+  "optionsGlossaryPairsPlaceholder": {
+    "message": "1行に1ペア（例: transformer => Transformerアーキテクチャ）"
+  },
+  "optionsGlossaryPronoun": {
+    "message": "人称・呼び方のルール"
+  },
+  "optionsGlossaryPronounPlaceholder": {
+    "message": "例: 一人称は「私」、視聴者への呼びかけは「皆さん」に統一する"
+  },
+  "optionsOnboardingTitle": {
+    "message": "30秒クイックセットアップ（無料 BYOK）"
+  },
+  "optionsOnboardingDesc": {
+    "message": "30秒で無料の個人用 API キーを設定できます — キーはお使いのブラウザ内のみに保存されます。"
+  },
+  "optionsOnboardingDismiss": {
+    "message": "ガイドを隠す"
+  },
+  "optionsOnboardingStep1Title": {
+    "message": "無料キーを取得"
+  },
+  "optionsOnboardingGeminiLink": {
+    "message": "Google AI Studio（Gemini — 無料枠＋音声フォールバック対応）"
+  },
+  "optionsOnboardingGroqLink": {
+    "message": "Groq Console（超高速 Llama / GPT-OSS）"
+  },
+  "optionsOnboardingStep2Title": {
+    "message": "キーを貼り付けて自動検出"
+  },
+  "optionsOnboardingKeyPlaceholder": {
+    "message": "AIza...（Gemini）または gsk_...（Groq）キーを貼り付け"
+  },
+  "optionsOnboardingTestSaveBtn": {
+    "message": "テストして有効化"
+  },
+  "optionsOpenOnboardingBtn": {
+    "message": "30秒設定ガイド"
+  },
+  "optionsUsageStatsTitle": {
+    "message": "トークン・30日キャッシュ節約状況"
+  },
+  "optionsUsageStatsDesc": {
+    "message": "30日間ローカルキャッシュによって節約された API 呼び出し数と推定トークン数の統計です。"
+  },
+  "optionsUsageStatsResetBtn": {
+    "message": "統計をリセット"
+  },
+  "optionsUsageVideosLabel": {
+    "message": "翻訳した動画数"
+  },
+  "optionsUsageCacheHitsLabel": {
+    "message": "30日キャッシュヒット"
+  },
+  "optionsUsageRequestsSavedLabel": {
+    "message": "節約した API 呼出数"
+  },
+  "optionsUsageTokensSavedLabel": {
+    "message": "節約した推定トークン"
+  },
+  "popupQuickSetupCta": {
+    "message": "30秒 無料 API セットアップ →"
+  },
+  "popupUsageSavingsSummary": {
+    "message": "30日キャッシュ: {hits}回ヒット · 約{tokens}トークン節約"
   }
 }

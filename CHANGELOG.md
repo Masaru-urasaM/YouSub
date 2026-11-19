@@ -6,6 +6,85 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-11-19
+
+**Release Summary**: Mobile In-Page Floating Pill & Glassmorphism Bottom Sheet Drawer, Smart Sleep Timer with 5s Fade-Out & `"Sleep stop"` Bookmark, Labeled Bookmark Notes + Per-Channel Speed Memory + A–B Repeat Loop, Opt-In Smart Auto-Enable, Style Presets + Custom Glossary + Video/Channel Context, 30-Second BYOK Onboarding Wizard + Token/30-Day Cache Savings Dashboard, and Store Listing Visual Media Kit (**773/773** tests across **51** suites, `87.29%` stmts / `89.85%` lines, ESLint `0`, Prettier clean, `addons-linter` 0 errors, Chrome & Firefox `v0.2.6` ZIPs `[VERIFY OK]`, Firefox AMO `v0.2.6` submitted `6731209`).
+
+### Post-91 — Store Listing Visual Media Kit (2026-11-19)
+
+**Added**
+
+- `assets/store/`: Created crisp `1280x800` Chrome Web Store & Firefox AMO promotional screenshots (`01-dual-subtitles.png`, `02-audiobook-resume-sleep.png`, `03-mobile-drawer-android.png`, `04-sparrow-pipeline-visualizer.png`, `05-byok-presets-glossary.png`), animated walkthrough `yousub-demo.gif` (20 frames, `960x600`), reproducible `showcase.html` deck, and [`assets/store/README.md`](assets/store/README.md).
+- `scripts/package.js`: Excluded `assets/store/` cleanly inside `shouldExcludeAsset()` so visual marketing media stays out of Chrome & Firefox distribution ZIPs.
+
+### Phase 91 — 30-Second BYOK Onboarding Wizard & Token / 30-Day Cache Savings Dashboard (2026-11-19)
+
+**Added**
+
+- `src/shared/usage-stats.js`: Created local-only usage & 30-day cache savings store (`yousub_usage_stats_v1`) with pure helpers (`normalizeUsageStats()`, `estimateSavedUsage()`, `applyCacheHitStats()`, `applyApiRunStats()`) and serialized queue writes (`recordCacheHitUsage()`, `recordApiRunUsage()`, `readUsageStats()`, `resetUsageStats()`).
+- `src/background/service-worker.js`: Recorded live token/batch counts and cache-hit savings across streaming (`YOUSUB_TRANSLATE_STREAM`), non-stream (`YOUSUB_TRANSLATE_REQUEST`), and Gemini video fallback (`TRANSCRIBE_WINDOW`) pipelines.
+- `src/options/options.html`, `src/options/options.css`, `src/options/tab-translation.js`, `src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup.js`, `_locales/{en,ja}/messages.json`: Added the auto-opening/reopenable **30-Second Quick Setup (Free BYOK)** card (direct Gemini AI Studio & Groq Console links, paste + provider auto-detect, 1-click Test & Activate saving directly into primary slot), the **Token & 30-Day Cache Savings** 4-metric dashboard with reset confirmation modal, Popup quick-setup CTA & live savings footer line, and EN/JA localization.
+
+**Tests**: Added `tests/unit/usage-stats.test.js` and expanded `tests/unit/service-worker.test.js`, `tests/unit/options-ui.test.js`, and `tests/unit/popup-ui.test.js` (targeted 6 suites, 50/50 passed; ESLint 0; Prettier clean).
+
+### Phase 90 — Translation Style Presets, Custom Glossary & Video/Channel Metadata Context (2026-11-19)
+
+**Added**
+
+- `src/shared/video-context.js`, `src/background/cache.js`, `src/background/translator.js`, `src/background/service-worker.js`: Added `TRANSLATION_STYLE_PRESETS` (`natural`, `technical`, `academic`, `anime`, `custom`), `computeStyleCacheVariant()` (FNV-1a variant suffix keeping default `'natural'` cache keys 100% backward-compatible), style-isolated cache lookup/set (`Cache.get`/`set`/`remove`), and bounded style + glossary + `{ videoTitle, channelName }` metadata context injection inside `generateContextSummary()` and translator system guidance (`MAX_LINES_PER_BATCH` untouched per Rule 12).
+- `src/content/main.js`: Threaded `videoTitle` and `channelName` (probed or DOM-extracted) into `YOUSUB_TRANSLATE_STREAM` and reset video metadata cleanly on `onLeave()`.
+- `src/popup/popup.html`, `src/popup/popup.js`, `src/options/options.html`, `src/options/options.css`, `src/options/tab-translation.js`, `_locales/{en,ja}/messages.json`: Added Popup `#style-selector` quick preset switcher, Options `#translation-style-card` (preset selector, custom prompt editor, kept terms, `source => target` glossary pairs, and pronoun/addressing rules) with real-time `storage.onChanged` sync and full EN/JA localization.
+
+**Tests**: Expanded `video-context.test.js`, `cache.test.js`, `translator-translate.test.js`, `service-worker.test.js`, `options-ui.test.js`, `popup-ui.test.js`, and `main.test.js` (targeted 9 suites, 104/104 passed; ESLint 0; Prettier clean).
+
+### Phase 89 — Smart Auto-Enable Translation with Music & Native-Language Bypass (2026-11-19)
+
+**Added**
+
+- `src/shared/video-context.js` & `manifest.json`: Added shared pure module exposing `normalizeBaseLang()`, `isLikelyMusicVideo()`, `evaluateSmartAutoEnable()` (plus `parseGlossaryConfig()` & `buildTranslationGuidanceBlock()` ready for Phase 90) and registered `src/shared/video-context.js` in `web_accessible_resources`.
+- `src/content/main-world-resume.js`: Added `defaultCaptionLang` detection (`asr` preferred, else first track) to `extractPlayerResumeData()` and `YOUSUB_RESUME_PLAYER_DATA`.
+- `src/content/main.js`: Added `TRANSLATION_ACTIVATION_KEY` (`manual` default | `smart_auto` | `always_auto`), `SKIP_MUSIC_VIDEOS_KEY`, per-session `manuallyStoppedVideos` guard, and lightweight `probePageVideoMetadata()` + DOM fallback (`readDomVideoMetadata()`) to trigger translation automatically on foreign-language non-music watch pages while preserving safe `manual` defaults for BYOK quota protection.
+- `src/options/options.html`, `src/options/tab-translation.js`, `_locales/{en,ja}/messages.json`: Added Auto-Enable Mode selector (`#activation-mode`) and Music Skip toggle (`#skip-music-videos`) under Translation Settings with EN/JA localization.
+
+**Tests**: Added `tests/unit/video-context.test.js`, plus integration tests in `tests/unit/main.test.js` and `tests/unit/options-ui.test.js` (targeted 52/52 passed).
+
+### Phase 88 — Labeled Bookmark Notes, Speed Memory & A–B Repeat Loop (2026-11-19)
+
+**Added**
+
+- `src/shared/playback-resume-store.js` & `src/shared/constants.js`: Added `updateBookmarkLabel()`, `savePlaybackSpeed()`, `resolvePreferredSpeed()` (`yousub_channel_speeds_v1` LRU capped at 200 channels + per-video `playbackRate` with compact sync mirror `r`), legacy numeric bookmark normalization, `channelName` tracking, and `rememberPlaybackSpeed` (`true` default) in `DEFAULT_RESUME_SETTINGS`.
+- `src/content/main-world-resume.js`: Extended `extractPlayerResumeData()` and `YOUSUB_RESUME_PLAYER_DATA` with `channelName`, `category`, and `captionLanguages`.
+- `src/content/playback-resume.js`: Restores saved per-video/channel `playbackRate`, persists manual `ratechange` updates, tracks `activeChannelName`, and implements `setLoopPointA()`, `setLoopPointB()`, `clearLoop()`, `getLoopState()`, and `timeupdate` A–B Repeat enforcement (auto-cleared on `onLeave()`).
+- `src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup-resume-view.js`, `src/content/mobile-drawer.js`, `src/content/main.js`, `src/options/options.html`, `src/options/tab-resume.js`, `_locales/{en,ja}/messages.json`: Added optional bookmark note input, inline bookmark rename (`✎`), speed badge (`1.25x`), A–B Repeat Loop controls (`Set A`, `Set B`, `Clear`) + `YOUSUB_RESUME_SET_AB_LOOP` handler, Mobile Drawer `'ab-loop'` addon, Options `Remember playback speed` toggle, and EN/JA i18n strings.
+
+**Tests**: Expanded `playback-resume-store.test.js`, `playback-resume.test.js`, `popup-resume.test.js`, `options-resume.test.js`, `main-world-resume.test.js`, and `main.test.js` (targeted suites 84/84 passed; ESLint 0; Prettier clean).
+
+### Phase 87 — Smart Sleep Timer with 5s Fade-Out & "Sleep stop" Bookmark (2026-11-19)
+
+**Added**
+
+- `src/content/playback-resume.js`: Added countdown Sleep Timer (`setSleepTimer(minutes)`, `cancelSleepTimer()`, `getSleepTimerState()`, `onSleepTimerChange()`), 5-second linear `volume` fade-out (`SLEEP_FADE_DURATION_MS = 5000` over 10 steps) preserving & restoring original `video.volume`, automatic `video.pause()`, progress + watchtime sync flush, `"Sleep stop"` bookmark creation at pause timestamp, status toast, and fade-abort rescue when user interacts or cancels.
+- `src/shared/playback-resume-store.js`: Exported shared `SLEEP_TIMER_PRESETS` (`[15, 30, 45, 60]`) and `formatCountdown()`.
+- `src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup-resume-view.js`: Added live Sleep Timer presets, custom minute setter, countdown badge, and Off button inside `#resume-active-panel` (visible on all `/watch` tabs including fresh `0:00` loads).
+- `src/content/main.js` & `_locales/{en,ja}/messages.json`: Added `YOUSUB_RESUME_SET_SLEEP_TIMER` message handler, wired `PlaybackResume.onSleepTimerChange` countdown badge into `MobileDrawer.setBadgeText()`, registered `'sleep-timer'` addon inside Mobile Drawer, and added EN/JA i18n keys.
+
+**Tests**: Added unit tests across `tests/unit/playback-resume.test.js` (+2 fake-timer tests), `tests/unit/popup-resume.test.js` (+1), `tests/unit/main.test.js` (+1 sleep IPC assertions). Targeted suites 44/44 passed; ESLint 0; Prettier clean.
+
+### Phase 86 — Mobile In-Page Floating Pill & Bottom Sheet Control Drawer (2026-11-19)
+
+**Added**
+
+- `src/content/mobile-drawer.js`: Created `MobileDrawer` in-page floating pill (`#yousub-mobile-fab`) and Glassmorphism Bottom Sheet (`#yousub-mobile-drawer`) with `shouldShowMobileFab()` mobile/touch auto-detection (`m.youtube.com` and `(hover: none) and (pointer: coarse)`), vertical edge dragging persisted under `yousub_mobile_fab_pos`, 3.5s passive auto-dimming, fullscreen element reparenting (`fullscreenchange`), safe DOM builders (zero `innerHTML`), quick Subtitle controls (Translate/Stop, Dual Subtitles, Target Language, `A-/A+` font sizing, bottom offset slider, touch-handle toggle, Reset Position), Auto-Resume controls (`+ Bookmark`, shared `buildQuickJumpPills`, clickable bookmarks/checkpoints, Recent Audio/Videos list), addon extension hook (`registerAddon`), and full Settings shortcut.
+- `tests/unit/mobile-drawer.test.js`: Added unit tests covering `shouldShowMobileFab()`, pill dimming, vertical drag clamping + persistence, subtitle & appearance actions, Resume pills/bookmark CRUD, Shorts hiding, fullscreen reparenting, and `onLeave()` cleanup.
+
+**Changed**
+
+- `src/shared/playback-resume-store.js` & `src/popup/popup-resume-view.js`: Extracted shared `buildQuickJumpPills()` helper so Popup and Mobile Drawer share one deduplicated quick-jump calculation.
+- `src/content/overlay.js` & `src/content/overlay.css`: Exposed `Overlay.resetLayout()`, `Overlay.setTouchHandlesVisible()`, and `Overlay.areTouchHandlesVisible()`, enlarged coarse-pointer touch drag handles, and added `#yousub-mobile-fab` / `#yousub-mobile-drawer` responsive dark-slate styles.
+- `src/content/main.js`, `manifest.json`, `src/options/options.html`, `src/options/tab-appearance.js`, `_locales/{en,ja}/messages.json`: Added `"src/content/mobile-drawer.js"` to `web_accessible_resources`, wired `MobileDrawer` into `PageDetector` & translation state updates, added Appearance option `Always show floating control pill on Desktop` (`showDesktopFab`, default `false`), and synced EN/JA i18n keys.
+
+**Tests**: 743 → 748 tests across 49 suites (`tests/unit/mobile-drawer.test.js`, `overlay.test.js`, `main.test.js`, `options-ui.test.js`), ESLint 0, Prettier clean, Chrome & Firefox ZIPs `[VERIFY OK]`.
+
 ### Post-85 — Dark-Theme UI Polish, Automated Store Release Tooling & `v0.2.5` Submissions (2026-11-18)
 
 - **Dark-Theme Contrast Fix (`src/popup/popup.css`, `src/options/options.css`)**: Added `color-scheme: dark` across Popup & Options, converted Playback Resume pills/chips/recent rows from light translucent backgrounds to YouSub's native dark slate palette (`#182030`, `#212b3f`, `#1f293b`, `#93c5fd`, `#d1fae5`), brightened `.resume-danger-row .danger-text`, and corrected `@media (max-width: 600px)` selectors in `options.css` (`.settings-container`, `.settings-header`, `.tab-list`).

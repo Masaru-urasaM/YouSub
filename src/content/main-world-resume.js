@@ -274,6 +274,10 @@
           durationSec: 0,
           isLive: false,
           title: document.title || '',
+          channelName: '',
+          category: '',
+          captionLanguages: [],
+          defaultCaptionLang: '',
         };
       }
       var startRaw =
@@ -295,6 +299,35 @@
       var isLive = Boolean(videoDetails.isLive || videoDetails.isLiveContent);
       var title =
         typeof videoDetails.title === 'string' ? videoDetails.title : document.title || '';
+      var channelName =
+        typeof videoDetails.author === 'string' ? videoDetails.author.trim().slice(0, 100) : '';
+      var category =
+        (resp.microformat &&
+          resp.microformat.playerMicroformatRenderer &&
+          typeof resp.microformat.playerMicroformatRenderer.category === 'string' &&
+          resp.microformat.playerMicroformatRenderer.category) ||
+        '';
+      var rawTracks =
+        (resp.captions &&
+          resp.captions.playerCaptionsTracklistRenderer &&
+          Array.isArray(resp.captions.playerCaptionsTracklistRenderer.captionTracks) &&
+          resp.captions.playerCaptionsTracklistRenderer.captionTracks) ||
+        [];
+      var captionLanguages = rawTracks
+        .map(function (t) {
+          return t && typeof t.languageCode === 'string' ? t.languageCode : '';
+        })
+        .filter(Boolean);
+      var asrTrack = null;
+      for (var ti = 0; ti < rawTracks.length; ti++) {
+        if (rawTracks[ti] && rawTracks[ti].kind === 'asr' && rawTracks[ti].languageCode) {
+          asrTrack = rawTracks[ti];
+          break;
+        }
+      }
+      var defaultCaptionLang =
+        (asrTrack && asrTrack.languageCode) ||
+        (captionLanguages.length > 0 ? captionLanguages[0] : '');
 
       return {
         accountStartSec: accountStartSec,
@@ -302,6 +335,10 @@
         durationSec: durationSec,
         isLive: isLive,
         title: title,
+        channelName: channelName,
+        category: category,
+        captionLanguages: captionLanguages,
+        defaultCaptionLang: defaultCaptionLang,
       };
     }
 
@@ -528,6 +565,10 @@
           durationSec: extracted.durationSec,
           isLive: extracted.isLive,
           title: extracted.title,
+          channelName: extracted.channelName,
+          category: extracted.category,
+          captionLanguages: extracted.captionLanguages,
+          defaultCaptionLang: extracted.defaultCaptionLang,
         },
         '*'
       );

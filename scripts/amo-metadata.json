@@ -19,7 +19,7 @@
   "requires_payment": false,
   "is_experimental": false,
   "release_notes": {
-    "en-US": "v0.2.5: Added Firefox for Android (m.youtube.com) compatibility, cross-platform Audio & Long-Video Auto-Resume with bookmarks/checkpoints/sleep-reset protection, Popup & Options Playback controls, Gemini no-transcript fallback, local SRT/VTT import, Seek-Aware translation prioritization, and Sparrow telemetry."
+    "en-US": "v0.2.6: Added Firefox for Android in-page floating pill & Glassmorphism Bottom Sheet drawer, Smart Sleep Timer with 5s smooth fade-out and 'Sleep stop' bookmark, labeled bookmark notes, per-video/channel playback speed memory, A-B repeat loop, opt-in Smart Auto-Enable for foreign-language non-music videos, Translation Style presets + Custom Glossary with video/channel metadata context, 30-second BYOK setup wizard, and 30-day local cache savings dashboard."
   },
   "approval_notes": "YouSub uses plain vanilla ES modules with no minification, bundling, or obfuscation. Source repository: https://github.com/Masaru-urasaM/YouSub (AGPL-3.0-only). Declared world:MAIN scripts extract public YouTube Innertube transcript tracks silently, expose optional Chrome built-in Translator API, and harden first-party YouTube watchtime pings under the user's existing session when Auto-Resume Sync is enabled. Dynamic import() in src/content/loader.js only resolves static web_accessible_resources URLs via browser.runtime.getURL(). No external developer servers or tracking are used."
 }

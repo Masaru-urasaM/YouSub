@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>YouSub Store Listing Media Showcase</title>
+    <style>
+      :root {
+        --bg-deep: #0b1120;
+        --bg-card: #111a2e;
+        --bg-elev: #182030;
+        --border: rgba(148, 163, 184, 0.22);
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --accent-blue: #60a5fa;
+        --accent-teal: #10b981;
+        --accent-rose: #e94560;
+        --accent-amber: #fbbf24;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background: radial-gradient(
+          circle at 18% 12%,
+          #172554 0%,
+          var(--bg-deep) 58%,
+          #060a14 100%
+        );
+        color: var(--text-main);
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      .slide {
+        display: none;
+        width: 1280px;
+        height: 800px;
+        padding: 40px 52px 36px;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .slide.active {
+        display: flex;
+      }
+      .top-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .brand-lockup {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .brand-lockup img {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+      }
+      .headline-wrap h1 {
+        margin: 0;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .headline-wrap p {
+        margin: 4px 0 0;
+        font-size: 16px;
+        color: var(--text-muted);
+      }
+      .pill-tags {
+        display: flex;
+        gap: 10px;
+      }
+      .pill {
+        padding: 7px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        background: rgba(96, 165, 250, 0.14);
+        border: 1px solid rgba(96, 165, 250, 0.35);
+        color: #bfdbfe;
+        white-space: nowrap;
+      }
+      .pill.green {
+        background: rgba(16, 185, 129, 0.14);
+        border-color: rgba(16, 185, 129, 0.4);
+        color: #a7f3d0;
+      }
+      .stage {
+        flex: 1;
+        display: grid;
+        gap: 26px;
+        margin: 24px 0 18px;
+        min-height: 0;
+      }
+      .stage.split-7-3 {
+        grid-template-columns: 1.5fr 0.85fr;
+      }
+      .stage.split-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+      .stage.center-phone {
+        grid-template-columns: 1fr 410px 1fr;
+        align-items: center;
+      }
+      .panel {
+        background: rgba(17, 26, 46, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
+        overflow: hidden;
+        position: relative;
+      }
+      /* Slide 1 Player */
+      .yt-player {
+        background: linear-gradient(160deg, #0f172a 0%, #1e1b4b 45%, #090d16 100%);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 20px;
+      }
+      .yt-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .yt-title-chip {
+        background: rgba(15, 23, 42, 0.82);
+        border: 1px solid var(--border);
+        padding: 8px 14px;
+        border-radius: 10px;
+        font-size: 13px;
+        color: #e2e8f0;
+      }
+      .stage-pill {
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(16, 185, 129, 0.45);
+        color: #6ee7b7;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .scene-illustration {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+      }
+      .scene-code {
+        background: rgba(2, 6, 23, 0.72);
+        border: 1px solid rgba(96, 165, 250, 0.25);
+        border-radius: 12px;
+        padding: 18px 28px;
+        font-family: Consolas, monospace;
+        font-size: 15px;
+        color: #cbd5e1;
+        text-align: left;
+      }
+      .scene-code span.kw {
+        color: #f472b6;
+      }
+      .scene-code span.fn {
+        color: #60a5fa;
+      }
+      .scene-code span.str {
+        color: #34d399;
+      }
+      .dual-sub-box {
+        align-self: center;
+        background: rgba(0, 0, 0, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 12px;
+        padding: 14px 26px;
+        text-align: center;
+        max-width: 90%;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+      }
+      .dual-sub-box .orig {
+        font-size: 18px;
+        color: #cbd5e1;
+        margin-bottom: 6px;
+      }
+      .dual-sub-box .trans {
+        font-size: 23px;
+        font-weight: 700;
+        color: #ffffff;
+      }
+      .yt-scrubber {
+        height: 5px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 14px;
+      }
+      .yt-scrubber > div {
+        width: 38%;
+        height: 100%;
+        background: var(--accent-rose);
+      }
+      /* Callouts */
+      .feature-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .callout {
+        background: rgba(24, 32, 48, 0.9);
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--accent-blue);
+        border-radius: 12px;
+        padding: 15px 18px;
+      }
+      .callout.green {
+        border-left-color: var(--accent-teal);
+      }
+      .callout.amber {
+        border-left-color: var(--accent-amber);
+      }
+      .callout.rose {
+        border-left-color: var(--accent-rose);
+      }
+      .callout h3 {
+        margin: 0 0 5px;
+        font-size: 16px;
+      }
+      .callout p {
+        margin: 0;
+        font-size: 13.5px;
+        color: var(--text-muted);
+        line-height: 1.45;
+      }
+      /* Popup Mock */
+      .popup-mock {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .popup-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 700;
+        font-size: 16px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        background: #212b3f;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        color: #f1f5f9;
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .chip.active {
+        background: rgba(59, 130, 246, 0.22);
+        border-color: rgba(96, 165, 250, 0.55);
+        color: #bfdbfe;
+      }
+      .chip.good {
+        background: rgba(16, 185, 129, 0.2);
+        border-color: rgba(16, 185, 129, 0.5);
+        color: #a7f3d0;
+      }
+      .bookmark-card {
+        background: #141c2c;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+      }
+      /* Mobile phone frame */
+      .phone-frame {
+        width: 380px;
+        height: 580px;
+        margin: 0 auto;
+        background: #0a0f1d;
+        border: 8px solid #1e293b;
+        border-radius: 34px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        box-shadow: 0 28px 70px rgba(0, 0, 0, 0.65);
+      }
+      .phone-video {
+        height: 195px;
+        background: linear-gradient(135deg, #1d4ed8, #0f172a);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .phone-sub {
+        background: rgba(0, 0, 0, 0.8);
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        text-align: center;
+      }
+      .phone-sheet {
+        flex: 1;
+        background: rgba(15, 23, 42, 0.96);
+        border-top: 1px solid rgba(96, 165, 250, 0.35);
+        border-radius: 20px 20px 0 0;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sheet-handle {
+        width: 44px;
+        height: 4px;
+        background: rgba(148, 163, 184, 0.45);
+        border-radius: 999px;
+        margin: 0 auto 2px;
+      }
+      .mobile-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .mobile-btn {
+        background: #1e293b;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 10px;
+        padding: 9px 10px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #f8fafc;
+        text-align: center;
+      }
+      .mobile-btn.primary {
+        background: #2563eb;
+        border-color: #3b82f6;
+      }
+      /* Pipeline SVG & Options Grid */
+      .pipeline-board {
+        padding: 24px 28px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .horizon-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .horizon-card {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .horizon-card small {
+        color: var(--accent-blue);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .horizon-card div {
+        margin-top: 6px;
+        font-size: 13.5px;
+        color: #e2e8f0;
+      }
+      .batch-bars {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 8px;
+      }
+      .batch-block {
+        padding: 10px 6px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid var(--border);
+      }
+      .b-done {
+        background: rgba(16, 185, 129, 0.18);
+        border-color: rgba(16, 185, 129, 0.5);
+        color: #a7f3d0;
+      }
+      .b-flight {
+        background: rgba(59, 130, 246, 0.22);
+        border-color: #60a5fa;
+        color: #bfdbfe;
+      }
+      .b-wait {
+        background: rgba(148, 163, 184, 0.1);
+        color: #94a3b8;
+      }
+      /* Slide 5 Options Mock */
+      .metric-4 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .metric-box {
+        background: rgba(15, 23, 42, 0.82);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .metric-box.good {
+        border-color: rgba(16, 185, 129, 0.45);
+        background: rgba(16, 185, 129, 0.1);
+      }
+      .metric-box span {
+        display: block;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .metric-box strong {
+        display: block;
+        font-size: 26px;
+        margin-top: 4px;
+      }
+      .footer-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: var(--text-muted);
+        border-top: 1px solid rgba(148, 163, 184, 0.14);
+        padding-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- SLIDE 1: Dual Subtitles -->
+    <section class="slide" data-slide="1">
+      <header class="top-banner">
+        <div class="brand-lockup">
+          <img src="../../assets/icons/icon128.png" alt="YouSub" />
+          <div class="headline-wrap">
+            <h1>Real-Time Dual Subtitles on YouTube</h1>
+            <p>Instant context-aware translation with zero backend relay or tracking</p>
+          </div>
+        </div>
+        <div class="pill-tags">
+          <span class="pill green">30-Day Local Cache</span>
+          <span class="pill">Chrome &amp; Firefox Android</span>
+        </div>
+      </header>
+      <div class="stage split-7-3">
+        <div class="panel">
+          <div class="yt-player">
+            <div class="yt-top">
+              <div class="yt-title-chip">MIT CS Lecture · Understanding Distributed Consensus</div>
+              <div class="stage-pill">● Complete · 142 cues synced · Cache Hit</div>
+            </div>
+            <div class="scene-illustration">
+              <div class="scene-code">
+                <span class="kw">async function</span> <span class="fn">replicateLog</span>(term,
+                entries) {<br />
+                &nbsp;&nbsp;<span class="kw">const</span> quorum =
+                <span class="fn">waitMajority</span>(peers, entries);<br />
+                &nbsp;&nbsp;<span class="kw">return</span> <span class="str">"committed"</span> +
+                quorum;<br />
+                }
+              </div>
+            </div>
+            <div class="dual-sub-box">
+              <div class="orig">
+                "A leader only advances commitIndex once a majority of nodes acknowledge the log."
+              </div>
+              <div class="trans">
+                "Node dẫn chỉ tăng commitIndex sau khi đa số các node trong cụm xác nhận đã ghi
+                log."
+              </div>
+            </div>
+            <div class="yt-scrubber"><div></div></div>
+          </div>
+        </div>
+        <div class="feature-stack">
+          <div class="callout">
+            <h3>True Dual-Language Overlay</h3>
+            <p>
+              Watch source phrasing above natural translations with adjustable typography, opacity,
+              drag positioning, and fullscreen support.
+            </p>
+          </div>
+          <div class="callout green">
+            <h3>Smart Auto-Enable (Opt-In)</h3>
+            <p>
+              Automatically triggers on foreign-language lectures while bypassing native-language
+              and music videos to protect your quota.
+            </p>
+          </div>
+          <div class="callout amber">
+            <h3>Works Even Without Captions</h3>
+            <p>
+              Built-in AI video fallback and SRT/VTT local subtitle file import cover lectures that
+              ship with zero timedtext tracks.
+            </p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer-bar">
+        <span>YouSub v0.2.6 · Open-Source (AGPL-3.0) · Bring Your Own API Key</span>
+        <span>Desktop YouTube &amp; m.youtube.com</span>
+      </footer>
+    </section>
+
+    <!-- SLIDE 2: Audiobook Auto-Resume, Sleep Timer & A-B Loop -->
+    <section class="slide" data-slide="2">
+      <header class="top-banner">
+        <div class="brand-lockup">
+          <img src="../../assets/icons/icon128.png" alt="YouSub" />
+          <div class="headline-wrap">
+            <h1>Audiobook Auto-Resume, Sleep Timer &amp; A–B Loop</h1>
+            <p>Cross-device progress memory, gentle fade-out stop, and language shadowing tools</p>
+          </div>
+        </div>
+        <div class="pill-tags">
+          <span class="pill green">3-Tier Resume Engine</span>
+          <span class="pill">Per-Channel Speed Memory</span>
+        </div>
+      </header>
+      <div class="stage split-2">
+        <div class="panel popup-mock">
+          <div class="popup-head">
+            <span>Auto-Resume &amp; Sleep Controls</span>
+            <span class="pill" style="padding: 4px 10px; font-size: 12px">Speed: 1.25x</span>
+          </div>
+          <div style="font-size: 13px; color: var(--text-muted)">
+            Quick-Jump Pills · Guarded Against Premature 0:00 Account Resets
+          </div>
+          <div class="chip-row">
+            <span class="chip active">Last: 1:14:22</span>
+            <span class="chip">Last Active: 1:11:05</span>
+            <span class="chip good">Furthest: 1:26:40</span>
+          </div>
+          <div class="bookmark-card">
+            <div>
+              <strong>🔖 1:14:22 — Sleep stop</strong>
+              <div style="font-size: 12px; color: var(--text-muted)">
+                Auto-saved after 5s volume fade-out &amp; pause
+              </div>
+            </div>
+            <span class="chip active">Jump</span>
+          </div>
+          <div class="bookmark-card">
+            <div>
+              <strong>🔖 42:18 — Chapter 5: Consensus</strong>
+              <div style="font-size: 12px; color: var(--text-muted)">
+                Editable inline bookmark notes · Synced across devices
+              </div>
+            </div>
+            <span class="chip">✎ Note</span>
+          </div>
+          <div style="margin-top: auto; padding-top: 6px">
+            <div style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px">
+              Sleep Timer &amp; A–B Repeat Shadowing
+            </div>
+            <div class="chip-row">
+              <span class="chip">15m</span>
+              <span class="chip active">30m (28:14)</span>
+              <span class="chip">45m</span>
+              <span class="chip">60m</span>
+              <span class="chip good">A–B: 12:10–12:24</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-stack">
+          <div class="callout">
+            <h3>Sleep Timer with 5s Smooth Fade-Out</h3>
+            <p>
+              Ramps audio gently to silence before pausing playback, restores your volume level, and
+              drops a <strong>"Sleep stop"</strong> bookmark right where you drifted off.
+            </p>
+          </div>
+          <div class="callout green">
+            <h3>&gt;95% Completion Reset Guard</h3>
+            <p>
+              Prevents accidental sleep-playthroughs or sudden 0:00 page reloads from erasing your
+              long audiobook timestamp in browser sync or YouTube watchtime.
+            </p>
+          </div>
+          <div class="callout amber">
+            <h3>Channel Speed Memory &amp; A–B Loop</h3>
+            <p>
+              Remembers 1.25x for podcasts vs 1.0x for music per channel, plus instant Set A / Set B
+              section looping for language learners.
+            </p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer-bar">
+        <span>YouSub v0.2.6 · Independent from Translation — Works on All Long Videos</span>
+        <span>Desktop Popup + Mobile Drawer</span>
+      </footer>
+    </section>
+
+    <!-- SLIDE 3: Mobile Floating Pill & Bottom Sheet -->
+    <section class="slide" data-slide="3">
+      <header class="top-banner">
+        <div class="brand-lockup">
+          <img src="../../assets/icons/icon128.png" alt="YouSub" />
+          <div class="headline-wrap">
+            <h1>In-Page Floating Pill &amp; Bottom Sheet on Firefox Android</h1>
+            <p>Control subtitles, bookmarks, sleep timer, and A–B loops without switching tabs</p>
+          </div>
+        </div>
+        <div class="pill-tags">
+          <span class="pill green">m.youtube.com Native</span>
+          <span class="pill">Auto-Dimming Touch Pill</span>
+        </div>
+      </header>
+      <div class="stage center-phone">
+        <div class="feature-stack">
+          <div class="callout">
+            <h3>Edge Floating Pill</h3>
+            <p>
+              Auto-dims after 3.5s while watching, drags smoothly along screen edges, and remembers
+              its vertical anchor across full-screen rotations.
+            </p>
+          </div>
+          <div class="callout green">
+            <h3>Zero Tab Switching</h3>
+            <p>
+              One tap opens a touch-friendly Glassmorphism Bottom Sheet right on top of YouTube
+              mobile playback.
+            </p>
+          </div>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-video">
+            <div style="display: flex; justify-content: space-between; font-size: 12px">
+              <span>m.youtube.com/watch</span>
+              <span class="stage-pill" style="padding: 2px 8px; font-size: 11px"
+                >● 18:40 Sleep</span
+              >
+            </div>
+            <div class="phone-sub">
+              <div style="color: #cbd5e1; font-size: 11px">Let's inspect how the cache works.</div>
+              <div style="font-weight: 700">Hãy xem bộ nhớ đệm hoạt động thế nào.</div>
+            </div>
+          </div>
+          <div class="phone-sheet">
+            <div class="sheet-handle"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <strong style="font-size: 14px">YouSub Quick Controls</strong>
+              <span class="pill green" style="padding: 3px 9px; font-size: 11px">Active</span>
+            </div>
+            <div class="mobile-grid">
+              <div class="mobile-btn primary">Stop Translation</div>
+              <div class="mobile-btn">Dual Subtitles: ON</div>
+              <div class="mobile-btn">Font A- / A+</div>
+              <div class="mobile-btn">+ Bookmark Note</div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted)">Quick Resume &amp; Sleep</div>
+            <div class="chip-row">
+              <span class="chip active">Last 14:20</span>
+              <span class="chip good">Furthest 19:05</span>
+              <span class="chip">Sleep 15m / 30m</span>
+              <span class="chip">A–B Loop</span>
+            </div>
+            <div class="mobile-btn" style="margin-top: auto">Open Full Settings</div>
+          </div>
+        </div>
+        <div class="feature-stack">
+          <div class="callout amber">
+            <h3>Touch Drag Handles &amp; Font A-/A+</h3>
+            <p>
+              Resize or move subtitle overlays directly on touchscreens with enlarged handles and a
+              one-tap Reset Position safety button.
+            </p>
+          </div>
+          <div class="callout rose">
+            <h3>Full Feature Parity</h3>
+            <p>
+              Drop bookmarks, jump to Furthest timestamp, arm Sleep Timer, and set A–B loops right
+              from your phone.
+            </p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer-bar">
+        <span>YouSub v0.2.6 · Firefox Android &ge; 128.0 + Optional Desktop Pill</span>
+        <span>Zero innerHTML · Trusted Types Safe</span>
+      </footer>
+    </section>
+
+    <!-- SLIDE 4: Sparrow Pipeline Visualizer & Smart Routing -->
+    <section class="slide" data-slide="4">
+      <header class="top-banner">
+        <div class="brand-lockup">
+          <img src="../../assets/icons/icon128.png" alt="YouSub" />
+          <div class="headline-wrap">
+            <h1>Live Sparrow Pipeline Telemetry &amp; Seek-Priority Batching</h1>
+            <p>Transparent stage tracking, adaptive coalescing, and multi-key health failover</p>
+          </div>
+        </div>
+        <div class="pill-tags">
+          <span class="pill">Past / Present / Future Horizons</span>
+          <span class="pill green">Instant Seek Priority</span>
+        </div>
+      </header>
+      <div class="stage">
+        <div class="panel pipeline-board">
+          <svg viewBox="0 0 1120 130" style="width: 100%; height: 130px">
+            <line x1="110" y1="54" x2="1010" y2="54" stroke="#334155" stroke-width="4" />
+            <line x1="110" y1="54" x2="780" y2="54" stroke="#10b981" stroke-width="4" />
+            <g transform="translate(110,54)">
+              <circle r="22" fill="#065f46" stroke="#10b981" stroke-width="3" />
+              <text y="5" text-anchor="middle" fill="#ecfdf5" font-size="14" font-weight="700">
+                1
+              </text>
+              <text y="46" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">
+                Extract
+              </text>
+            </g>
+            <g transform="translate(335,54)">
+              <circle r="22" fill="#065f46" stroke="#10b981" stroke-width="3" />
+              <text y="5" text-anchor="middle" fill="#ecfdf5" font-size="14" font-weight="700">
+                2
+              </text>
+              <text y="46" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="600">
+                Coalesce
+              </text>
+            </g>
+            <g transform="translate(560,54)">
+              <circle r="22" fill="#1e3a8a" stroke="#60a5fa" stroke-width="3" />
+              <text y="5" text-anchor="middle" fill="#eff6ff" font-size="14" font-weight="700">
+                3
+              </text>
+              <text y="46" text-anchor="middle" fill="#bfdbfe" font-size="15" font-weight="700">
+                Route (Active)
+              </text>
+            </g>
+            <g transform="translate(785,54)">
+              <circle r="22" fill="#1e293b" stroke="#64748b" stroke-width="3" />
+              <text y="5" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="700">
+                4
+              </text>
+              <text y="46" text-anchor="middle" fill="#94a3b8" font-size="15" font-weight="600">
+                Verify
+              </text>
+            </g>
+            <g transform="translate(1010,54)">
+              <circle r="22" fill="#1e293b" stroke="#64748b" stroke-width="3" />
+              <text y="5" text-anchor="middle" fill="#cbd5e1" font-size="14" font-weight="700">
+                5
+              </text>
+              <text y="46" text-anchor="middle" fill="#94a3b8" font-size="15" font-weight="600">
+                Sync &amp; Cache
+              </text>
+            </g>
+          </svg>
+          <div>
+            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px">
+              Seek-Aware Batch Queue (Jump Forward at Playhead 14:20 -> Translates Batch #5 Next)
+            </div>
+            <div class="batch-bars">
+              <div class="batch-block b-done">Batch #1<br />DONE</div>
+              <div class="batch-block b-done">Batch #2<br />DONE</div>
+              <div class="batch-block b-wait">Batch #3<br />Backfill</div>
+              <div class="batch-block b-wait">Batch #4<br />Backfill</div>
+              <div class="batch-block b-flight">Batch #5<br />SEEK TARGET</div>
+              <div class="batch-block b-wait">Batch #6<br />Lookahead</div>
+              <div class="batch-block b-wait">Batch #7<br />Queued</div>
+              <div class="batch-block b-wait">Batch #8<br />Queued</div>
+            </div>
+          </div>
+          <div class="horizon-grid">
+            <div class="horizon-card">
+              <small>Past (Completed)</small>
+              <div>DOM Timedtext · 384 raw cues coalesced into 196 crisp sentences</div>
+            </div>
+            <div class="horizon-card">
+              <small>Present (Live Router)</small>
+              <div>Primary Route · Fast Flash Model · Batch #5/8 in flight (410ms)</div>
+            </div>
+            <div class="horizon-card">
+              <small>Future (Verification &amp; Cache)</small>
+              <div>Merge/Script Check -> 30-Day LRU Storage for Instant Next Replay</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="footer-bar">
+        <span>YouSub v0.2.6 · Circuit Breaker &amp; Adaptive Health Scoring</span>
+        <span>Zero External Servers · Direct Provider Calls</span>
+      </footer>
+    </section>
+
+    <!-- SLIDE 5: Style Presets, Glossary & 30s Cache Savings -->
+    <section class="slide" data-slide="5">
+      <header class="top-banner">
+        <div class="brand-lockup">
+          <img src="../../assets/icons/icon128.png" alt="YouSub" />
+          <div class="headline-wrap">
+            <h1>Style Presets, Custom Glossary &amp; 30-Day Cache Savings</h1>
+            <p>30-second BYOK onboarding wizard, domain-locked terminology, and token telemetry</p>
+          </div>
+        </div>
+        <div class="pill-tags">
+          <span class="pill green">30-Second Quick Setup</span>
+          <span class="pill">100% Local Privacy</span>
+        </div>
+      </header>
+      <div class="stage split-2">
+        <div class="panel popup-mock">
+          <div class="popup-head">
+            <span>Translation Style &amp; Custom Glossary</span>
+            <span class="pill" style="padding: 4px 10px; font-size: 12px">Technical / IT</span>
+          </div>
+          <div class="chip-row">
+            <span class="chip">Natural</span>
+            <span class="chip active">Technical / IT</span>
+            <span class="chip">Academic</span>
+            <span class="chip">Anime / Slang</span>
+            <span class="chip">Custom Prompt</span>
+          </div>
+          <div class="bookmark-card">
+            <div>
+              <strong>Keep Terms Untranslated</strong>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px">
+                Kubernetes, Raft, PostgreSQL, YouSub, MV3
+              </div>
+            </div>
+          </div>
+          <div class="bookmark-card">
+            <div>
+              <strong>Fixed Glossary &amp; Pronoun Rules</strong>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px">
+                stateful =&gt; có trạng thái &nbsp;|&nbsp; Host addresses viewers warmly
+              </div>
+            </div>
+          </div>
+          <div class="bookmark-card" style="border-color: rgba(96, 165, 250, 0.4)">
+            <div>
+              <strong>Automatic Title &amp; Channel Context</strong>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px">
+                Sends clean video title + channel name so Batch #1 gets jargon right immediately
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel popup-mock">
+          <div class="popup-head">
+            <span>Token &amp; 30-Day Cache Savings</span>
+            <span class="pill green" style="padding: 4px 10px; font-size: 12px">Local Only</span>
+          </div>
+          <div class="metric-4">
+            <div class="metric-box">
+              <span>Videos Translated</span>
+              <strong>48</strong>
+            </div>
+            <div class="metric-box">
+              <span>30-Day Cache Hits</span>
+              <strong>31</strong>
+            </div>
+            <div class="metric-box">
+              <span>Est. API Calls Saved</span>
+              <strong>142</strong>
+            </div>
+            <div class="metric-box good">
+              <span>Est. Tokens Saved</span>
+              <strong>198,450</strong>
+            </div>
+          </div>
+          <div class="callout" style="margin-top: auto">
+            <h3>30-Second Guided Setup Wizard</h3>
+            <p>
+              Paste any free personal key to auto-detect your provider, ping live health in one
+              click, and start watching without touching JSON config files.
+            </p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer-bar">
+        <span>YouSub v0.2.6 · Verified Privacy Policy · No Account Required</span>
+        <span>English &amp; 日本語 Full UI Localization</span>
+      </footer>
+    </section>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const slideNum = params.get('slide') || '1';
+      document.querySelectorAll('.slide').forEach((el) => {
+        el.classList.toggle('active', el.getAttribute('data-slide') === slideNum);
+      });
+    </script>
+  </body>
+</html>

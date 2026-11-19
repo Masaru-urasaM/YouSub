@@ -112,10 +112,12 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     const bgOpacity = document.getElementById('bg-opacity');
     const posBottom = document.getElementById('pos-bottom');
     const showStagePill = document.getElementById('show-stage-pill');
+    const showDesktopFab = document.getElementById('show-desktop-fab');
     const preview = document.getElementById('subtitle-preview');
 
     expect(fontSize.value).toBe('1.5');
     expect(showStagePill.checked).toBe(true);
+    expect(showDesktopFab.checked).toBe(false);
 
     fontSize.value = '2.2';
     fontSize.dispatchEvent(new Event('input', { bubbles: true }));
@@ -127,6 +129,8 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     posBottom.dispatchEvent(new Event('input', { bubbles: true }));
     showStagePill.checked = false;
     showStagePill.dispatchEvent(new Event('change', { bubbles: true }));
+    showDesktopFab.checked = true;
+    showDesktopFab.dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(document.getElementById('font-size-val').textContent).toBe('2.2');
     expect(document.getElementById('font-color-hex').textContent).toBe('#00FF00');
@@ -142,6 +146,7 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
       bgOpacity: 0.8,
       posBottom: 100,
       showStagePill: false,
+      showDesktopFab: true,
     });
   });
 
@@ -318,7 +323,130 @@ describe('options UI (options.js + tab-appearance.js + tab-translation.js) (T10)
     document.getElementById('clear-cache-btn').click();
     document.getElementById('modal-confirm-btn').click();
     await flushAsync();
-
     expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Channel closed'));
+  });
+
+  test('tab-translation.js persists Smart Auto-Enable activation mode and skip music toggle (Phase 89)', async () => {
+    jest.useFakeTimers();
+    await mountOptions();
+
+    const modeSel = document.getElementById('activation-mode');
+    const skipMusicCb = document.getElementById('skip-music-videos');
+    expect(modeSel.value).toBe('manual');
+    expect(skipMusicCb.checked).toBe(true);
+
+    modeSel.value = 'smart_auto';
+    modeSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+    skipMusicCb.checked = false;
+    skipMusicCb.dispatchEvent(new window.Event('change', { bubbles: true }));
+    jest.advanceTimersByTime(600);
+    await flushAsync();
+
+    expect(chrome.storage.local.store.yousub_activation_mode).toBe('smart_auto');
+    expect(chrome.storage.local.store.yousub_skip_music_videos).toBe(false);
+  });
+
+  test('tab-translation.js persists style preset, custom prompt visibility, and glossary rules (Phase 90)', async () => {
+    jest.useFakeTimers();
+    await mountOptions();
+
+    const styleSel = document.getElementById('translation-style');
+    const promptGroup = document.getElementById('custom-prompt-group');
+    const promptInput = document.getElementById('custom-prompt-input');
+    const keepInput = document.getElementById('glossary-keep-terms');
+    const pairsInput = document.getElementById('glossary-pairs');
+    const pronounInput = document.getElementById('glossary-pronoun-rule');
+
+    expect(styleSel.value).toBe('natural');
+    expect(promptGroup.classList.contains('hidden')).toBe(true);
+
+    styleSel.value = 'custom';
+    styleSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+    expect(promptGroup.classList.contains('hidden')).toBe(false);
+
+    promptInput.value = 'Keep tone formal and crisp.';
+    promptInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    keepInput.value = 'YouSub, Vitest';
+    keepInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    pairsInput.value = 'worker => tiến trình nền';
+    pairsInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    pronounInput.value = 'Speaker uses tôi / các bạn';
+    pronounInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    jest.advanceTimersByTime(600);
+    await flushAsync();
+
+    expect(chrome.storage.local.store.yousub_translation_style).toBe('custom');
+    expect(chrome.storage.local.store.yousub_custom_prompt).toBe('Keep tone formal and crisp.');
+    expect(chrome.storage.local.store.yousub_custom_glossary).toEqual({
+      keepTermsText: 'YouSub, Vitest',
+      glossaryPairsText: 'worker => tiến trình nền',
+      pronounRule: 'Speaker uses tôi / các bạn',
+    });
+  });
+
+  test('tab-translation.js powers 30s Onboarding Wizard and local Cache Savings Dashboard (Phase 91)', async () => {
+    await mountOptions({
+      yousub_api_keys: [],
+      yousub_usage_stats_v1: {
+        videosTranslated: 5,
+        cacheHits: 3,
+        apiRuns: 2,
+        apiBatches: 6,
+        tokensUsed: 4200,
+        estimatedTokensSaved: 9800,
+        estimatedRequestsSaved: 4,
+      },
+    });
+
+    const card = document.getElementById('onboarding-wizard-card');
+    const keyInput = document.getElementById('onboarding-key-input');
+    const detectedEl = document.getElementById('onboarding-detected-provider');
+    const testSaveBtn = document.getElementById('onboarding-test-save-btn');
+    const statusEl = document.getElementById('onboarding-status');
+
+    // Wizard auto-shown when no keys exist
+    expect(card.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('usage-videos-count').textContent).toBe('5');
+    expect(document.getElementById('usage-cache-hits').textContent).toBe('3');
+    expect(document.getElementById('usage-tokens-saved').textContent).toContain('9');
+
+    // Auto-detects Groq key on input
+    keyInput.value = 'gsk_test_onboarding_key_999';
+    keyInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    expect(detectedEl.textContent).toContain('Groq');
+
+    // Empty check guard
+    const savedVal = keyInput.value;
+    keyInput.value = '';
+    testSaveBtn.click();
+    expect(statusEl.textContent).toContain('paste an API key');
+    keyInput.value = savedVal;
+
+    // 1-click Test & Activate persists valid key and hides wizard
+    chrome.runtime.sendMessage.mockResolvedValueOnce({ success: true });
+    testSaveBtn.click();
+    await flushAsync(8);
+
+    expect(chrome.storage.local.store.yousub_api_keys[0]).toMatchObject({
+      provider: 'groq',
+      apiKey: 'gsk_test_onboarding_key_999',
+      status: 'ok',
+    });
+    expect(chrome.storage.local.store.yousub_onboarding_dismissed).toBe(true);
+    expect(card.classList.contains('hidden')).toBe(true);
+
+    // Reopen wizard via Setup Guide button & dismiss
+    document.getElementById('open-onboarding-btn').click();
+    expect(card.classList.contains('hidden')).toBe(false);
+    document.getElementById('onboarding-dismiss-btn').click();
+    expect(card.classList.contains('hidden')).toBe(true);
+
+    // Reset local usage stats via modal confirm
+    document.getElementById('reset-usage-stats-btn').click();
+    document.getElementById('modal-confirm-btn').click();
+    await flushAsync(8);
+    expect(document.getElementById('usage-cache-hits').textContent).toBe('0');
+    expect(document.getElementById('usage-tokens-saved').textContent).toBe('0');
   });
 });

@@ -563,5 +563,108 @@ describe('service-worker.js routers', () => {
       }
       debugSpy.mockRestore();
     });
+
+    test('YOUSUB_TRANSLATE_STREAM forwards style, glossary, video metadata, and variant cache key (Phase 90)', async () => {
+      browser.storage.local.store = {
+        yousub_translation_style: 'technical',
+        yousub_custom_glossary: {
+          keepTermsText: 'YouSub',
+          glossaryPairsText: 'cue => dòng phụ đề',
+          pronounRule: 'Neutral',
+        },
+      };
+      mockCache.get.mockResolvedValue(null);
+      mockTranslate.mockResolvedValue({
+        success: true,
+        translated: ['Xin chào'],
+        stats: { totalTokens: 42 },
+      });
+
+      const port = makePort('yousub-stream', 77);
+      onConnectHandler(port);
+      await port.emitMessage({
+        type: 'YOUSUB_TRANSLATE_STREAM',
+        videoId: 'v-p90',
+        segments: [{ text: 'Hello', startMs: 0 }],
+        sourceLang: 'en',
+        targetLang: 'vi',
+        videoTitle: 'Deep Dive Video',
+        channelName: 'Dev Channel',
+      });
+
+      expect(mockCache.get).toHaveBeenCalledWith(
+        'v-p90',
+        'en',
+        'vi',
+        expect.stringMatching(/^technical_/)
+      );
+      expect(mockTranslate).toHaveBeenCalledWith(
+        expect.any(Array),
+        'en',
+        'vi',
+        77,
+        expect.any(Function),
+        expect.any(Object),
+        expect.any(Function),
+        expect.objectContaining({
+          videoId: 'v-p90',
+          styleId: 'technical',
+          videoTitle: 'Deep Dive Video',
+          channelName: 'Dev Channel',
+        })
+      );
+      expect(mockCache.set).toHaveBeenCalledWith(
+        'v-p90',
+        'en',
+        'vi',
+        ['Xin chào'],
+        expect.stringMatching(/^technical_/)
+      );
+    });
+
+    test('records local usage stats on API run and 30-day cache HIT (Phase 91)', async () => {
+      browser.storage.local.store = {};
+      mockCache.get.mockResolvedValueOnce(null);
+      mockTranslate.mockResolvedValueOnce({
+        success: true,
+        translated: ['Xin chào'],
+        stats: { totalTokens: 720, batchCount: 2 },
+      });
+
+      const port = makePort('yousub-stream', 88);
+      onConnectHandler(port);
+      await port.emitMessage({
+        type: 'YOUSUB_TRANSLATE_STREAM',
+        videoId: 'v-stats-1',
+        segments: [{ text: 'Hello', startMs: 0 }],
+        sourceLang: 'en',
+        targetLang: 'vi',
+      });
+
+      expect(browser.storage.local.store.yousub_usage_stats_v1).toMatchObject({
+        videosTranslated: 1,
+        apiRuns: 1,
+        apiBatches: 2,
+        tokensUsed: 720,
+        cacheHits: 0,
+      });
+
+      // Next request hits cache -> increments cacheHits & estimated savings
+      mockCache.get.mockResolvedValueOnce(new Array(60).fill('Cached line'));
+      await port.emitMessage({
+        type: 'YOUSUB_TRANSLATE_STREAM',
+        videoId: 'v-stats-2',
+        segments: Array.from({ length: 60 }, (_, i) => ({ text: `L${i}`, startMs: i * 1000 })),
+        sourceLang: 'en',
+        targetLang: 'vi',
+      });
+
+      expect(browser.storage.local.store.yousub_usage_stats_v1).toMatchObject({
+        videosTranslated: 2,
+        cacheHits: 1,
+        estimatedRequestsSaved: 2,
+        estimatedTokensSaved: 2100,
+      });
+    });
   });
 });

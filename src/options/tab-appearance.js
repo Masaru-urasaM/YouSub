@@ -7,6 +7,7 @@ let fontSizeInput,
   posBottomInput,
   posBottomVal,
   showStagePillInput,
+  showDesktopFabInput,
   previewOverlay;
 let triggerSaveCallback = null;
 let saveTimeout = null;
@@ -24,6 +25,7 @@ export function initAppearanceTab(saveIndicatorCallback) {
   posBottomInput = document.getElementById('pos-bottom');
   posBottomVal = document.getElementById('pos-bottom-val');
   showStagePillInput = document.getElementById('show-stage-pill');
+  showDesktopFabInput = document.getElementById('show-desktop-fab');
 
   // Preview Element
   previewOverlay = document.getElementById('subtitle-preview');
@@ -49,6 +51,9 @@ function loadSettings() {
     if (showStagePillInput) {
       showStagePillInput.checked = styles.showStagePill !== false;
     }
+    if (showDesktopFabInput) {
+      showDesktopFabInput.checked = Boolean(styles.showDesktopFab);
+    }
 
     updateUIStrings();
     updatePreview();
@@ -68,6 +73,11 @@ function attachEventListeners() {
 
   if (showStagePillInput) {
     showStagePillInput.addEventListener('change', () => {
+      debouncedSave();
+    });
+  }
+  if (showDesktopFabInput) {
+    showDesktopFabInput.addEventListener('change', () => {
       debouncedSave();
     });
   }
@@ -105,6 +115,7 @@ function saveAppearance() {
     bgOpacity: parseFloat(bgOpacityInput.value),
     posBottom: parseInt(posBottomInput.value, 10),
     showStagePill: showStagePillInput ? showStagePillInput.checked : true,
+    showDesktopFab: showDesktopFabInput ? showDesktopFabInput.checked : false,
   };
 
   browser.storage.local.set({ yousub_appearance: appearance }).then(() => {

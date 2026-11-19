@@ -329,4 +329,49 @@ describe('popup.js UI & interactions (T10)', () => {
     expect(clearBtn.disabled).toBe(false);
     expect(clearBtn.textContent).toBe('Clear Page Cache');
   });
+
+  test('populates style-selector, persists selection, and syncs live storage changes (Phase 90)', async () => {
+    await mountPopup({ targetLang: 'vi', yousub_translation_style: 'anime' });
+
+    const styleSel = document.getElementById('style-selector');
+    expect(styleSel).not.toBeNull();
+    expect(styleSel.value).toBe('anime');
+
+    styleSel.value = 'technical';
+    styleSel.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await flushAsync();
+    expect(chrome.storage.local.store.yousub_translation_style).toBe('technical');
+
+    const onChanged = chrome.storage.onChanged._listeners[0];
+    onChanged({ yousub_translation_style: { newValue: 'academic' } }, 'local');
+    expect(styleSel.value).toBe('academic');
+  });
+
+  test('surfaces onboarding setup CTA when no API keys exist and renders local 30d cache savings (Phase 91)', async () => {
+    await mountPopup({
+      yousub_api_keys: [],
+      yousub_usage_stats_v1: {
+        videosTranslated: 4,
+        cacheHits: 2,
+        estimatedTokensSaved: 3500,
+      },
+    });
+
+    const ctaBtn = document.getElementById('popup-setup-wizard-btn');
+    const savingsEl = document.getElementById('popup-usage-savings');
+    expect(ctaBtn.classList.contains('hidden')).toBe(false);
+    expect(savingsEl.classList.contains('hidden')).toBe(false);
+    expect(savingsEl.textContent).toContain('2 hits');
+
+    ctaBtn.click();
+    expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
+
+    // When an API key is configured, onboarding CTA hides cleanly
+    await mountPopup({
+      yousub_api_keys: [{ provider: 'google', model: 'gemini-2.5-flash', apiKey: 'AIzaTest1234' }],
+    });
+    expect(document.getElementById('popup-setup-wizard-btn').classList.contains('hidden')).toBe(
+      true
+    );
+  });
 });

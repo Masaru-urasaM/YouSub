@@ -66,6 +66,8 @@ describe('PlaybackResumeStore (Phase 82)', () => {
       expect(fromCompact).toEqual({
         videoId: 'vidCompact',
         title: 'Audiobook Ch1',
+        channelName: '',
+        playbackRate: null,
         durationSec: 7200,
         lastTimeSec: 1200,
         furthestTimeSec: 1500,
@@ -429,6 +431,36 @@ describe('PlaybackResumeStore (Phase 82)', () => {
       expect(new TextEncoder().encode(JSON.stringify(compactUtf8)).length).toBeLessThanOrEqual(
         7500
       );
+    });
+
+    test('supports updateBookmarkLabel, legacy numeric bookmark normalization, and per-video/channel playback speed memory (Phase 88)', async () => {
+      const legacyRec = await PlaybackResumeStore.updateProgress('legacyNumBm', {
+        currentTimeSec: 200,
+        durationSec: 3600,
+      });
+      expect(legacyRec.videoId).toBe('legacyNumBm');
+
+      // Update bookmark label inline
+      const withBm = await PlaybackResumeStore.addBookmark('bmRename1', {
+        timeSec: 500,
+        label: '',
+        channelName: 'Deep Audio',
+        durationSec: 3600,
+      });
+      const bmId = withBm.bookmarks[0].id;
+      const renamed = await PlaybackResumeStore.updateBookmarkLabel('bmRename1', bmId, 'Chapter 5');
+      expect(renamed.bookmarks[0].label).toBe('Chapter 5');
+
+      // Save playback speed per video + channel, then resolve for same video and new video on same channel
+      await PlaybackResumeStore.savePlaybackSpeed('bmRename1', 1.35, {
+        channelName: 'Deep Audio',
+        title: 'Part 1',
+      });
+      expect(await PlaybackResumeStore.resolvePreferredSpeed('bmRename1', 'Deep Audio')).toBe(1.35);
+      expect(await PlaybackResumeStore.resolvePreferredSpeed('newPart2', 'deep audio')).toBe(1.35);
+      expect(
+        await PlaybackResumeStore.resolvePreferredSpeed('otherVid', 'Other Channel')
+      ).toBeNull();
     });
   });
 });

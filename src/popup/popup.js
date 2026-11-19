@@ -1,5 +1,7 @@
 import { YOUSUB_PROVIDERS } from '../shared/providers-registry.js';
-import { devLog, devWarn } from '../shared/constants.js';
+import { TRANSLATION_STYLE_KEY, USAGE_STATS_KEY, devLog, devWarn } from '../shared/constants.js';
+import { TRANSLATION_STYLE_PRESETS } from '../shared/video-context.js';
+import { normalizeUsageStats } from '../shared/usage-stats.js';
 import { applyI18n } from '../shared/i18n.js';
 import { escapeHtml as esc } from '../shared/utils.js';
 import {
@@ -33,7 +35,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const dualModeToggle = document.getElementById('dual-mode-toggle');
   const healthStatus = document.getElementById('health-status');
   const healthText = document.getElementById('health-text');
+  const setupWizardBtn = document.getElementById('popup-setup-wizard-btn');
+  const usageSavingsEl = document.getElementById('popup-usage-savings');
   const langSelector = document.getElementById('lang-selector');
+  const styleSelector = document.getElementById('style-selector');
 
   // Modal Elements
   const confirmModal = document.getElementById('confirm-modal');
@@ -71,12 +76,42 @@ document.addEventListener('DOMContentLoaded', function () {
     updateLanguageUI(newLang);
   });
 
+  if (styleSelector) {
+    const styleLabelKeys = {
+      natural: 'stylePresetNatural',
+      technical: 'stylePresetTechnical',
+      academic: 'stylePresetAcademic',
+      anime: 'stylePresetAnime',
+      custom: 'stylePresetCustom',
+    };
+    TRANSLATION_STYLE_PRESETS.forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = i18n(styleLabelKeys[p.id] || '', p.name);
+      styleSelector.appendChild(opt);
+    });
+    styleSelector.addEventListener('change', function () {
+      browser.storage.local.set({ [TRANSLATION_STYLE_KEY]: styleSelector.value || 'natural' });
+    });
+  }
+
   // Load and apply initial states
   browser.storage.local
-    .get(['targetLang', 'yousub_api_keys', 'yousub_dual_mode', 'yousub_translation_enabled'])
+    .get([
+      'targetLang',
+      'yousub_api_keys',
+      'yousub_dual_mode',
+      'yousub_translation_enabled',
+      TRANSLATION_STYLE_KEY,
+      USAGE_STATS_KEY,
+    ])
     .then(async function (res) {
       // 1. Immediate UI Updates (No await)
       updateLanguageUI(res.targetLang);
+      if (styleSelector) {
+        styleSelector.value = res[TRANSLATION_STYLE_KEY] || 'natural';
+      }
+      renderUsageSavingsLine(res[USAGE_STATS_KEY]);
       dualModeToggle.checked = !!res.yousub_dual_mode;
 
       // Clear timeout as we got data
@@ -134,6 +169,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (area === 'local' && changes.targetLang) {
       updateLanguageUI(changes.targetLang.newValue);
     }
+    if (area === 'local' && changes[TRANSLATION_STYLE_KEY] && styleSelector) {
+      styleSelector.value = changes[TRANSLATION_STYLE_KEY].newValue || 'natural';
+    }
+    if (area === 'local' && changes[USAGE_STATS_KEY]) {
+      renderUsageSavingsLine(changes[USAGE_STATS_KEY].newValue);
+    }
     if (!activeVideoId) return;
     const pipelineKey = `${PIPELINE_KEY_PREFIX}${activeVideoId}`;
     const statsKey = `yousub_stats_${activeVideoId}`;
@@ -145,6 +186,23 @@ document.addEventListener('DOMContentLoaded', function () {
       loadExecutionStats(activeVideoId);
     }
   });
+
+  function renderUsageSavingsLine(rawStats) {
+    if (!usageSavingsEl) return;
+    const stats = normalizeUsageStats(rawStats);
+    if (stats.cacheHits <= 0 && stats.videosTranslated <= 0) {
+      usageSavingsEl.classList.add('hidden');
+      return;
+    }
+    const tmpl = i18n(
+      'popupUsageSavingsSummary',
+      '30d Cache: {hits} hits · ~{tokens} tokens saved'
+    );
+    usageSavingsEl.textContent = tmpl
+      .replace('{hits}', stats.cacheHits.toLocaleString())
+      .replace('{tokens}', stats.estimatedTokensSaved.toLocaleString());
+    usageSavingsEl.classList.remove('hidden');
+  }
 
   function updateLanguageUI(newLang) {
     currentLang = newLang || 'vi';
@@ -178,6 +236,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const allDisabled = hasKeys && activeKeys.length === 0;
 
     healthStatus.classList.remove('hidden');
+
+    if (setupWizardBtn) {
+      setupWizardBtn.classList.toggle('hidden', !(!hasKeys || allDisabled));
+    }
 
     if (!hasKeys) {
       healthStatus.className = 'health-indicator health-error';
@@ -257,6 +319,12 @@ document.addEventListener('DOMContentLoaded', function () {
   openSettingsBtn.addEventListener('click', function () {
     browser.runtime.openOptionsPage();
   });
+
+  if (setupWizardBtn) {
+    setupWizardBtn.addEventListener('click', function () {
+      browser.runtime.openOptionsPage();
+    });
+  }
 
   openDebugBtn.addEventListener('click', function () {
     browser.tabs.create({ url: browser.runtime.getURL('src/debug/debug.html') });

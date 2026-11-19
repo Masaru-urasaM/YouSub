@@ -465,8 +465,7 @@ function attachResetHandler(handleEl) {
   handleEl.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    exitCustomMode();
-    saveLayout();
+    Overlay.resetLayout();
   });
 }
 
@@ -979,6 +978,34 @@ export const Overlay = {
 
   setText: function (text) {
     this.renderSubtitles(text, '', false);
+  },
+
+  resetLayout: function () {
+    if (container) {
+      exitCustomMode();
+      saveLayout();
+    } else {
+      const key = isShortsPath() ? 'shorts' : 'regular';
+      chrome.storage.local.get(['yousub_overlay_layout']).then((res) => {
+        const layouts = res.yousub_overlay_layout || {};
+        layouts[key] = { customMode: false };
+        chrome.storage.local.set({ yousub_overlay_layout: layouts });
+      });
+    }
+  },
+
+  setTouchHandlesVisible: function (visible) {
+    const show = Boolean(visible);
+    if (show) {
+      this.show();
+    }
+    if (!container) return false;
+    container.classList.toggle('yousub-touch-handles', show);
+    return container.classList.contains('yousub-touch-handles');
+  },
+
+  areTouchHandlesVisible: function () {
+    return Boolean(container && container.classList.contains('yousub-touch-handles'));
   },
 
   /**

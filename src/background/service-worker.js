@@ -16,6 +16,40 @@ import { Cache } from './cache.js';
 import { HealthManager } from './health.js';
 import { hasActiveGeminiKey, transcribeVideoWindow } from './video-transcriber.js';
 import { PipelineTelemetry } from '../shared/pipeline-telemetry.js';
+import {
+  TRANSLATION_STYLE_KEY,
+  CUSTOM_PROMPT_KEY,
+  CUSTOM_GLOSSARY_KEY,
+} from '../shared/constants.js';
+import { computeStyleCacheVariant } from '../shared/video-context.js';
+import { recordCacheHitUsage, recordApiRunUsage } from '../shared/usage-stats.js';
+
+async function loadTranslationContextOptions(request = {}) {
+  let styleId = 'natural';
+  let customPrompt = '';
+  let glossary = {};
+  try {
+    const res = await browser.storage.local.get([
+      TRANSLATION_STYLE_KEY,
+      CUSTOM_PROMPT_KEY,
+      CUSTOM_GLOSSARY_KEY,
+    ]);
+    if (res?.[TRANSLATION_STYLE_KEY]) styleId = res[TRANSLATION_STYLE_KEY];
+    if (res?.[CUSTOM_PROMPT_KEY]) customPrompt = res[CUSTOM_PROMPT_KEY];
+    if (res?.[CUSTOM_GLOSSARY_KEY]) glossary = res[CUSTOM_GLOSSARY_KEY];
+  } catch {
+    /* keep defaults */
+  }
+  const variant = computeStyleCacheVariant({ styleId, customPrompt, glossary });
+  return {
+    styleId,
+    customPrompt,
+    glossary,
+    variant,
+    videoTitle: typeof request.videoTitle === 'string' ? request.videoTitle : '',
+    channelName: typeof request.channelName === 'string' ? request.channelName : '',
+  };
+}
 
 function getGeminiWindowBounds(batchIndex, durationSec, windowSec = 240) {
   const safeIdx = Number.isInteger(batchIndex) && batchIndex >= 0 ? batchIndex : 0;
@@ -115,8 +149,12 @@ browser.runtime.onConnect.addListener(function (port) {
             : 0;
 
         try {
+          const ctxOpts = await loadTranslationContextOptions(request);
+
           // 1. Check Cache First (verify cue count matches coalesced segments)
-          const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
+          const cached = ctxOpts.variant
+            ? await Cache.get(videoId, sourceLang || 'auto', targetLang, ctxOpts.variant)
+            : await Cache.get(videoId, sourceLang || 'auto', targetLang);
           const cacheCompatible =
             !Array.isArray(segments) ||
             segments.length === 0 ||
@@ -147,6 +185,7 @@ browser.runtime.onConnect.addListener(function (port) {
                 },
               });
             }
+            await recordCacheHitUsage({ cueCount: cached.length });
             try {
               port.postMessage({ type: 'COMPLETE', translated: cached, fromCache: true });
             } catch {
@@ -209,6 +248,11 @@ browser.runtime.onConnect.addListener(function (port) {
               initialPlayheadMs: latestPlayheadMs,
               getPlayheadMs: () => latestPlayheadMs,
               coalesceStats,
+              styleId: ctxOpts.styleId,
+              customPrompt: ctxOpts.customPrompt,
+              glossary: ctxOpts.glossary,
+              videoTitle: ctxOpts.videoTitle,
+              channelName: ctxOpts.channelName,
               onStatsUpdate: (liveStats) => {
                 if (videoId) {
                   writeVideoStats(videoId, {
@@ -230,7 +274,17 @@ browser.runtime.onConnect.addListener(function (port) {
 
           if (result.success) {
             if (!result.hadFallback) {
-              await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+              if (ctxOpts.variant) {
+                await Cache.set(
+                  videoId,
+                  sourceLang || 'auto',
+                  targetLang,
+                  result.translated,
+                  ctxOpts.variant
+                );
+              } else {
+                await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+              }
             }
             if (videoId) {
               await writeVideoStats(videoId, {
@@ -255,6 +309,11 @@ browser.runtime.onConnect.addListener(function (port) {
                 },
               });
             }
+            await recordApiRunUsage({
+              batchCount: result.stats?.batchCount || 1,
+              totalTokens: result.stats?.totalTokens || 0,
+              incrementVideo: true,
+            });
             try {
               port.postMessage({ type: 'COMPLETE', ...result });
             } catch {
@@ -404,6 +463,11 @@ browser.runtime.onConnect.addListener(function (port) {
               ...geminiSessionStats,
               timestamp: Date.now(),
             });
+            await recordApiRunUsage({
+              batchCount: 1,
+              totalTokens: result.usage?.totalTokens || 0,
+              incrementVideo: geminiSessionStats.batchCount === 1,
+            });
 
             PipelineTelemetry.update(params.videoId, (snap) => {
               const batches = Array.isArray(snap.batches) ? [...snap.batches] : [];
@@ -530,20 +594,41 @@ async function handleRequest(request, sender) {
       `Incoming translation request for ${videoId} (${segments.length} segments)`
     );
 
-    const cached = await Cache.get(videoId, sourceLang || 'auto', targetLang);
+    const ctxOpts = await loadTranslationContextOptions(request);
+    const cached = ctxOpts.variant
+      ? await Cache.get(videoId, sourceLang || 'auto', targetLang, ctxOpts.variant)
+      : await Cache.get(videoId, sourceLang || 'auto', targetLang);
     if (cached) {
       Logger.info('ServiceWorker', `Cache HIT for ${videoId}`);
       const cacheStats = { source: 'cache', timestamp: Date.now() };
       await browser.storage.local.set({ [`yousub_stats_${videoId}`]: cacheStats });
+      await recordCacheHitUsage({ cueCount: Array.isArray(cached) ? cached.length : 0 });
       return { success: true, translated: cached, fromCache: true };
     }
 
     Logger.info('ServiceWorker', `Cache MISS for ${videoId}. Starting translation pipeline...`);
     await browser.storage.local.remove([`yousub_stats_${videoId}`]);
 
-    const result = await translate(segments, sourceLang, targetLang, tabId);
+    const result = await translate(segments, sourceLang, targetLang, tabId, null, null, null, {
+      videoId,
+      styleId: ctxOpts.styleId,
+      customPrompt: ctxOpts.customPrompt,
+      glossary: ctxOpts.glossary,
+      videoTitle: ctxOpts.videoTitle,
+      channelName: ctxOpts.channelName,
+    });
     if (result.success && !result.hadFallback) {
-      await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+      if (ctxOpts.variant) {
+        await Cache.set(
+          videoId,
+          sourceLang || 'auto',
+          targetLang,
+          result.translated,
+          ctxOpts.variant
+        );
+      } else {
+        await Cache.set(videoId, sourceLang || 'auto', targetLang, result.translated);
+      }
     }
 
     if (result.success) {
@@ -558,6 +643,11 @@ async function handleRequest(request, sender) {
         timestamp: Date.now(),
       };
       await browser.storage.local.set({ [`yousub_stats_${videoId}`]: stats });
+      await recordApiRunUsage({
+        batchCount: result.stats?.batchCount || 1,
+        totalTokens: result.stats?.totalTokens || 0,
+        incrementVideo: true,
+      });
     }
     return result;
   }

@@ -5,6 +5,7 @@ import {
   PlaybackResumeStore,
   resolveResumeTarget,
   formatTimestamp,
+  formatCountdown,
 } from '../shared/playback-resume-store.js';
 import { Overlay } from './overlay.js';
 
@@ -14,6 +15,8 @@ const USER_INTERACTION_WINDOW_MS = 5000;
 const GUARD_DURATION_MS = 15000;
 const PROBE_TIMEOUT_MS = 4000;
 const VIDEO_WAIT_TIMEOUT_MS = 10000;
+const SLEEP_FADE_DURATION_MS = 5000;
+const SLEEP_FADE_STEPS = 10;
 
 const VIDEO_SELECTORS = [
   '#player-container-id video',
@@ -29,6 +32,7 @@ let probeCounter = 0;
 let activeVideoId = null;
 let activeVideoEl = null;
 let activeTitle = '';
+let activeChannelName = '';
 let activeDurationSec = 0;
 let currentSettings = null;
 
@@ -36,6 +40,11 @@ let lastLocalSaveAt = 0;
 let lastWatchtimePushAt = 0;
 let lastInteractionEventAt = 0;
 let isAutoSeeking = false;
+let isApplyingSavedSpeed = false;
+
+let loopPointA = null;
+let loopPointB = null;
+let loopEnabled = false;
 
 let activeObserver = null;
 let activeVideoTimeout = null;
@@ -45,6 +54,241 @@ let cleanupProbe = null;
 let cleanupVideoListeners = null;
 let cleanupGlobalListeners = null;
 let logBridgeRegistered = false;
+
+let sleepEndAt = 0;
+let sleepTotalSec = 0;
+let sleepTickTimer = null;
+let sleepFadeTimer = null;
+let isSleepFading = false;
+let preFadeVolume = null;
+let isApplyingSleepFadeVolume = false;
+const sleepListeners = new Set();
+
+function getSleepRemainingSec(now = Date.now()) {
+  if (!sleepEndAt || sleepEndAt <= now) return 0;
+  return Math.max(0, Math.ceil((sleepEndAt - now) / 1000));
+}
+
+function buildSleepState(now = Date.now()) {
+  const active = Boolean(sleepEndAt > 0 || isSleepFading);
+  const remainingSec = isSleepFading ? 0 : getSleepRemainingSec(now);
+  const badgeText = !active
+    ? ''
+    : isSleepFading
+      ? '00:00'
+      : remainingSec >= 3600
+        ? `${Math.ceil(remainingSec / 60)}m`
+        : formatCountdown(remainingSec);
+  return {
+    active,
+    remainingSec,
+    totalSec: sleepTotalSec,
+    endAt: sleepEndAt,
+    isFading: isSleepFading,
+    badgeText,
+  };
+}
+
+function notifySleepListeners() {
+  const st = buildSleepState();
+  for (const fn of sleepListeners) {
+    try {
+      fn(st);
+    } catch {
+      /* isolate subscriber errors */
+    }
+  }
+  return st;
+}
+
+function setVolumeSafely(videoEl, vol) {
+  if (!videoEl || typeof vol !== 'number' || !Number.isFinite(vol)) return;
+  const clamped = Math.max(0, Math.min(1, vol));
+  isApplyingSleepFadeVolume = true;
+  try {
+    videoEl.volume = clamped;
+  } catch {
+    /* some environments expose read-only volume */
+  } finally {
+    isApplyingSleepFadeVolume = false;
+  }
+}
+
+function restorePreFadeVolume() {
+  if (preFadeVolume !== null && activeVideoEl) {
+    setVolumeSafely(activeVideoEl, preFadeVolume);
+  }
+  preFadeVolume = null;
+}
+
+function clearSleepTimers() {
+  if (sleepTickTimer) {
+    clearInterval(sleepTickTimer);
+    sleepTickTimer = null;
+  }
+  if (sleepFadeTimer) {
+    clearInterval(sleepFadeTimer);
+    sleepFadeTimer = null;
+  }
+}
+
+function cancelSleepTimerInternal({ silent = false } = {}) {
+  clearSleepTimers();
+  const wasFading = isSleepFading;
+  isSleepFading = false;
+  sleepEndAt = 0;
+  sleepTotalSec = 0;
+  restorePreFadeVolume();
+  if (wasFading && activeVideoEl) {
+    Logger.info('PlaybackResume', '[SLEEP_TIMER] Fade cancelled and volume restored');
+  }
+  return silent ? buildSleepState() : notifySleepListeners();
+}
+
+function buildAbLoopState() {
+  return {
+    active: Boolean(loopEnabled && loopPointA !== null && loopPointB !== null),
+    pointA: loopPointA,
+    pointB: loopPointB,
+  };
+}
+
+function clearAbLoopState() {
+  loopPointA = null;
+  loopPointB = null;
+  loopEnabled = false;
+  return buildAbLoopState();
+}
+
+function persistCurrentProgressSnapshot({
+  myGen = sessionGen,
+  forceSyncFlush = false,
+  pushWatchtime = false,
+  state = 'paused',
+} = {}) {
+  if (myGen !== sessionGen || !activeVideoId || !activeVideoEl) return;
+
+  const currentSec = Number(activeVideoEl.currentTime);
+  if (!Number.isFinite(currentSec) || currentSec < 0) return;
+
+  const measuredDur = Number(activeVideoEl.duration);
+  if (Number.isFinite(measuredDur) && measuredDur > 0) {
+    activeDurationSec = Math.max(activeDurationSec, measuredDur);
+  }
+
+  const minDur = currentSettings?.minDurationSec ?? 60;
+  if (activeDurationSec > 0 && activeDurationSec < minDur) return;
+
+  const now = Date.now();
+  const syncEnabled = currentSettings?.syncEnabled !== false;
+
+  lastLocalSaveAt = now;
+  PlaybackResumeStore.updateProgress(activeVideoId, {
+    currentTimeSec: currentSec,
+    durationSec: activeDurationSec,
+    title: activeTitle,
+    channelName: activeChannelName,
+    isUserInteraction: hasRecentUserInteraction(),
+    forceSyncFlush,
+    syncEnabled,
+  }).catch(() => {});
+
+  if (pushWatchtime && syncEnabled && currentSec >= 5) {
+    lastWatchtimePushAt = now;
+    postWatchtimePush({
+      videoId: activeVideoId,
+      currentTimeSec: currentSec,
+      durationSec: activeDurationSec,
+      state,
+    });
+  }
+}
+
+async function completeSleepTimer(myGen) {
+  clearSleepTimers();
+  isSleepFading = false;
+  sleepEndAt = 0;
+  sleepTotalSec = 0;
+
+  if (myGen !== sessionGen || !activeVideoEl || !activeVideoId) {
+    restorePreFadeVolume();
+    notifySleepListeners();
+    return;
+  }
+
+  const pauseTimeSec = Math.max(0, Math.floor(Number(activeVideoEl.currentTime) || 0));
+  try {
+    if (typeof activeVideoEl.pause === 'function') {
+      activeVideoEl.pause();
+    }
+  } catch {
+    /* ignore */
+  }
+  restorePreFadeVolume();
+  lastInteractionEventAt = Date.now();
+  persistCurrentProgressSnapshot({
+    myGen,
+    forceSyncFlush: true,
+    pushWatchtime: true,
+    state: 'paused',
+  });
+
+  try {
+    await PlaybackResumeStore.addBookmark(activeVideoId, {
+      timeSec: pauseTimeSec,
+      label: 'Sleep stop',
+      title: activeTitle,
+      durationSec: Math.max(activeDurationSec, Number(activeVideoEl?.duration) || 0),
+    });
+  } catch {
+    /* ignore */
+  }
+
+  Logger.info(
+    'PlaybackResume',
+    '[SLEEP_TIMER] Completed fade, paused & saved Sleep stop bookmark',
+    {
+      videoId: activeVideoId,
+      pauseTimeSec,
+    }
+  );
+
+  Overlay.showStatus(
+    `🌙 Sleep timer paused at ${esc(formatTimestamp(pauseTimeSec))} ("Sleep stop" saved)`,
+    'info',
+    7000,
+    { id: 'sleep-timer-stop', dismissible: true }
+  );
+  notifySleepListeners();
+}
+
+function beginSleepFadeOut(myGen) {
+  clearSleepTimers();
+  if (myGen !== sessionGen || !activeVideoEl || !activeVideoId) {
+    cancelSleepTimerInternal();
+    return;
+  }
+
+  isSleepFading = true;
+  const rawVol = Number(activeVideoEl.volume);
+  preFadeVolume = Number.isFinite(rawVol) ? Math.max(0, Math.min(1, rawVol)) : 1;
+  notifySleepListeners();
+
+  let step = 0;
+  const stepMs = Math.round(SLEEP_FADE_DURATION_MS / SLEEP_FADE_STEPS);
+  sleepFadeTimer = setInterval(() => {
+    if (myGen !== sessionGen || !activeVideoEl) {
+      cancelSleepTimerInternal();
+      return;
+    }
+    step += 1;
+    const ratio = Math.max(0, 1 - step / SLEEP_FADE_STEPS);
+    setVolumeSafely(activeVideoEl, preFadeVolume * ratio);
+    if (step >= SLEEP_FADE_STEPS) {
+      completeSleepTimer(myGen).catch(() => {});
+    }
+  }, stepMs);
+}
 
 function isShortsPath() {
   return typeof window !== 'undefined' && window.location.pathname.startsWith('/shorts/');
@@ -329,52 +573,35 @@ function attachSessionListeners(videoEl, myGen) {
 
   const markUserInteraction = () => {
     lastInteractionEventAt = Date.now();
-  };
-
-  const persistSnapshot = ({
-    forceSyncFlush = false,
-    pushWatchtime = false,
-    state = 'paused',
-  } = {}) => {
-    if (myGen !== sessionGen || !activeVideoId || !activeVideoEl) return;
-
-    const currentSec = Number(activeVideoEl.currentTime);
-    if (!Number.isFinite(currentSec) || currentSec < 0) return;
-
-    const measuredDur = Number(activeVideoEl.duration);
-    if (Number.isFinite(measuredDur) && measuredDur > 0) {
-      activeDurationSec = Math.max(activeDurationSec, measuredDur);
-    }
-
-    const minDur = currentSettings?.minDurationSec ?? 60;
-    if (activeDurationSec > 0 && activeDurationSec < minDur) return;
-
-    const now = Date.now();
-    const syncEnabled = currentSettings?.syncEnabled !== false;
-
-    lastLocalSaveAt = now;
-    PlaybackResumeStore.updateProgress(activeVideoId, {
-      currentTimeSec: currentSec,
-      durationSec: activeDurationSec,
-      title: activeTitle,
-      isUserInteraction: hasRecentUserInteraction(),
-      forceSyncFlush,
-      syncEnabled,
-    }).catch(() => {});
-
-    if (pushWatchtime && syncEnabled && currentSec >= 5) {
-      lastWatchtimePushAt = now;
-      postWatchtimePush({
-        videoId: activeVideoId,
-        currentTimeSec: currentSec,
-        durationSec: activeDurationSec,
-        state,
-      });
+    if (isSleepFading && !isApplyingSleepFadeVolume) {
+      cancelSleepTimerInternal();
     }
   };
+
+  const persistSnapshot = (opts) => persistCurrentProgressSnapshot({ myGen, ...opts });
 
   const onTimeUpdate = () => {
     if (myGen !== sessionGen || isAutoSeeking) return;
+    if (
+      loopEnabled &&
+      loopPointA !== null &&
+      loopPointB !== null &&
+      Number(activeVideoEl?.currentTime) >= loopPointB
+    ) {
+      isAutoSeeking = true;
+      if (autoSeekTimer) clearTimeout(autoSeekTimer);
+      autoSeekTimer = setTimeout(() => {
+        autoSeekTimer = null;
+        isAutoSeeking = false;
+      }, 250);
+      try {
+        activeVideoEl.currentTime = loopPointA;
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
     const now = Date.now();
     if (now - lastLocalSaveAt < SAVE_THROTTLE_MS) return;
 
@@ -401,7 +628,21 @@ function attachSessionListeners(videoEl, myGen) {
   };
 
   const onPlayOrVolume = () => {
-    if (!isAutoSeeking) markUserInteraction();
+    if (!isAutoSeeking && !isApplyingSleepFadeVolume) markUserInteraction();
+  };
+
+  const onRateChange = () => {
+    if (isApplyingSavedSpeed || myGen !== sessionGen || !activeVideoId || !activeVideoEl) return;
+    if (currentSettings?.rememberPlaybackSpeed === false) return;
+    if (typeof PlaybackResumeStore?.savePlaybackSpeed !== 'function') return;
+    const rate = Number(activeVideoEl.playbackRate);
+    if (!Number.isFinite(rate) || rate < 0.25 || rate > 4.0) return;
+    markUserInteraction();
+    PlaybackResumeStore.savePlaybackSpeed(activeVideoId, rate, {
+      channelName: activeChannelName,
+      title: activeTitle,
+      durationSec: activeDurationSec,
+    }).catch(() => {});
   };
 
   const onVisibilityChange = () => {
@@ -419,6 +660,7 @@ function attachSessionListeners(videoEl, myGen) {
   videoEl.addEventListener('seeked', onSeeked);
   videoEl.addEventListener('play', onPlayOrVolume);
   videoEl.addEventListener('volumechange', onPlayOrVolume);
+  videoEl.addEventListener('ratechange', onRateChange);
 
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -436,6 +678,7 @@ function attachSessionListeners(videoEl, myGen) {
     videoEl.removeEventListener('seeked', onSeeked);
     videoEl.removeEventListener('play', onPlayOrVolume);
     videoEl.removeEventListener('volumechange', onPlayOrVolume);
+    videoEl.removeEventListener('ratechange', onRateChange);
   };
 
   cleanupGlobalListeners = () => {
@@ -507,6 +750,9 @@ export const PlaybackResume = {
       )
         .replace(/\s*-\s*YouTube$/, '')
         .trim();
+      activeChannelName = String(playerData?.channelName || '')
+        .trim()
+        .slice(0, 100);
 
       if (activeDurationSec > 0 && activeDurationSec < settings.minDurationSec) {
         Logger.debug('PlaybackResume', 'Skipping short video below minDurationSec', {
@@ -515,6 +761,32 @@ export const PlaybackResume = {
           minDurationSec: settings.minDurationSec,
         });
         return;
+      }
+
+      if (
+        settings.rememberPlaybackSpeed !== false &&
+        typeof PlaybackResumeStore?.resolvePreferredSpeed === 'function'
+      ) {
+        const savedSpeed = await PlaybackResumeStore.resolvePreferredSpeed(
+          videoId,
+          activeChannelName
+        ).catch(() => null);
+        if (myGen !== sessionGen) return;
+        if (savedSpeed && Math.abs((Number(videoEl.playbackRate) || 1) - savedSpeed) >= 0.01) {
+          isApplyingSavedSpeed = true;
+          try {
+            videoEl.playbackRate = savedSpeed;
+            Logger.info('PlaybackResume', '[SPEED_RESTORED] Applied saved playback speed', {
+              videoId,
+              channelName: activeChannelName,
+              playbackRate: savedSpeed,
+            });
+          } catch {
+            /* ignore read-only playbackRate */
+          } finally {
+            isApplyingSavedSpeed = false;
+          }
+        }
       }
 
       const resolution = resolveWithSettings(stored, playerData, activeDurationSec, settings);
@@ -559,6 +831,7 @@ export const PlaybackResume = {
 
   onLeave: function () {
     sessionGen++;
+    cancelSleepTimerInternal({ silent: false });
     if (activeObserver) {
       activeObserver.disconnect();
       activeObserver = null;
@@ -591,12 +864,15 @@ export const PlaybackResume = {
     activeVideoId = null;
     activeVideoEl = null;
     activeTitle = '';
+    activeChannelName = '';
     activeDurationSec = 0;
     currentSettings = null;
     lastLocalSaveAt = 0;
     lastWatchtimePushAt = 0;
     lastInteractionEventAt = 0;
     isAutoSeeking = false;
+    isApplyingSavedSpeed = false;
+    clearAbLoopState();
   },
 
   destroy: function () {
@@ -650,8 +926,50 @@ export const PlaybackResume = {
       timeSec,
       label,
       title: activeTitle,
+      channelName: activeChannelName,
       durationSec: dur,
     });
+  },
+
+  setLoopPointA: function (timeSec) {
+    if (!activeVideoId || !activeVideoEl || isShortsPath()) return buildAbLoopState();
+    const raw = timeSec !== undefined ? Number(timeSec) : Number(activeVideoEl.currentTime) || 0;
+    loopPointA = Math.max(0, Math.floor(Number.isFinite(raw) ? raw : 0));
+    if (loopPointB !== null && loopPointB <= loopPointA + 0.5) {
+      loopPointB = null;
+      loopEnabled = false;
+    } else if (loopPointB !== null) {
+      loopEnabled = true;
+    }
+    return buildAbLoopState();
+  },
+
+  setLoopPointB: function (timeSec) {
+    if (!activeVideoId || !activeVideoEl || isShortsPath()) return buildAbLoopState();
+    const raw = timeSec !== undefined ? Number(timeSec) : Number(activeVideoEl.currentTime) || 0;
+    let b = Math.max(0, Math.floor(Number.isFinite(raw) ? raw : 0));
+    if (loopPointA === null) {
+      loopPointA = 0;
+    }
+    if (b < loopPointA) {
+      const tmp = loopPointA;
+      loopPointA = b;
+      b = tmp;
+    }
+    if (b - loopPointA < 1) {
+      b = loopPointA + 1;
+    }
+    loopPointB = b;
+    loopEnabled = true;
+    return buildAbLoopState();
+  },
+
+  clearLoop: function () {
+    return clearAbLoopState();
+  },
+
+  getLoopState: function () {
+    return buildAbLoopState();
   },
 
   getCurrentState: async function () {
@@ -660,10 +978,66 @@ export const PlaybackResume = {
     return {
       videoId: activeVideoId,
       title: activeTitle,
+      channelName: activeChannelName,
       currentTimeSec: activeVideoEl ? Math.floor(Number(activeVideoEl.currentTime) || 0) : 0,
       durationSec: Math.max(activeDurationSec, Number(activeVideoEl?.duration) || 0),
+      playbackRate: activeVideoEl ? Number(activeVideoEl.playbackRate) || 1 : 1,
       record: stored ? stored.mergedRecord : null,
       settings,
+      sleepTimer: buildSleepState(),
+      abLoop: buildAbLoopState(),
+    };
+  },
+
+  setSleepTimer: function (minutes) {
+    const mins = Number(minutes);
+    if (!Number.isFinite(mins) || mins <= 0) {
+      return cancelSleepTimerInternal();
+    }
+    if (!activeVideoId || !activeVideoEl || isShortsPath()) {
+      return cancelSleepTimerInternal();
+    }
+
+    cancelSleepTimerInternal({ silent: true });
+    const myGen = sessionGen;
+    const clampedMins = Math.min(360, Math.max(0.05, mins));
+    const totalMs = Math.round(clampedMins * 60 * 1000);
+    sleepTotalSec = Math.max(1, Math.round(totalMs / 1000));
+    sleepEndAt = Date.now() + totalMs;
+
+    Logger.info('PlaybackResume', '[SLEEP_TIMER] Armed', {
+      videoId: activeVideoId,
+      minutes: clampedMins,
+    });
+
+    sleepTickTimer = setInterval(() => {
+      if (myGen !== sessionGen || !activeVideoEl) {
+        cancelSleepTimerInternal();
+        return;
+      }
+      if (Date.now() >= sleepEndAt) {
+        beginSleepFadeOut(myGen);
+      } else {
+        notifySleepListeners();
+      }
+    }, 1000);
+
+    return notifySleepListeners();
+  },
+
+  cancelSleepTimer: function () {
+    return cancelSleepTimerInternal();
+  },
+
+  getSleepTimerState: function () {
+    return buildSleepState();
+  },
+
+  onSleepTimerChange: function (listener) {
+    if (typeof listener !== 'function') return () => {};
+    sleepListeners.add(listener);
+    return () => {
+      sleepListeners.delete(listener);
     };
   },
 };

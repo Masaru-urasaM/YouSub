@@ -958,6 +958,7 @@ input:checked + .slider:before {
   color: #ffffff;
 }
 
+.resume-bookmark-edit,
 .resume-bookmark-del,
 .resume-recent-del {
   border: none;
@@ -971,6 +972,11 @@ input:checked + .slider:before {
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
+}
+
+.resume-bookmark-edit:hover {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.16);
 }
 
 .resume-bookmark-del:hover,
@@ -1089,6 +1095,107 @@ input:checked + .slider:before {
   height: 100%;
   background: linear-gradient(90deg, #60a5fa, #34d399);
   border-radius: 999px;
+}
+
+.resume-sleep-wrap {
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resume-sleep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resume-sleep-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #212b3f;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.resume-sleep-badge.is-active {
+  color: #bae6fd;
+  background: rgba(14, 116, 144, 0.28);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.resume-sleep-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resume-sleep-input {
+  width: 68px;
+  background: #111622;
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+.resume-note-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resume-note-input {
+  flex: 1;
+  min-width: 0;
+  background: #111622;
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.resume-bookmark-edit-input {
+  width: 96px;
+  background: #111622;
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+.setup-cta-btn {
+  width: 100%;
+  background: rgba(59, 130, 246, 0.14);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.setup-cta-btn:hover {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+.popup-savings-line {
+  font-size: 11px;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 6px;
+  padding: 5px 8px;
+  text-align: center;
 }
 
 /* Firefox Android / touch devices open popup.html in a full browser tab */

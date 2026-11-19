@@ -415,4 +415,38 @@ describe('translate() characterization', () => {
     // Batch 0 runs first, then jumps straight to Batch 3 (Seg_150), then backfills Batch 1 (Seg_50) and Batch 2 (Seg_100)
     expect(batchOrder).toEqual(['Seg_0', 'Seg_150', 'Seg_50', 'Seg_100']);
   });
+
+  // ── Behavior 11: Style Preset, Glossary & Video Metadata Context (Phase 90) ──
+  test('injects style preset, glossary, and video/channel metadata into context prompts', async () => {
+    seedKeys([{ provider: 'openai', apiKey: 'ctx-k1', model: 'gpt-4o-mini' }]);
+
+    const capturedSystemPrompts = [];
+    chat.mockImplementation(async (_provider, _model, _apiKey, userPrompt, chatOpts) => {
+      const sysText =
+        typeof chatOpts === 'string' ? chatOpts : String(chatOpts?.systemPrompt || '');
+      capturedSystemPrompts.push(sysText);
+      if (!isBatchPrompt(userPrompt)) return summaryResponse;
+      return translateBatchResponse(userPrompt);
+    });
+
+    const segments = [seg('Stateful components use hooks.', 0)];
+    const result = await translate(segments, 'en', TGT, null, null, null, null, {
+      styleId: 'technical',
+      glossary: {
+        keepTermsText: 'React, Hooks',
+        glossaryPairsText: 'stateful => có trạng thái',
+        pronounRule: 'Use neutral tone',
+      },
+      videoTitle: 'Mastering React Architecture',
+      channelName: 'Tech Explained',
+    });
+
+    expect(result.success).toBe(true);
+    expect(capturedSystemPrompts[0]).toContain('Mastering React Architecture');
+    expect(capturedSystemPrompts[0]).toContain('Tech Explained');
+    expect(capturedSystemPrompts[1]).toContain('Technical / IT');
+    expect(capturedSystemPrompts[1]).toContain('KEEP UNTRANSLATED: React, Hooks');
+    expect(capturedSystemPrompts[1]).toContain('stateful => có trạng thái');
+    expect(capturedSystemPrompts[1]).toContain('Use neutral tone');
+  });
 });

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouSub",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Real-time subtitle translator for YouTube",
   "default_locale": "en",
   "permissions": ["storage", "activeTab"],
@@ -70,6 +70,7 @@
         "src/shared/providers-registry.js",
         "src/shared/pipeline-telemetry.js",
         "src/shared/playback-resume-store.js",
+        "src/shared/video-context.js",
         "src/shared/utils.js",
         "src/content/page-detector.js",
         "src/content/video-binder.js",
@@ -81,6 +82,7 @@
         "src/content/gemini-fallback-scheduler.js",
         "src/content/main.js",
         "src/content/playback-resume.js",
+        "src/content/mobile-drawer.js",
         "src/content/rough-translate-bridge.js"
       ],
       "matches": ["*://*.youtube.com/*"]

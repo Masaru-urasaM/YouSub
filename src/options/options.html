@@ -14,7 +14,7 @@
           <img src="../../assets/icons/icon618.png" alt="YouSub Logo" class="logo" />
           <h1 data-i18n="optionsTitle">YouSub Settings</h1>
         </div>
-        <span class="version-badge" id="version-badge">v0.2.4</span>
+        <span class="version-badge" id="version-badge">v0.2.6</span>
       </header>
 
       <nav class="settings-nav">
@@ -89,6 +89,81 @@
         >
           <h2 data-i18n="optionsTranslationSettings">Translation Settings</h2>
 
+          <!-- 30-Second BYOK Onboarding Wizard (Phase 91) -->
+          <div class="card onboarding-card hidden" id="onboarding-wizard-card">
+            <div class="onboarding-header">
+              <div>
+                <h3 data-i18n="optionsOnboardingTitle">30-Second Quick Setup (Free BYOK)</h3>
+                <p class="description" data-i18n="optionsOnboardingDesc">
+                  Get a free personal API key in 30 seconds — your key stays 100% locally in your
+                  browser.
+                </p>
+              </div>
+              <button
+                type="button"
+                id="onboarding-dismiss-btn"
+                class="text-btn"
+                data-i18n="optionsOnboardingDismiss"
+              >
+                Hide Guide
+              </button>
+            </div>
+            <div class="onboarding-steps">
+              <div class="onboarding-step">
+                <span class="step-badge">1</span>
+                <div>
+                  <strong data-i18n="optionsOnboardingStep1Title">Get a Free Key</strong>
+                  <div class="onboarding-links">
+                    <a
+                      href="https://aistudio.google.com/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="link-btn"
+                      data-i18n="optionsOnboardingGeminiLink"
+                      >Google AI Studio (Gemini — free quota + audio fallback)</a
+                    >
+                    <a
+                      href="https://console.groq.com/keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="link-btn"
+                      data-i18n="optionsOnboardingGroqLink"
+                      >Groq Console (Ultra-fast Llama / GPT-OSS)</a
+                    >
+                  </div>
+                </div>
+              </div>
+              <div class="onboarding-step">
+                <span class="step-badge">2</span>
+                <div style="flex: 1">
+                  <strong data-i18n="optionsOnboardingStep2Title"
+                    >Paste &amp; Auto-Detect Key</strong
+                  >
+                  <div class="input-with-button" style="margin-top: 8px">
+                    <input
+                      type="password"
+                      id="onboarding-key-input"
+                      placeholder="Paste AIza... (Gemini) or gsk_... (Groq) key"
+                      data-i18n-placeholder="optionsOnboardingKeyPlaceholder"
+                    />
+                    <button
+                      type="button"
+                      id="onboarding-test-save-btn"
+                      class="secondary-btn onboarding-primary-btn"
+                      data-i18n="optionsOnboardingTestSaveBtn"
+                    >
+                      Test &amp; Activate
+                    </button>
+                  </div>
+                  <div class="onboarding-meta-row">
+                    <span id="onboarding-detected-provider" class="onboarding-detected"></span>
+                    <span id="onboarding-status" class="onboarding-status"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <h3 data-i18n="optionsTargetLanguage">Target Language</h3>
             <p class="description" data-i18n="optionsTargetLanguageDesc">
@@ -126,7 +201,31 @@
             <p class="description" data-i18n="optionsTranslationModeDesc">
               Control how subtitles are delivered and displayed.
             </p>
-            <div class="form-group">
+            <div class="form-group" style="margin-top: 12px">
+              <label for="activation-mode" data-i18n="optionsActivationMode"
+                >Auto-Enable Mode</label
+              >
+              <select id="activation-mode">
+                <option value="manual" data-i18n="optionsActivationManual">
+                  Manual Only (Default — safest for BYOK quota)
+                </option>
+                <option value="smart_auto" data-i18n="optionsActivationSmartAuto">
+                  Smart Auto-Enable (Foreign-language videos only)
+                </option>
+                <option value="always_auto" data-i18n="optionsActivationAlwaysAuto">
+                  Always Auto-Enable on watch pages
+                </option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-top: 8px">
+              <label class="checkbox-label">
+                <input type="checkbox" id="skip-music-videos" checked />
+                <span data-i18n="optionsSkipMusicVideos"
+                  >Skip music &amp; MV videos in Smart Auto-Enable</span
+                >
+              </label>
+            </div>
+            <div class="form-group" style="margin-top: 12px">
               <label class="checkbox-label">
                 <input type="checkbox" id="streaming-mode" />
                 <span data-i18n="optionsStreamingMode">Enable Streaming Mode (SSE)</span>
@@ -158,12 +257,93 @@
             </div>
           </div>
 
+          <!-- Translation Style & Glossary (Phase 90) -->
+          <div class="card" id="translation-style-card">
+            <h3 data-i18n="optionsTranslationStyleCard">Translation Style &amp; Glossary</h3>
+            <p class="description" data-i18n="optionsTranslationStyleCardDesc">
+              Tailor the subtitle tone and lock domain terms, character names, or pronouns. Video
+              title and channel context are included automatically for higher accuracy.
+            </p>
+            <div class="form-group">
+              <label for="translation-style" data-i18n="optionsTranslationStyleLabel"
+                >Style Preset</label
+              >
+              <select id="translation-style">
+                <option value="natural" data-i18n="stylePresetNatural">
+                  Natural / Conversational
+                </option>
+                <option value="technical" data-i18n="stylePresetTechnical">Technical / IT</option>
+                <option value="academic" data-i18n="stylePresetAcademic">Academic / Lecture</option>
+                <option value="anime" data-i18n="stylePresetAnime">Anime / Slang</option>
+                <option value="custom" data-i18n="stylePresetCustom">Custom Prompt</option>
+              </select>
+            </div>
+            <div class="form-group wide hidden" id="custom-prompt-group" style="margin-top: 12px">
+              <label for="custom-prompt-input" data-i18n="optionsCustomPromptLabel"
+                >Custom Style Instruction</label
+              >
+              <textarea
+                id="custom-prompt-input"
+                rows="3"
+                maxlength="400"
+                placeholder="e.g., Translate concisely with warm mentor tone and keep English code identifiers."
+                data-i18n-placeholder="optionsCustomPromptPlaceholder"
+              ></textarea>
+            </div>
+            <div class="form-group wide" style="margin-top: 12px">
+              <label for="glossary-keep-terms" data-i18n="optionsGlossaryKeepTerms"
+                >Keep Terms Untranslated</label
+              >
+              <textarea
+                id="glossary-keep-terms"
+                rows="2"
+                placeholder="Comma or newline separated (e.g., React, Kubernetes, YouSub)"
+                data-i18n-placeholder="optionsGlossaryKeepTermsPlaceholder"
+              ></textarea>
+            </div>
+            <div class="form-group wide" style="margin-top: 12px">
+              <label for="glossary-pairs" data-i18n="optionsGlossaryPairs"
+                >Custom Term Glossary (Source =&gt; Target)</label
+              >
+              <textarea
+                id="glossary-pairs"
+                rows="3"
+                placeholder="One per line (e.g., transformer => kiến trúc Transformer)"
+                data-i18n-placeholder="optionsGlossaryPairsPlaceholder"
+              ></textarea>
+            </div>
+            <div class="form-group wide" style="margin-top: 12px">
+              <label for="glossary-pronoun-rule" data-i18n="optionsGlossaryPronoun"
+                >Pronoun / Addressing Rule</label
+              >
+              <input
+                type="text"
+                id="glossary-pronoun-rule"
+                maxlength="160"
+                placeholder="e.g., Host addresses viewers as 'các bạn' / 'mọi người'"
+                data-i18n-placeholder="optionsGlossaryPronounPlaceholder"
+              />
+            </div>
+          </div>
+
           <!-- API Configuration -->
           <div class="card" id="api-config-card">
-            <h3 data-i18n="optionsApiConfiguration">API Configuration</h3>
-            <p class="description" data-i18n="optionsApiConfigurationDesc">
-              Configure your LLM API keys here to power the translation engine.
-            </p>
+            <div class="card-header-flex">
+              <div>
+                <h3 data-i18n="optionsApiConfiguration">API Configuration</h3>
+                <p class="description" data-i18n="optionsApiConfigurationDesc">
+                  Configure your LLM API keys here to power the translation engine.
+                </p>
+              </div>
+              <button
+                type="button"
+                id="open-onboarding-btn"
+                class="text-btn"
+                data-i18n="optionsOpenOnboardingBtn"
+              >
+                30s Setup Guide
+              </button>
+            </div>
 
             <div class="info-alert warning hidden" id="no-keys-alert">
               <span class="icon">⚠️</span>
@@ -202,6 +382,56 @@
                 <input type="checkbox" id="enable-rotation" checked />
                 <span data-i18n="optionsEnableRotation">Try different models on failure</span>
               </label>
+            </div>
+
+            <hr class="divider" />
+
+            <!-- Local Token & 30-Day Cache Savings Dashboard (Phase 91) -->
+            <div class="usage-stats-section" id="usage-stats-section">
+              <div class="card-header-flex">
+                <div>
+                  <h3 data-i18n="optionsUsageStatsTitle">Token &amp; 30-Day Cache Savings</h3>
+                  <p class="description" data-i18n="optionsUsageStatsDesc">
+                    100% local counters showing API calls &amp; tokens saved by YouSub's 30-day
+                    subtitle cache.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="reset-usage-stats-btn"
+                  class="text-btn"
+                  data-i18n="optionsUsageStatsResetBtn"
+                >
+                  Reset Stats
+                </button>
+              </div>
+              <div class="usage-stats-grid">
+                <div class="usage-stat-box">
+                  <span class="usage-stat-label" data-i18n="optionsUsageVideosLabel"
+                    >Videos Translated</span
+                  >
+                  <strong class="usage-stat-value" id="usage-videos-count">0</strong>
+                </div>
+                <div class="usage-stat-box">
+                  <span class="usage-stat-label" data-i18n="optionsUsageCacheHitsLabel"
+                    >30-Day Cache Hits</span
+                  >
+                  <strong class="usage-stat-value" id="usage-cache-hits">0</strong>
+                </div>
+                <div class="usage-stat-box">
+                  <span class="usage-stat-label" data-i18n="optionsUsageRequestsSavedLabel"
+                    >Est. API Calls Saved</span
+                  >
+                  <strong class="usage-stat-value" id="usage-requests-saved">0</strong>
+                </div>
+                <div class="usage-stat-box highlight">
+                  <span class="usage-stat-label" data-i18n="optionsUsageTokensSavedLabel"
+                    >Est. Tokens Saved</span
+                  >
+                  <strong class="usage-stat-value" id="usage-tokens-saved">0</strong>
+                </div>
+              </div>
+              <p class="sub-description usage-tokens-note" id="usage-tokens-used-note"></p>
             </div>
 
             <hr class="divider" />
@@ -414,6 +644,23 @@
                     remains visible in Popup and Debug Inspector.
                   </p>
                 </div>
+
+                <div class="form-group" style="margin-top: 12px">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="show-desktop-fab" />
+                    <span data-i18n="optionsShowDesktopFab"
+                      >Always show floating control pill on Desktop</span
+                    >
+                  </label>
+                  <p
+                    class="sub-description"
+                    style="font-size: 0.85em; opacity: 0.8; margin-top: 4px"
+                    data-i18n="optionsShowDesktopFabDesc"
+                  >
+                    Appears automatically on mobile / touch screens (`m.youtube.com`). Enable to
+                    also show the in-page control drawer pill on Desktop browsers.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -480,6 +727,13 @@
                   Prevent &gt;95% completion reset on long videos (sleep protection)
                 </span>
               </label>
+
+              <label class="checkbox-label">
+                <input type="checkbox" id="resume-remember-speed" checked />
+                <span data-i18n="optionsResumeRememberSpeed">
+                  Remember playback speed per video and channel
+                </span>
+              </label>
             </div>
 
             <div class="form-group">
@@ -536,7 +790,7 @@
                 class="large-logo"
               />
               <div class="about-text">
-                <h3 id="about-version">Version 0.2.4</h3>
+                <h3 id="about-version">Version 0.2.6</h3>
                 <p data-i18n="optionsAboutTagline">Real-time AI subtitle translator for YouTube</p>
               </div>
             </div>

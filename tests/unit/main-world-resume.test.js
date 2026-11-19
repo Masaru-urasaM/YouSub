@@ -250,7 +250,7 @@ describe('main-world-resume MAIN-world guard & bridge (Phase 83)', () => {
         .map((c) => c[0])
         .filter((m) => m && m.type === 'YOUSUB_RESUME_PLAYER_DATA');
       expect(replies).toEqual([
-        {
+        expect.objectContaining({
           type: 'YOUSUB_RESUME_PLAYER_DATA',
           requestId: 'p1',
           videoId: 'vidProbe1',
@@ -259,7 +259,7 @@ describe('main-world-resume MAIN-world guard & bridge (Phase 83)', () => {
           durationSec: 14400,
           isLive: false,
           title: 'Epic Story',
-        },
+        }),
       ]);
     });
 

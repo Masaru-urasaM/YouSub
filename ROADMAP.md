@@ -1,9 +1,9 @@
 # YouSub — Development Roadmap
 
 > **Hub**: [YOUSUB_PROJECT_SPEC.md](YOUSUB_PROJECT_SPEC.md) (architecture, data flow, appendices)
-> **Version**: 10.0
+> **Version**: 10.2
 > **Last updated**: 2026-11-19
-> **Status**: **Milestone 8 COMPLETE — Firefox AMO `v0.2.5` LIVE (`addons.mozilla.org/addon/yousub/`) · Chrome Web Store `v0.2.5` Resubmitted (`Pending review`).** Latest verified gate: **743/743 tests** across **48 suites** (`88.59%` stmts / `91.03%` lines), ESLint `0`, Prettier clean, Chrome & Firefox `v0.2.5` ZIPs `[VERIFY OK]`. Full phase history (`0–85` + Post-85 release work) is archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
+> **Status**: **Milestone 9 COMPLETE (`v0.2.6`) — Firefox AMO `v0.2.5` LIVE / `v0.2.6` Submitted (`6731209`) · Chrome Web Store `v0.2.0` Live / `v0.2.5` Pending Review (`v0.2.6` ZIP staged locally).** Latest verified gate: **773/773 tests** across **51 suites** (`87.29%` stmts / `72.82%` branches / `84.11%` funcs / `89.85%` lines), ESLint `0`, Prettier clean, `addons-linter` 0 errors, Chrome & Firefox `v0.2.6` ZIPs `[VERIFY OK]`. Full phase history (`0–91` + Post-91) is archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
 
 ---
 
@@ -47,17 +47,16 @@ ONE PROMPT = ONE PHASE. NO EXCEPTIONS.
 
 ## ACTIVE & UPCOMING WORK
 
-- **No active coding phases currently queued.** Milestone 8 (`Phases 81–85`) and `v0.2.5` Store Release Automation are complete and archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md).
-- **Remaining operational / post-approval items** are tracked in [`TODO.md`](TODO.md) (post-approval live URL/version sync, manual real-device smoke check on Chrome + Firefox Desktop/Android, and local disk hygiene).
-- **Open deferred item**: only **DEFERRED D8** (`LanguageDetector` — dormant pending resident on-device `Translator` models; see [`DEFERRED.md`](DEFERRED.md)).
+Milestone 8 (`Phases 81–85`) and Milestone 9 (`Phases 86–91` + `Post-91` Visual Media Kit, `v0.2.6`) are 100% complete and archived in [`ROADMAP_DONE.md`](ROADMAP_DONE.md). Remaining operational post-approval items live in [`TODO.md`](TODO.md#remaining-actions-developer--post-approval), and only **DEFERRED D8** (`LanguageDetector` — dormant pending resident on-device `Translator` models; see [`DEFERRED.md`](DEFERRED.md)) remains deferred.
 
 ---
 
-## CURRENT STATUS — Firefox AMO `v0.2.5` Live & CWS Pending Review (2026-11-19)
+## CURRENT STATUS — `v0.2.6` Released to Firefox AMO & Staged for Chrome Web Store (2026-11-19)
 
-- **Quality gate**: **743/743 tests green** across **48 suites** (`88.59%` stmts / `91.03%` lines), ESLint `0`, Prettier clean, `dist/yousub-v0.2.5-{chrome,firefox}.zip` `[VERIFY OK]`.
-- **Firefox Add-ons (AMO)**: **LIVE `v0.2.5`** at `https://addons.mozilla.org/addon/yousub/` (`yousub@xinh.tools`, Version ID `6728292`, Desktop `>= 128.0` + Android `>= 128.0`, tentatively approved after automated screening).
-- **Chrome Web Store**: Extension `jlpgmjpekhnlncfdkmddoienleiljehk` (`v0.2.0` currently live) — resolved `Yellow Argon` (*Keyword Spam* on stacked LLM provider names in `en` & `ja` descriptions) and **resubmitted `v0.2.5`** (`Pending review`).
+- **Quality gate**: **773/773 tests green** across **51 suites** (`87.29%` stmts / `72.82%` branches / `84.11%` funcs / `89.85%` lines), ESLint `0`, Prettier clean, `addons-linter` **0 errors**, `dist/yousub-v0.2.6-{chrome,firefox}.zip` (`68` files, `0.71 MB`) `[VERIFY OK]`.
+- **Firefox Add-ons (AMO)**: **LIVE `v0.2.5`** + **`v0.2.6` submitted** (`Version ID 6731209`, `https://addons.mozilla.org/addon/yousub/`, `yousub@xinh.tools`, Desktop + Android `>= 128.0`).
+- **Chrome Web Store**: Extension `jlpgmjpekhnlncfdkmddoienleiljehk` (`v0.2.0` live, `v0.2.5` currently `PENDING_REVIEW` — `dist/yousub-v0.2.6-chrome.zip` ready for `npm run publish:chrome` once `v0.2.5` clears review).
+- **Store Media Kit**: `assets/store/` contains 5 `1280x800` screenshots + `yousub-demo.gif` (excluded from extension ZIPs via `scripts/package.js`).
 - **Privacy Policy**: Canonical Gist `15f9846972ccb68a120d29e988f42847` synced to `November 18, 2026`.
 
 ---
@@ -71,8 +70,10 @@ ONE PROMPT = ONE PHASE. NO EXCEPTIONS.
 | 65–77 | **M7 — Professionalization & Hardening** | DONE (2026-06-25) |
 | 78–80 | **Post-M7 Extensions** (Gemini fallback, Coalescer/Seek, Sparrow Telemetry) | DONE (2026-11-18) |
 | Post-80 | **[Hotfix] Stabilization** (Overlay UX, `world: "MAIN"` silent extract, alignment v2) | DONE (2026-11-18) |
-| 81–85 | **M8 — Firefox Mobile (`m.youtube.com`) & 3-Tier Audio/Video Auto-Resume Suite** | **DONE (2026-11-18)** |
-| Post-85 | **Dark-Theme Popup Polish, CI/CLI Store Release Automation & `v0.2.5` Submissions** | **DONE (2026-11-18)** |
+| 81–85 | **M8 — Firefox Mobile (`m.youtube.com`) & 3-Tier Audio/Video Auto-Resume Suite** | DONE (2026-11-18) |
+| Post-85 | **Dark-Theme Popup Polish, CI/CLI Store Release Automation & `v0.2.5` Submissions** | DONE (2026-11-18) |
+| 86–91 | **M9 — Mobile Drawer, Sleep Timer, Bookmarks/Speed/A–B, Smart Auto-Enable, Glossary & Onboarding** | **DONE (2026-11-19)** |
+| Post-91 | **Store Listing Visual Media Kit (AMO & CWS Screenshots + Demo GIF) & `v0.2.6` Release** | **DONE (2026-11-19)** |
 
-> **Milestone key**: M1 = MVP, M2 = Features, M3 = Robustness, M4 = Quality, M5 = Distribution, M6 = Expansion, M7 = Professionalization & Hardening, M8 = Firefox Mobile & Cross-Platform Audio/Video Auto-Resume Suite.
+> **Milestone key**: M1 = MVP, M2 = Features, M3 = Robustness, M4 = Quality, M5 = Distribution, M6 = Expansion, M7 = Professionalization & Hardening, M8 = Firefox Mobile & Cross-Platform Audio/Video Auto-Resume Suite, M9 = Mobile In-Page UX, Smart AI Context & Audiobook Power Suite.
 > **Status format**: `DONE (YYYY-MM-DD)` · `IN PROGRESS` · `BLOCKED (reason)` · `TODO` = not started.

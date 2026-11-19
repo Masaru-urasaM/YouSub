@@ -855,5 +855,31 @@ describe('Overlay Module', () => {
       expect(status.textContent).toContain('Resumed at 10:00');
       jest.useRealTimers();
     });
+
+    test('setTouchHandlesVisible and resetLayout control touch drag visibility and exit custom mode (Phase 86)', async () => {
+      chrome.storage.local.store = {
+        yousub_overlay_layout: {
+          regular: { customMode: true, centerXPct: 30, bottomPct: 20, maxWidthPct: 70 },
+        },
+      };
+      createPlayer();
+      Overlay.show();
+      await flushMicrotasks();
+
+      const container = document.getElementById('yousub-overlay');
+      expect(container.classList.contains('yousub-custom-position')).toBe(true);
+
+      expect(Overlay.setTouchHandlesVisible(true)).toBe(true);
+      expect(Overlay.areTouchHandlesVisible()).toBe(true);
+      expect(container.classList.contains('yousub-touch-handles')).toBe(true);
+
+      expect(Overlay.setTouchHandlesVisible(false)).toBe(false);
+      expect(Overlay.areTouchHandlesVisible()).toBe(false);
+
+      Overlay.resetLayout();
+      await flushMicrotasks();
+      expect(container.classList.contains('yousub-custom-position')).toBe(false);
+      expect(chrome.storage.local.store.yousub_overlay_layout.regular.customMode).toBe(false);
+    });
   });
 });

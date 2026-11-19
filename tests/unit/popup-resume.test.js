@@ -328,4 +328,149 @@ describe('PopupResumeView (Phase 85)', () => {
       'No saved playback positions yet.'
     );
   });
+
+  test('renders Sleep Timer presets, custom minutes, and Off controls on /watch (Phase 87)', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      { id: 99, url: 'https://www.youtube.com/watch?v=sleepVid' },
+    ]);
+    chrome.tabs.sendMessage.mockImplementation(async (_tabId, msg) => {
+      if (msg.type === 'YOUSUB_RESUME_GET_STATE') {
+        return {
+          videoId: 'sleepVid',
+          title: 'Bedtime Audiobook',
+          currentTimeSec: 120,
+          durationSec: 7200,
+          record: null,
+          sleepTimer: { active: false, remainingSec: 0, totalSec: 0 },
+        };
+      }
+      if (msg.type === 'YOUSUB_RESUME_SET_SLEEP_TIMER') {
+        const mins = Number(msg.minutes);
+        return {
+          ok: true,
+          sleepTimer:
+            mins > 0
+              ? {
+                  active: true,
+                  remainingSec: mins * 60,
+                  totalSec: mins * 60,
+                  endAt: Date.now() + mins * 60000,
+                  isFading: false,
+                }
+              : { active: false, remainingSec: 0, totalSec: 0, endAt: 0, isFading: false },
+        };
+      }
+      return null;
+    });
+
+    controller = await PopupResumeView.init();
+    expect(document.getElementById('resume-active-panel').classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('resume-sleep-badge').textContent).toBe('Off');
+
+    // Click 15m preset
+    const preset15 = document.querySelector('#resume-sleep-presets button[data-minutes="15"]');
+    preset15.click();
+    await flushMicrotasks();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(99, {
+      type: 'YOUSUB_RESUME_SET_SLEEP_TIMER',
+      minutes: 15,
+    });
+    expect(document.getElementById('resume-sleep-badge').textContent).toBe('15:00');
+    expect(document.getElementById('resume-sleep-off-btn').classList.contains('hidden')).toBe(
+      false
+    );
+
+    // Custom 42m
+    const customInput = document.getElementById('resume-sleep-custom-min');
+    customInput.value = '42';
+    document.getElementById('resume-sleep-custom-btn').click();
+    await flushMicrotasks();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(99, {
+      type: 'YOUSUB_RESUME_SET_SLEEP_TIMER',
+      minutes: 42,
+    });
+    expect(document.getElementById('resume-sleep-badge').textContent).toBe('42:00');
+
+    // Off button cancels timer
+    document.getElementById('resume-sleep-off-btn').click();
+    await flushMicrotasks();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(99, {
+      type: 'YOUSUB_RESUME_SET_SLEEP_TIMER',
+      minutes: 0,
+    });
+    expect(document.getElementById('resume-sleep-badge').textContent).toBe('Off');
+  });
+
+  test('supports bookmark note input, inline bookmark rename, speed badge, and A-B Loop buttons (Phase 88)', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      { id: 101, url: 'https://www.youtube.com/watch?v=abPop' },
+    ]);
+    await PlaybackResumeStore.addBookmark('abPop', {
+      timeSec: 120,
+      label: 'Old Note',
+      durationSec: 1800,
+    });
+
+    chrome.tabs.sendMessage.mockImplementation(async (_tabId, msg) => {
+      if (msg.type === 'YOUSUB_RESUME_GET_STATE') {
+        const stored = await PlaybackResumeStore.getVideoRecord('abPop');
+        return {
+          videoId: 'abPop',
+          title: 'Lecture',
+          currentTimeSec: 180,
+          durationSec: 1800,
+          playbackRate: 1.5,
+          record: stored.mergedRecord,
+          abLoop: { active: false, pointA: null, pointB: null },
+        };
+      }
+      if (msg.type === 'YOUSUB_RESUME_ADD_BOOKMARK') {
+        await PlaybackResumeStore.addBookmark('abPop', { timeSec: 180, label: msg.label });
+        return { ok: true };
+      }
+      if (msg.type === 'YOUSUB_RESUME_SET_AB_LOOP') {
+        if (msg.action === 'setA')
+          return { ok: true, abLoop: { active: false, pointA: 60, pointB: null } };
+        if (msg.action === 'setB')
+          return { ok: true, abLoop: { active: true, pointA: 60, pointB: 90 } };
+        return { ok: true, abLoop: { active: false, pointA: null, pointB: null } };
+      }
+      return null;
+    });
+
+    controller = await PopupResumeView.init();
+    expect(document.getElementById('resume-speed-badge').textContent).toBe('1.5x');
+    expect(document.getElementById('resume-speed-badge').classList.contains('hidden')).toBe(false);
+
+    // Inline edit existing bookmark label
+    const editBtn = document.querySelector(
+      '#resume-bookmarks-list button[aria-label*="Edit bookmark"]'
+    );
+    editBtn.click();
+    const editInput = document.querySelector('.resume-bookmark-edit-input');
+    editInput.value = 'Key Takeaway';
+    editInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flushMicrotasks();
+    expect(document.querySelector('.resume-bookmark-jump').textContent).toBe('2:00 Key Takeaway');
+
+    // Add bookmark with note input
+    document.getElementById('resume-bookmark-note').value = 'Chapter 3';
+    document.getElementById('resume-add-bookmark-btn').click();
+    await flushMicrotasks();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(101, {
+      type: 'YOUSUB_RESUME_ADD_BOOKMARK',
+      label: 'Chapter 3',
+    });
+
+    // A-B Loop
+    document.getElementById('resume-ab-set-a-btn').click();
+    await flushMicrotasks();
+    expect(document.getElementById('resume-ab-badge').textContent).toBe('A: 1:00');
+    document.getElementById('resume-ab-set-b-btn').click();
+    await flushMicrotasks();
+    expect(document.getElementById('resume-ab-badge').textContent).toBe('1:00 - 1:30');
+    document.getElementById('resume-ab-clear-btn').click();
+    await flushMicrotasks();
+    expect(document.getElementById('resume-ab-badge').textContent).toBe('Off');
+  });
 });

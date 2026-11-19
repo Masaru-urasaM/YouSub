@@ -18,8 +18,22 @@
           <span class="health-dot"></span>
           <div id="health-text" data-i18n="popupHealthChecking">Checking APIs...</div>
         </div>
+        <button
+          id="popup-setup-wizard-btn"
+          class="setup-cta-btn hidden"
+          type="button"
+          data-i18n="popupQuickSetupCta"
+        >
+          30s Free API Setup Guide →
+        </button>
 
         <select id="lang-selector" class="lang-selector"></select>
+        <select
+          id="style-selector"
+          class="lang-selector"
+          aria-label="Translation Style"
+          data-i18n-aria-label="popupStyleAriaLabel"
+        ></select>
         <button id="get-sub-btn" class="primary-btn">Translate to ...</button>
         <div class="button-group">
           <button
@@ -72,6 +86,17 @@
           </div>
 
           <div id="resume-active-panel" class="resume-active-panel hidden">
+            <div class="resume-note-row">
+              <input
+                type="text"
+                id="resume-bookmark-note"
+                class="resume-note-input"
+                maxlength="80"
+                placeholder="Bookmark note (optional)..."
+                data-i18n-placeholder="popupResumeBookmarkNotePlaceholder"
+              />
+              <span id="resume-speed-badge" class="resume-sleep-badge hidden">1.0x</span>
+            </div>
             <div id="resume-quick-pills" class="resume-pills-row"></div>
             <div id="resume-bookmarks-list" class="resume-bookmarks-list hidden"></div>
             <div id="resume-checkpoints-wrap" class="resume-checkpoints-wrap hidden">
@@ -79,6 +104,72 @@
                 Checkpoints
               </div>
               <div id="resume-checkpoints-list" class="resume-pills-row"></div>
+            </div>
+            <div id="resume-ab-wrap" class="resume-sleep-wrap">
+              <div class="resume-sleep-header">
+                <span class="resume-sub-label" data-i18n="popupResumeAbLabel">A–B Loop</span>
+                <span id="resume-ab-badge" class="resume-sleep-badge">Off</span>
+              </div>
+              <div class="resume-pills-row">
+                <button
+                  type="button"
+                  id="resume-ab-set-a-btn"
+                  class="resume-pill"
+                  data-i18n="popupResumeAbSetA"
+                >
+                  Set A
+                </button>
+                <button
+                  type="button"
+                  id="resume-ab-set-b-btn"
+                  class="resume-pill"
+                  data-i18n="popupResumeAbSetB"
+                >
+                  Set B
+                </button>
+                <button
+                  type="button"
+                  id="resume-ab-clear-btn"
+                  class="resume-pill hidden"
+                  data-i18n="popupResumeAbClear"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div id="resume-sleep-wrap" class="resume-sleep-wrap">
+              <div class="resume-sleep-header">
+                <span class="resume-sub-label" data-i18n="popupResumeSleepLabel">Sleep Timer</span>
+                <span id="resume-sleep-badge" class="resume-sleep-badge">Off</span>
+              </div>
+              <div id="resume-sleep-presets" class="resume-pills-row"></div>
+              <div class="resume-sleep-custom-row">
+                <input
+                  type="number"
+                  id="resume-sleep-custom-min"
+                  class="resume-sleep-input"
+                  min="1"
+                  max="360"
+                  placeholder="Min"
+                  data-i18n-placeholder="popupResumeSleepCustomPlaceholder"
+                />
+                <button
+                  type="button"
+                  id="resume-sleep-custom-btn"
+                  class="resume-mini-btn"
+                  data-i18n="popupResumeSleepSet"
+                >
+                  Set
+                </button>
+                <button
+                  type="button"
+                  id="resume-sleep-off-btn"
+                  class="resume-pill hidden"
+                  data-i18n="popupResumeSleepOff"
+                >
+                  Off
+                </button>
+              </div>
             </div>
           </div>
 
@@ -131,6 +222,8 @@
             </div>
           </div>
         </div>
+
+        <div id="popup-usage-savings" class="popup-savings-line hidden"></div>
 
         <button id="open-settings-btn" class="secondary-btn" data-i18n="popupSettingsBtn">
           Settings

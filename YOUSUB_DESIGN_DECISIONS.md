@@ -463,3 +463,19 @@ Layout stored in `yousub_overlay_layout` (separate from `yousub_appearance`). Re
 - **Phase 85**: Popup & Options UI (`popup.html`/`.js`/`.css`, `options.html`/`.js`, `_locales/en` & `_locales/ja` parity, `privacy-policy.md` & `YOUSUB_PROJECT_SPEC.md` updates).
 
 **References**: `manifest.json`, `src/content/page-detector.js`, `src/content/main-world-extractor.js`, `src/shared/playback-resume-store.js`, `src/content/main-world-resume.js`, `src/content/playback-resume.js`, `src/content/main.js`, `src/content/overlay.js`, `src/popup/`, `src/options/`.
+
+---
+
+### Decision 24 — Milestone 9: Mobile In-Page Floating Pill & Drawer, Sleep Timer, Labeled Bookmarks/Speed/A–B, Opt-In Smart Auto-Enable & Style/Glossary Context (`v0.2.6`)
+
+**Date**: 2026-11-19
+**Status**: RESOLVED (developer-approved)
+
+**Problem & Key Design Choices**:
+1. **Mobile In-Page Controls vs Floating Pill Everywhere**: Android users switching browser tabs to access Popup controls found mobile operation cumbersome, while showing a permanent floating pill on Desktop YouTube clutters mouse-first setups. **Decision**: Auto-show `#yousub-mobile-fab` + `#yousub-mobile-drawer` (`src/content/mobile-drawer.js`) on `m.youtube.com` or `(hover: none) and (pointer: coarse)` touch viewports, and expose an opt-in Appearance toggle (`showDesktopFab`, default `false`). Build drawer DOM purely with `document.createElement` + `textContent` (zero `innerHTML`, Trusted Types safe).
+2. **Activation Mode Default (`manual` vs `smart_auto`)**: Auto-enabling LLM translation on every foreign YouTube video risks silently draining BYOK API quotas for first-time users. **Decision**: Keep `yousub_activation_mode` defaulting to `'manual'`, with opt-in `'smart_auto'` (skips native-language videos matching `targetLang`, music videos, uncaptioned videos, and per-session manually stopped videos) and `'always_auto'`.
+3. **Backward-Compatible Style Variant Caching & Glossary Prompting**: Adding translation style presets (`natural`, `technical`, `academic`, `anime`, `custom`) and custom glossary rules alters output style for the same `(videoId, sl, tl)` subtitle stream. **Decision**: Compute an FNV-1a cache variant suffix (`computeStyleCacheVariant()` in `src/shared/video-context.js`) that returns `''` for default `'natural'` with empty glossary/prompt — keeping existing cache keys 100% compatible while isolating custom preset/glossary translations cleanly (keeping `MAX_LINES_PER_BATCH` untouched per Rule 12).
+4. **Local-Only Onboarding & Cache Savings Telemetry**: **Decision**: Store token/cache-hit savings strictly in `storage.local` (`yousub_usage_stats_v1` via serialized `usage-stats.js`) with reset support, preserving YouSub's zero-developer-backend privacy model.
+5. **Release Deployment Sequencing (`v0.2.6`)**: Because Chrome Web Store `v0.2.5` is currently `PENDING_REVIEW`, overwriting CWS with `v0.2.6` mid-review would cancel/reset the active review slot. **Decision**: Ship `v0.2.6` immediately to Firefox AMO (approved platform, rapid pipeline) and stage `dist/yousub-v0.2.6-chrome.zip` locally for immediate `:publish` once CWS `v0.2.5` clears review.
+
+**References**: `src/content/mobile-drawer.js`, `src/content/playback-resume.js`, `src/shared/playback-resume-store.js`, `src/shared/video-context.js`, `src/shared/usage-stats.js`, `src/background/{cache,translator,service-worker}.js`, `src/popup/`, `src/options/`, `assets/store/`, `scripts/package.js`.

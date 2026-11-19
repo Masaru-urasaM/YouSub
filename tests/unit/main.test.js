@@ -68,6 +68,26 @@ const mockPlaybackResume = {
   getCurrentState: jest.fn(() => Promise.resolve({ videoId: 'vid-default', currentTimeSec: 120 })),
   seekTo: jest.fn(() => Promise.resolve(true)),
   addCurrentBookmark: jest.fn(() => Promise.resolve({ videoId: 'vid-default', bookmarks: [] })),
+  setSleepTimer: jest.fn(() => ({ active: true, remainingSec: 900, badgeText: '15:00' })),
+  cancelSleepTimer: jest.fn(() => ({ active: false, remainingSec: 0, badgeText: '' })),
+  getSleepTimerState: jest.fn(() => ({ active: false, remainingSec: 0, badgeText: '' })),
+  onSleepTimerChange: jest.fn(() => jest.fn()),
+  setLoopPointA: jest.fn(() => ({ active: false, pointA: 45, pointB: null })),
+  setLoopPointB: jest.fn(() => ({ active: true, pointA: 45, pointB: 90 })),
+  clearLoop: jest.fn(() => ({ active: false, pointA: null, pointB: null })),
+  getLoopState: jest.fn(() => ({ active: false, pointA: null, pointB: null })),
+};
+
+const mockMobileDrawer = {
+  init: jest.fn(),
+  onEnter: jest.fn(),
+  onLeave: jest.fn(),
+  destroy: jest.fn(),
+  setTranslationActive: jest.fn(),
+  setDualMode: jest.fn(),
+  setBadgeText: jest.fn(),
+  refresh: jest.fn(),
+  registerAddon: jest.fn(),
 };
 
 jest.unstable_mockModule('../../src/content/page-detector.js', () => ({
@@ -93,6 +113,9 @@ jest.unstable_mockModule('../../src/content/sync-engine.js', () => ({
 }));
 jest.unstable_mockModule('../../src/content/playback-resume.js', () => ({
   PlaybackResume: mockPlaybackResume,
+}));
+jest.unstable_mockModule('../../src/content/mobile-drawer.js', () => ({
+  MobileDrawer: mockMobileDrawer,
 }));
 
 await import('../../src/content/main.js');
@@ -925,9 +948,11 @@ describe('main.js content entry', () => {
     test('wires PlaybackResume onEnter/onLeave and handles YOUSUB_RESUME_* messages (Phase 84)', async () => {
       onEnterCb('vid-resume-1');
       expect(mockPlaybackResume.onEnter).toHaveBeenCalledWith('vid-resume-1');
+      expect(mockMobileDrawer.onEnter).toHaveBeenCalledWith('vid-resume-1');
 
       onLeaveCb();
       expect(mockPlaybackResume.onLeave).toHaveBeenCalled();
+      expect(mockMobileDrawer.onLeave).toHaveBeenCalled();
 
       const resGet = jest.fn();
       expect(messageListener({ type: 'YOUSUB_RESUME_GET_STATE' }, {}, resGet)).toBe(true);
@@ -956,6 +981,138 @@ describe('main.js content entry', () => {
         ok: true,
         record: { videoId: 'vid-default', bookmarks: [] },
       });
+
+      const resSleep = jest.fn();
+      expect(
+        messageListener({ type: 'YOUSUB_RESUME_SET_SLEEP_TIMER', minutes: 15 }, {}, resSleep)
+      ).toBe(false);
+      expect(mockPlaybackResume.setSleepTimer).toHaveBeenCalledWith(15);
+      expect(resSleep).toHaveBeenCalledWith({
+        ok: true,
+        sleepTimer: { active: true, remainingSec: 900, badgeText: '15:00' },
+      });
+
+      const resLoopA = jest.fn();
+      messageListener({ type: 'YOUSUB_RESUME_SET_AB_LOOP', action: 'setA' }, {}, resLoopA);
+      expect(mockPlaybackResume.setLoopPointA).toHaveBeenCalled();
+      expect(resLoopA).toHaveBeenCalledWith({
+        ok: true,
+        abLoop: { active: false, pointA: 45, pointB: null },
+      });
+    });
+
+    test('Smart Auto-Enable starts pipeline for foreign captions and skips music or manual stops (Phase 89)', async () => {
+      jest.clearAllMocks();
+      let mockPlayerMeta = {
+        title: 'Stanford CS229',
+        channelName: 'Stanford Online',
+        category: 'Education',
+        captionLanguages: ['en'],
+        defaultCaptionLang: 'en',
+      };
+      const postSpy = jest.spyOn(window, 'postMessage').mockImplementation((msg) => {
+        if (msg && msg.type === 'YOUSUB_RESUME_PROBE_PLAYER') {
+          Promise.resolve().then(() => {
+            window.dispatchEvent(
+              new MessageEvent('message', {
+                source: window,
+                data: {
+                  type: 'YOUSUB_RESUME_PLAYER_DATA',
+                  requestId: msg.requestId,
+                  videoId: msg.videoId,
+                  ...mockPlayerMeta,
+                },
+              })
+            );
+          });
+        }
+      });
+
+      chrome.storage.local.store = {
+        yousub_translation_enabled: false,
+        yousub_activation_mode: 'smart_auto',
+        yousub_skip_music_videos: true,
+        targetLang: 'vi',
+        yousub_api_keys: [{ provider: 'google', apiKey: 'AIzaTest1234' }],
+      };
+
+      // 1. Foreign video starts automatically
+      currentVideoId = 'v-smart-foreign';
+      onEnterCb('v-smart-foreign');
+      await flushMicrotasks();
+      expect(mockSubtitleExtractor.extract).toHaveBeenCalledTimes(1);
+
+      // Reset pipeline active before next navigation test
+      onLeaveCb();
+      jest.clearAllMocks();
+
+      // 2. Music video skipped automatically
+      mockPlayerMeta = {
+        title: 'Hit Song (Official Music Video)',
+        channelName: 'Music Artist',
+        category: 'Music',
+        captionLanguages: ['en'],
+        defaultCaptionLang: 'en',
+      };
+      currentVideoId = 'v-smart-music';
+      onEnterCb('v-smart-music');
+      await flushMicrotasks();
+      expect(mockSubtitleExtractor.extract).not.toHaveBeenCalled();
+
+      // 3. Manually stopped video stays skipped if re-entered in same session
+      mockPlayerMeta = {
+        title: 'Stanford CS229',
+        channelName: 'Stanford Online',
+        category: 'Education',
+        captionLanguages: ['en'],
+        defaultCaptionLang: 'en',
+      };
+      currentVideoId = 'v-smart-stop';
+      messageListener({ type: 'YOUSUB_TOGGLE_TRANSLATION', enabled: false }, {}, jest.fn());
+      onEnterCb('v-smart-stop');
+      await flushMicrotasks();
+      expect(mockSubtitleExtractor.extract).not.toHaveBeenCalled();
+
+      onLeaveCb();
+      postSpy.mockRestore();
+    });
+
+    test('passes DOM videoTitle and channelName inside YOUSUB_TRANSLATE_STREAM payload (Phase 90)', async () => {
+      jest.clearAllMocks();
+      const origTitle = document.title;
+      document.title = 'Compiler Design 101 - YouTube';
+      document.body.innerHTML =
+        '<div id="owner"><div id="channel-name"><a>MIT OpenCourseWare</a></div></div>';
+
+      const fakeVideo = document.createElement('video');
+      mockVideoBinder.bind.mockImplementation((cb) => cb(fakeVideo));
+      mockSubtitleExtractor.extract.mockImplementation((cb) =>
+        cb([], [{ startMs: 0, endMs: 2000, text: 'Welcome' }], null, 'en')
+      );
+
+      const streamPort = makeMockPort();
+      chrome.runtime.connect.mockReturnValue(streamPort);
+
+      messageListener(
+        { type: 'YOUSUB_START_TRANSLATION', videoId: 'v-meta-90', targetLang: 'vi' },
+        {},
+        jest.fn()
+      );
+      await flushMicrotasks();
+
+      const msg = streamPort.postMessage.mock.calls.find(
+        (c) => c[0]?.type === 'YOUSUB_TRANSLATE_STREAM'
+      )?.[0];
+      expect(msg).toMatchObject({
+        videoId: 'v-meta-90',
+        videoTitle: 'Compiler Design 101',
+        channelName: 'MIT OpenCourseWare',
+      });
+
+      streamPort.emitMessage({ type: 'COMPLETE', translated: ['Chào mừng'] });
+      await flushMicrotasks();
+      document.title = origTitle;
+      document.body.innerHTML = '';
     });
   });
 });

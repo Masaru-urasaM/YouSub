@@ -35,6 +35,7 @@ export async function initResumeTab(saveIndicatorCallback, i18nFn) {
   const enabledInput = document.getElementById('resume-enabled');
   const syncInput = document.getElementById('resume-sync-enabled');
   const preventResetInput = document.getElementById('resume-prevent-reset');
+  const rememberSpeedInput = document.getElementById('resume-remember-speed');
   const rewindSelect = document.getElementById('resume-rewind-sec');
   const minDurationSelect = document.getElementById('resume-min-duration');
   const clearHistoryBtn = document.getElementById('clear-resume-history-btn');
@@ -56,6 +57,7 @@ export async function initResumeTab(saveIndicatorCallback, i18nFn) {
     if (enabledInput) enabledInput.checked = settings.enabled !== false;
     if (syncInput) syncInput.checked = settings.syncEnabled !== false;
     if (preventResetInput) preventResetInput.checked = settings.preventCompletionReset !== false;
+    if (rememberSpeedInput) rememberSpeedInput.checked = settings.rememberPlaybackSpeed !== false;
     applySelectValue(rewindSelect, settings.rewindSec, DEFAULT_RESUME_SETTINGS.rewindSec);
     applySelectValue(
       minDurationSelect,
@@ -93,6 +95,12 @@ export async function initResumeTab(saveIndicatorCallback, i18nFn) {
   if (preventResetInput) {
     preventResetInput.addEventListener('change', () => {
       savePatch({ preventCompletionReset: Boolean(preventResetInput.checked) });
+    });
+  }
+
+  if (rememberSpeedInput) {
+    rememberSpeedInput.addEventListener('change', () => {
+      savePatch({ rememberPlaybackSpeed: Boolean(rememberSpeedInput.checked) });
     });
   }
 

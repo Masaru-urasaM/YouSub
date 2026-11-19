@@ -192,5 +192,20 @@ describe('Cache Module', () => {
       await chrome.storage.local.set({ [key]: stored[key] });
       expect(await Cache.getGenerated('vid_srt', 'ja')).toBeNull();
     });
+
+    test('isolates style/glossary cache variants cleanly and clears all via removeByVideoId (Phase 90)', async () => {
+      await Cache.set('vid_style', 'en', 'vi', [{ text: 'Mac dinh' }]);
+      await Cache.set('vid_style', 'en', 'vi', [{ text: 'Ky thuat' }], 'technical_1a2b3c');
+
+      expect(await Cache.get('vid_style', 'en', 'vi')).toEqual([{ text: 'Mac dinh' }]);
+      expect(await Cache.get('vid_style', 'en', 'vi', 'technical_1a2b3c')).toEqual([
+        { text: 'Ky thuat' },
+      ]);
+      expect(await Cache.hasAnyForVideoTarget('vid_style', 'vi')).toBe(true);
+
+      await Cache.removeByVideoId('vid_style');
+      expect(await Cache.get('vid_style', 'en', 'vi')).toBeNull();
+      expect(await Cache.get('vid_style', 'en', 'vi', 'technical_1a2b3c')).toBeNull();
+    });
   });
 });

@@ -2,7 +2,7 @@
 
 Real-time AI subtitle translator & Audio/Long-Video Auto-Resume for YouTube. YouSub intercepts YouTube's native transcript tracks (or falls back to Gemini / local `.srt`/`.vtt`), translates them with your own LLM API keys (BYOK, multi-provider), renders a synced, customizable dual-subtitle overlay, and automatically preserves & syncs exact playback positions across Chrome, Firefox Desktop, and Firefox for Android (`m.youtube.com`).
 
-> **Status**: **Live v0.2.5** on [Firefox Add-ons (Desktop + Android)](https://addons.mozilla.org/addon/yousub/); **Live v0.2.0 / v0.2.5 Pending Review** on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (**743/743 tests**, 48 suites). Manifest V3, vanilla JavaScript ES modules, **no build step**. Open source under GNU AGPL-3.0-only.
+> **Status**: **Live v0.2.5 / Submitted v0.2.6** on [Firefox Add-ons (Desktop + Android)](https://addons.mozilla.org/addon/yousub/); **Live v0.2.0 / v0.2.5 Pending Review (`v0.2.6` ZIP staged locally)** on [Chrome Web Store](https://chromewebstore.google.com/detail/yousub/jlpgmjpekhnlncfdkmddoienleiljehk) (**773/773 tests**, 51 suites). Manifest V3, vanilla JavaScript ES modules, **no build step**. Open source under GNU AGPL-3.0-only.
 
 ---
 
